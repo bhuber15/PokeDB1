@@ -1,0 +1,52 @@
+'use client'
+import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+
+interface PinPadProps {
+  onSubmit: (pin: string) => void
+  error?: string
+  loading?: boolean
+}
+
+export function PinPad({ onSubmit, error, loading }: PinPadProps) {
+  const [pin, setPin] = useState('')
+
+  function handleDigit(digit: string) {
+    if (pin.length >= 4) return
+    const next = pin + digit
+    setPin(next)
+    if (next.length === 4) {
+      onSubmit(next)
+      setTimeout(() => setPin(''), 600)
+    }
+  }
+
+  const keys = ['1','2','3','4','5','6','7','8','9','','0','⌫']
+
+  return (
+    <div className="flex flex-col items-center gap-6">
+      <div className="flex gap-3">
+        {[0,1,2,3].map(i => (
+          <div
+            key={i}
+            className={`w-4 h-4 rounded-full border-2 transition-colors ${pin.length > i ? 'bg-foreground border-foreground' : 'border-muted-foreground'}`}
+          />
+        ))}
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <div className="grid grid-cols-3 gap-3">
+        {keys.map((key, i) => (
+          <Button
+            key={i}
+            variant="outline"
+            className="w-16 h-16 text-xl"
+            disabled={!key || loading}
+            onClick={() => key === '⌫' ? setPin(p => p.slice(0, -1)) : key && handleDigit(key)}
+          >
+            {key}
+          </Button>
+        ))}
+      </div>
+    </div>
+  )
+}
