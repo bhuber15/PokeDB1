@@ -20,7 +20,13 @@ export default function ReportsPage() {
   const [data, setData] = useState<{ todayStats: TodayStats; recentSales: RecentSale[] } | null>(null)
 
   useEffect(() => {
-    fetch('/api/sales/history').then(r => r.json()).then(setData)
+    fetch('/api/sales/history').then(async res => {
+      if (!res.ok) {
+        console.error('Failed to load report data', res.status)
+        return
+      }
+      return res.json()
+    }).then(data => data && setData(data))
   }, [])
 
   if (!data) return <p className="text-muted-foreground">Loading…</p>

@@ -12,7 +12,7 @@ export async function GET() {
   }
 
   const todayStart = new Date()
-  todayStart.setHours(0, 0, 0, 0)
+  todayStart.setUTCHours(0, 0, 0, 0)
 
   const [todayStats] = await db.select({
     totalRevenue: sql<number>`COALESCE(SUM(total), 0)`,
