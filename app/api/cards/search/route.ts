@@ -7,7 +7,7 @@ import { getSession } from '@/lib/auth'
 
 export async function GET(req: NextRequest) {
   const session = await getSession()
-  if (!session.isOwnerLoggedIn) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!session.staffId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const q = req.nextUrl.searchParams.get('q')?.trim() ?? ''
   if (q.length < 2) return NextResponse.json({ cards: [] })

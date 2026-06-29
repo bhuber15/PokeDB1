@@ -1,7 +1,7 @@
 export function calculateSellPrice(
   marketPrice: number | null | undefined,
   override: number | null | undefined,
-  multiplier = parseFloat(process.env.NEXT_PUBLIC_MARGIN_MULTIPLIER ?? '0.85')
+  multiplier = parseFloat(process.env.NEXT_PUBLIC_MARGIN_MULTIPLIER ?? '0.85') || 0.85
 ): number | null {
   if (override != null) return override
   if (marketPrice == null) return null

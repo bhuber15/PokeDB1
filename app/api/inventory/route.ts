@@ -5,17 +5,9 @@ import { eq } from 'drizzle-orm'
 import { generateQRId } from '@/lib/qr'
 import { getSession } from '@/lib/auth'
 
-async function joinedQuery(where?: Parameters<typeof db.select>[0]) {
-  return db
-    .select({ item: inventoryItems, card: cards, prices: priceCache })
-    .from(inventoryItems)
-    .leftJoin(cards, eq(inventoryItems.cardId, cards.id))
-    .leftJoin(priceCache, eq(cards.id, priceCache.cardId))
-}
-
 export async function GET(req: NextRequest) {
   const session = await getSession()
-  if (!session.isOwnerLoggedIn) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!session.staffId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const cardId = req.nextUrl.searchParams.get('cardId')
   const qrCode = req.nextUrl.searchParams.get('qrCode')

@@ -11,6 +11,7 @@ import type { CartItem } from './Cart'
 const PAYMENT_METHODS = [
   { value: 'cash', label: '💵 Cash' },
   { value: 'card', label: '💳 Card' },
+  { value: 'store_credit', label: '🏪 Store Credit' },
   { value: 'other', label: 'Other' },
 ]
 
