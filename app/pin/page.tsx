@@ -2,7 +2,6 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PinPad } from '@/components/staff/PinPad'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 export default function PinPage() {
   const [error, setError] = useState('')
@@ -27,14 +26,18 @@ export default function PinPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-center text-xl">Enter Staff PIN</CardTitle>
-        </CardHeader>
-        <CardContent className="flex justify-center pb-6">
+      <div className="w-full max-w-xs space-y-8">
+        <div className="text-center space-y-2">
+          <div className="mx-auto w-12 h-12 rounded-xl bg-primary flex items-center justify-center text-primary-foreground text-xl font-bold shadow-lg shadow-primary/30">
+            P
+          </div>
+          <h1 className="text-xl font-bold">Staff Sign In</h1>
+          <p className="text-sm text-muted-foreground">Enter your 4-digit PIN</p>
+        </div>
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-xl flex flex-col items-center gap-1">
           <PinPad onSubmit={handlePin} error={error} loading={loading} />
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }
