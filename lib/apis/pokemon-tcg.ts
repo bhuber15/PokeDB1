@@ -1,18 +1,26 @@
 const BASE_URL = 'https://api.pokemontcg.io/v2'
 
+type PriceRow = { market?: number; low?: number; mid?: number; high?: number }
+
 export interface PokemonTCGCard {
   id: string
   name: string
   number: string
-  set: { name: string }
+  rarity?: string
+  set: { name: string; series: string; releaseDate: string }
   subtypes?: string[]
+  supertypes?: string[]
+  types?: string[]
+  hp?: string
   images: { small: string; large: string }
   tcgplayer?: {
+    url?: string
     prices?: {
-      normal?: { market?: number; low?: number; mid?: number; high?: number }
-      holofoil?: { market?: number; low?: number; mid?: number; high?: number }
-      reverseHolofoil?: { market?: number; low?: number; mid?: number; high?: number }
-      '1stEditionHolofoil'?: { market?: number; low?: number; mid?: number; high?: number }
+      normal?: PriceRow
+      holofoil?: PriceRow
+      reverseHolofoil?: PriceRow
+      '1stEditionHolofoil'?: PriceRow
+      '1stEditionNormal'?: PriceRow
     }
   }
 }
@@ -24,13 +32,24 @@ export interface PriceResult {
   high: number | null
 }
 
+export interface AllPrices {
+  normal?: PriceRow
+  holofoil?: PriceRow
+  reverseHolofoil?: PriceRow
+  '1stEditionHolofoil'?: PriceRow
+  '1stEditionNormal'?: PriceRow
+}
+
 function headers(): Record<string, string> {
   const key = process.env.POKEMON_TCG_API_KEY
   return key ? { 'X-Api-Key': key } : {}
 }
 
-export async function searchPokemonCards(query: string): Promise<PokemonTCGCard[]> {
-  const params = new URLSearchParams({ q: `name:"${query}*"`, pageSize: '20' })
+export async function searchPokemonCards(query: string, pageSize = 30): Promise<PokemonTCGCard[]> {
+  // Strip Lucene-special chars so a stray quote can't break the query syntax
+  const safe = query.replace(/["\\:()*?~^]/g, ' ').trim()
+  if (!safe) return []
+  const params = new URLSearchParams({ q: `name:"${safe}*"`, pageSize: String(pageSize) })
   const res = await fetch(`${BASE_URL}/cards?${params}`, {
     headers: headers(),
     next: { revalidate: 3600 },
@@ -45,6 +64,7 @@ export function extractBestPrice(card: PokemonTCGCard): PriceResult {
   const p = prices.holofoil
     ?? prices['1stEditionHolofoil']
     ?? prices.normal
+    ?? prices['1stEditionNormal']
     ?? prices.reverseHolofoil
   if (!p) return { market: null, low: null, mid: null, high: null }
   return {
@@ -53,4 +73,8 @@ export function extractBestPrice(card: PokemonTCGCard): PriceResult {
     mid: p.mid ?? null,
     high: p.high ?? null,
   }
+}
+
+export function getAllPrices(card: PokemonTCGCard): AllPrices {
+  return card.tcgplayer?.prices ?? {}
 }

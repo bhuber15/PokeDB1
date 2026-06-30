@@ -35,6 +35,7 @@ export const inventoryItems = sqliteTable('inventory_items', {
   location: text('location'),
   defectNotes: text('defect_notes'),
   lowStockThreshold: integer('low_stock_threshold').notNull().default(1),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
@@ -69,9 +70,20 @@ export const saleItems = sqliteTable('sale_items', {
   priceAtSale: real('price_at_sale').notNull(),
 })
 
+// Single-row shop settings (always id = 1)
+export const settings = sqliteTable('settings', {
+  id: integer('id').primaryKey(),
+  shopName: text('shop_name').notNull().default('PokeDB'),
+  usdToGbp: real('usd_to_gbp').notNull().default(0.79),
+  marginMultiplier: real('margin_multiplier').notNull().default(0.85),
+  highValueThreshold: real('high_value_threshold').notNull().default(50),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
 export type Staff = typeof staff.$inferSelect
 export type Card = typeof cards.$inferSelect
 export type InventoryItem = typeof inventoryItems.$inferSelect
 export type PriceCache = typeof priceCache.$inferSelect
 export type Sale = typeof sales.$inferSelect
 export type SaleItem = typeof saleItems.$inferSelect
+export type Settings = typeof settings.$inferSelect

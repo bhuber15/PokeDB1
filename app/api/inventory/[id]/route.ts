@@ -44,6 +44,11 @@ export async function DELETE(
     return NextResponse.json({ error: 'Admin only' }, { status: 403 })
   }
   const { id } = await params
-  await db.delete(inventoryItems).where(eq(inventoryItems.id, parseInt(id)))
+  // Soft delete — preserves historical sale_items that reference this item
+  const [updated] = await db.update(inventoryItems)
+    .set({ isActive: false })
+    .where(eq(inventoryItems.id, parseInt(id)))
+    .returning()
+  if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json({ ok: true })
 }

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { inventoryItems, cards, priceCache } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { generateQRId } from '@/lib/qr'
 import { getSession } from '@/lib/auth'
+
+const CONDITIONS = new Set(['NM', 'LP', 'MP', 'HP', 'DMG'])
 
 export async function GET(req: NextRequest) {
   const session = await getSession()
@@ -19,12 +21,18 @@ export async function GET(req: NextRequest) {
     .leftJoin(priceCache, eq(cards.id, priceCache.cardId))
 
   if (cardId) {
-    return NextResponse.json(await base.where(eq(inventoryItems.cardId, parseInt(cardId))))
+    return NextResponse.json(await base.where(and(
+      eq(inventoryItems.cardId, parseInt(cardId)),
+      eq(inventoryItems.isActive, true),
+    )))
   }
   if (qrCode) {
-    return NextResponse.json(await base.where(eq(inventoryItems.qrCode, qrCode)))
+    return NextResponse.json(await base.where(and(
+      eq(inventoryItems.qrCode, qrCode),
+      eq(inventoryItems.isActive, true),
+    )))
   }
-  return NextResponse.json(await base)
+  return NextResponse.json(await base.where(eq(inventoryItems.isActive, true)))
 }
 
 export async function POST(req: NextRequest) {
@@ -35,6 +43,9 @@ export async function POST(req: NextRequest) {
 
   if (!cardId || !condition || quantity == null || costPrice == null) {
     return NextResponse.json({ error: 'cardId, condition, quantity and costPrice are required' }, { status: 400 })
+  }
+  if (!CONDITIONS.has(condition)) {
+    return NextResponse.json({ error: 'Invalid condition' }, { status: 400 })
   }
 
   const [item] = await db.insert(inventoryItems).values({
