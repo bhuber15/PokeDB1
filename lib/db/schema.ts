@@ -77,7 +77,58 @@ export const settings = sqliteTable('settings', {
   usdToGbp: real('usd_to_gbp').notNull().default(0.79),
   marginMultiplier: real('margin_multiplier').notNull().default(0.85),
   highValueThreshold: real('high_value_threshold').notNull().default(50),
+  buyCashPct: real('buy_cash_pct').notNull().default(0.5),
+  buyCreditPct: real('buy_credit_pct').notNull().default(0.65),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const customers = sqliteTable('customers', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  phone: text('phone'),
+  email: text('email'),
+  notes: text('notes'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const creditLedger = sqliteTable('credit_ledger', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  customerId: integer('customer_id').notNull().references(() => customers.id),
+  delta: real('delta').notNull(), // +credit issued, -credit spent
+  reason: text('reason').notNull(), // 'buylist' | 'sale' | 'adjustment' | 'refund'
+  refType: text('ref_type'), // 'buy' | 'sale' | null
+  refId: integer('ref_id'),
+  staffId: integer('staff_id').references(() => staff.id),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const buyTransactions = sqliteTable('buy_transactions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  staffId: integer('staff_id').references(() => staff.id),
+  customerId: integer('customer_id').references(() => customers.id),
+  method: text('method').notNull(), // 'cash' | 'store_credit'
+  total: real('total').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const buyItems = sqliteTable('buy_items', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  buyId: integer('buy_id').notNull().references(() => buyTransactions.id),
+  cardId: integer('card_id').references(() => cards.id),
+  inventoryItemId: integer('inventory_item_id').references(() => inventoryItems.id),
+  condition: text('condition').notNull(),
+  quantity: integer('quantity').notNull(),
+  payPrice: real('pay_price').notNull(), // per-item GBP paid
+})
+
+export const wantList = sqliteTable('want_list', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  customerId: integer('customer_id').notNull().references(() => customers.id),
+  cardId: integer('card_id').references(() => cards.id),
+  freeText: text('free_text'), // when the card isn't in our DB yet
+  notify: integer('notify', { mode: 'boolean' }).notNull().default(true),
+  fulfilledAt: text('fulfilled_at'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
 export type Staff = typeof staff.$inferSelect
@@ -87,3 +138,8 @@ export type PriceCache = typeof priceCache.$inferSelect
 export type Sale = typeof sales.$inferSelect
 export type SaleItem = typeof saleItems.$inferSelect
 export type Settings = typeof settings.$inferSelect
+export type Customer = typeof customers.$inferSelect
+export type CreditLedger = typeof creditLedger.$inferSelect
+export type BuyTransaction = typeof buyTransactions.$inferSelect
+export type BuyItem = typeof buyItems.$inferSelect
+export type WantListItem = typeof wantList.$inferSelect
