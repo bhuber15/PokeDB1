@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatGBP } from '@/lib/pricing'
+import { DateRangePicker } from '@/components/reports/DateRangePicker'
 
 interface TodayStats {
   totalRevenue: number
@@ -15,6 +16,18 @@ interface TodayStats {
 interface RecentSale {
   sale: { id: number; total: number; paymentMethod: string; discountAmount: number; createdAt: string }
   staffName: string | null
+}
+
+interface RangeSummary {
+  range: { from: string; to: string }
+  revenue: number
+  subtotal: number
+  discountTotal: number
+  vatTotal: number
+  grossMargin: number
+  saleCount: number
+  byPaymentMethod: { paymentMethod: string; total: number }[]
+  topCards: { cardId: number; name: string; quantitySold: number; revenue: number }[]
 }
 
 export default function ReportsPage() {
@@ -29,6 +42,16 @@ export default function ReportsPage() {
       return res.json()
     }).then(data => data && setData(data))
   }, [])
+
+  const todayISO = new Date().toISOString().slice(0, 10)
+  const [range, setRange] = useState({ from: todayISO, to: todayISO })
+  const [summary, setSummary] = useState<RangeSummary | null>(null)
+
+  useEffect(() => {
+    fetch(`/api/reports/sales?from=${range.from}&to=${range.to}`)
+      .then(async res => (res.ok ? res.json() : null))
+      .then(setSummary)
+  }, [range.from, range.to])
 
   if (!data) return <p className="text-muted-foreground">Loading…</p>
 
@@ -56,6 +79,42 @@ export default function ReportsPage() {
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Range Summary</h2>
+          <DateRangePicker from={range.from} to={range.to} onChange={setRange} />
+        </div>
+        {summary && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              { label: 'Revenue', value: formatGBP(summary.revenue) },
+              { label: 'Gross Margin', value: formatGBP(summary.grossMargin) },
+              { label: 'VAT', value: formatGBP(summary.vatTotal) },
+              { label: 'Sales', value: String(summary.saleCount) },
+            ].map(stat => (
+              <Card key={stat.label}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">{stat.label}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold tabular-nums">{stat.value}</div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+        {summary && summary.topCards.length > 0 && (
+          <div className="border rounded-lg divide-y">
+            {summary.topCards.map(c => (
+              <div key={c.cardId} className="flex items-center justify-between p-3 text-sm">
+                <span>{c.name}</span>
+                <span className="text-muted-foreground">{c.quantitySold} sold · {formatGBP(c.revenue)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div>
