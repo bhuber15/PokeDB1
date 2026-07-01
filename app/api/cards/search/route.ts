@@ -6,6 +6,7 @@ import { searchPokemonCards, extractBestPrice, type PokemonTCGCard } from '@/lib
 import { getSession } from '@/lib/auth'
 import { getSettings } from '@/lib/settings'
 import { usdToGbp } from '@/lib/pricing'
+import { syncCardmarketForCard } from '@/lib/prices/sync'
 
 export async function GET(req: NextRequest) {
   const session = await getSession()
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
   const newCards = (await Promise.all(
     apiCards
       .filter(apiCard => !existingExternalIds.has(apiCard.id))
-      .map(apiCard => insertCardSafely(apiCard, settings.highValueThreshold, settings.usdToGbp))
+      .map(apiCard => insertCardSafely(apiCard, settings.highValueThreshold, settings.usdToGbp, settings.eurToGbp))
   )).filter((c): c is typeof cards.$inferSelect => c != null)
 
   return NextResponse.json({ cards: [...dbCards, ...newCards] })
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest) {
 // Resilient insert: re-checks for an existing row (handles a race between the
 // two parallel queries) and swallows unique-constraint violations from a
 // concurrent insert, returning whatever row ends up in the DB.
-async function insertCardSafely(apiCard: PokemonTCGCard, threshold: number, rate: number) {
+async function insertCardSafely(apiCard: PokemonTCGCard, threshold: number, rate: number, eurRate: number) {
   const [existing] = await db.select().from(cards).where(eq(cards.externalId, apiCard.id)).limit(1)
   if (existing) return existing
 
@@ -68,6 +69,7 @@ async function insertCardSafely(apiCard: PokemonTCGCard, threshold: number, rate
           tcgplayerHigh: usdToGbp(p.high, rate),
           isHighValue: (market ?? 0) >= threshold,
         })
+        await syncCardmarketForCard(card.id, card.externalId, card.variant, eurRate)
       } catch {
         // priceCache.cardId is unique — a concurrent insert already wrote it. Fine.
       }
