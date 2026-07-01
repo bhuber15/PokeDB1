@@ -145,11 +145,16 @@ export default function PricesPage() {
     try {
       const res = await fetch(`/api/prices/search?q=${encodeURIComponent(q.trim())}`)
       if (!res.ok) {
-        setError('Price lookup failed — the card API may be unavailable. Try again.')
+        setError('Price lookup failed — please sign in again and retry.')
         setResults([])
         return
       }
       const data = await res.json()
+      if (data.unavailable) {
+        setError('The card price service is busy right now — try that search again in a moment.')
+        setResults([])
+        return
+      }
       setResults(data.cards ?? [])
     } catch {
       setError('Could not reach the server. Check your connection and try again.')

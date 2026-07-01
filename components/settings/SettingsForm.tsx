@@ -15,6 +15,8 @@ export function SettingsForm() {
   const [usdToGbp, setUsdToGbp] = useState(String(current.usdToGbp))
   const [marginMultiplier, setMarginMultiplier] = useState(String(current.marginMultiplier))
   const [highValueThreshold, setHighValueThreshold] = useState(String(current.highValueThreshold))
+  const [buyCashPct, setBuyCashPct] = useState(String(current.buyCashPct))
+  const [buyCreditPct, setBuyCreditPct] = useState(String(current.buyCreditPct))
   const [saving, setSaving] = useState(false)
 
   const rate = parseFloat(usdToGbp) || 0
@@ -22,6 +24,9 @@ export function SettingsForm() {
   // Worked example: a $10 USD card
   const exampleGbp = 10 * rate
   const exampleSell = exampleGbp * margin
+  // Worked example: a £10 card for buy percentages
+  const cashExample = 10 * (parseFloat(buyCashPct) || 0)
+  const creditExample = 10 * (parseFloat(buyCreditPct) || 0)
 
   async function save() {
     setSaving(true)
@@ -34,6 +39,8 @@ export function SettingsForm() {
           usdToGbp: parseFloat(usdToGbp),
           marginMultiplier: parseFloat(marginMultiplier),
           highValueThreshold: parseFloat(highValueThreshold),
+          buyCashPct: parseFloat(buyCashPct),
+          buyCreditPct: parseFloat(buyCreditPct),
         }),
       })
       if (!res.ok) {
@@ -100,6 +107,37 @@ export function SettingsForm() {
           <div className="text-xs text-muted-foreground mb-1">Worked example — a $10 USD card:</div>
           <div className="flex justify-between"><span className="text-muted-foreground">Market in £</span><span className="font-medium">{formatGBP(exampleGbp)}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Auto sell price</span><span className="font-bold text-primary">{formatGBP(exampleSell)}</span></div>
+        </div>
+      </section>
+
+      {/* Buy percentages */}
+      <section className="bg-card border border-border rounded-xl p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Buylist Rates</h2>
+        <p className="text-xs text-muted-foreground">
+          Enter as a decimal fraction (0–1). e.g. 0.5 = 50% of a card's sell price.
+        </p>
+
+        <div className="space-y-1.5">
+          <Label>Cash buy % (0–1)</Label>
+          <Input type="number" step="0.01" min={0} max={1} value={buyCashPct} onChange={e => setBuyCashPct(e.target.value)} />
+          <p className="text-xs text-muted-foreground">
+            Fraction of sell price paid in cash. e.g. 0.5 = pay 50% of market.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>Credit buy % (0–1)</Label>
+          <Input type="number" step="0.01" min={0} max={1} value={buyCreditPct} onChange={e => setBuyCreditPct(e.target.value)} />
+          <p className="text-xs text-muted-foreground">
+            Fraction of sell price paid as store credit. Usually higher than cash.
+          </p>
+        </div>
+
+        {/* Live worked example */}
+        <div className="bg-muted/30 rounded-lg p-3 text-sm">
+          <div className="text-xs text-muted-foreground mb-1">Worked example — a £10 card:</div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Pay in cash</span><span className="font-medium">{formatGBP(cashExample)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Pay in credit</span><span className="font-bold text-primary">{formatGBP(creditExample)}</span></div>
         </div>
       </section>
 

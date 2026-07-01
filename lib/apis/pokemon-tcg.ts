@@ -50,9 +50,11 @@ export async function searchPokemonCards(query: string, pageSize = 30): Promise<
   const safe = query.replace(/["\\:()*?~^]/g, ' ').trim()
   if (!safe) return []
   const params = new URLSearchParams({ q: `name:"${safe}*"`, pageSize: String(pageSize) })
+  // no-store: live price lookups shouldn't hit Next's data cache (large responses can
+  // fail the cache path and turn a repeat search into a 500).
   const res = await fetch(`${BASE_URL}/cards?${params}`, {
     headers: headers(),
-    next: { revalidate: 3600 },
+    cache: 'no-store',
   })
   if (!res.ok) throw new Error(`Pokemon TCG API ${res.status}: ${await res.text()}`)
   return (await res.json()).data as PokemonTCGCard[]

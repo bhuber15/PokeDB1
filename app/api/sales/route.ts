@@ -1,9 +1,10 @@
 // app/api/sales/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { sales, saleItems, inventoryItems } from '@/lib/db/schema'
+import { sales, saleItems, inventoryItems, creditLedger, customers } from '@/lib/db/schema'
 import { eq, and, gte, sql, desc } from 'drizzle-orm'
 import { getSession } from '@/lib/auth'
+import { getCustomerBalance } from '@/lib/credit'
 
 interface SaleItemInput {
   inventoryItemId: number
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest) {
     paymentMethod: string
     discountAmount?: number
     vatScheme?: string
+    customerId?: number
   }
 
   if (!body.items?.length) return NextResponse.json({ error: 'No items' }, { status: 400 })
@@ -42,6 +44,18 @@ export async function POST(req: NextRequest) {
   const vatScheme = VAT_SCHEMES.has(body.vatScheme ?? 'none') ? (body.vatScheme ?? 'none') : 'none'
   const vatAmount = round2(vatScheme === 'standard' ? afterDiscount * 0.2 : 0)
   const total = round2(afterDiscount + vatAmount)
+
+  if (body.paymentMethod === 'store_credit') {
+    if (!body.customerId) {
+      return NextResponse.json({ error: 'customerId required for store credit' }, { status: 400 })
+    }
+    const [customer] = await db.select().from(customers).where(eq(customers.id, body.customerId)).limit(1)
+    if (!customer) return NextResponse.json({ error: 'Customer not found' }, { status: 404 })
+    const balance = await getCustomerBalance(body.customerId)
+    if (balance < total) {
+      return NextResponse.json({ error: 'Insufficient store credit' }, { status: 409 })
+    }
+  }
 
   try {
     const saleId = await db.transaction(async (tx) => {
@@ -78,6 +92,17 @@ export async function POST(req: NextRequest) {
           priceAtSale: item.priceAtSale,
         })
       ))
+
+      if (body.paymentMethod === 'store_credit') {
+        await tx.insert(creditLedger).values({
+          customerId: body.customerId!,
+          delta: -total,
+          reason: 'sale',
+          refType: 'sale',
+          refId: sale.id,
+          staffId: session.staffId!,
+        })
+      }
 
       return sale.id
     })

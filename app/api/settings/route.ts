@@ -30,6 +30,15 @@ export async function PATCH(req: NextRequest) {
       patch[key] = n
     }
   }
+  for (const key of ['buyCashPct', 'buyCreditPct'] as const) {
+    if (body[key] != null) {
+      const n = Number(body[key])
+      if (!Number.isFinite(n) || n <= 0 || n > 1) {
+        return NextResponse.json({ error: `Invalid ${key}: must be > 0 and ≤ 1` }, { status: 400 })
+      }
+      patch[key] = n
+    }
+  }
 
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })

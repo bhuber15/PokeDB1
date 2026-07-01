@@ -13,6 +13,13 @@ export function formatGBP(amount: number | null | undefined): string {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(amount)
 }
 
+// Buy-in offer = market price × percentage, floored so we never overpay by a rounding penny.
+// Pure (no DB) so client components can import it safely.
+export function calculateBuyPrice(market: number | null | undefined, pct: number): number | null {
+  if (market == null) return null
+  return Math.floor(market * pct * 100) / 100
+}
+
 // Pokemon TCG API returns prices in USD. Convert to GBP at a configurable rate.
 // Pass the rate from shop settings; falls back to env, then 0.79.
 export function usdToGbp(

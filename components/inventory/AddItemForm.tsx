@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -34,7 +35,7 @@ export function AddItemForm() {
   async function save() {
     if (!selected || !costPrice) return
     setSaving(true)
-    await fetch('/api/inventory', {
+    const res = await fetch('/api/inventory', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -47,6 +48,21 @@ export function AddItemForm() {
         defectNotes: defectNotes || null,
       }),
     })
+    if (res.ok) {
+      // Check for open wants matching this card
+      try {
+        const wantsRes = await fetch('/api/wants')
+        if (wantsRes.ok) {
+          const { wants } = await wantsRes.json()
+          const matching = (wants as Array<{ cardId: number | null }>).filter(w => w.cardId === selected.id)
+          if (matching.length > 0) {
+            toast(`${matching.length} customer(s) want this card`)
+          }
+        }
+      } catch {
+        // Non-critical — swallow silently
+      }
+    }
     router.push('/inventory')
   }
 

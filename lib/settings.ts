@@ -7,6 +7,8 @@ export interface AppSettings {
   usdToGbp: number
   marginMultiplier: number
   highValueThreshold: number
+  buyCashPct: number
+  buyCreditPct: number
 }
 
 // Defaults fall back to env so pricing still works before the row exists
@@ -16,6 +18,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   usdToGbp: parseFloat(process.env.PRICE_USD_TO_GBP ?? '0.79') || 0.79,
   marginMultiplier: parseFloat(process.env.MARGIN_MULTIPLIER ?? '0.85') || 0.85,
   highValueThreshold: parseFloat(process.env.HIGH_VALUE_THRESHOLD ?? '50') || 50,
+  buyCashPct: 0.5,
+  buyCreditPct: 0.65,
 }
 
 function toAppSettings(row: Settings): AppSettings {
@@ -24,6 +28,8 @@ function toAppSettings(row: Settings): AppSettings {
     usdToGbp: row.usdToGbp,
     marginMultiplier: row.marginMultiplier,
     highValueThreshold: row.highValueThreshold,
+    buyCashPct: row.buyCashPct,
+    buyCreditPct: row.buyCreditPct,
   }
 }
 
