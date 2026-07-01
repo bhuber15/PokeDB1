@@ -29,14 +29,20 @@ const CONDITION_BADGE: Record<string, string> = {
 }
 
 export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTableProps) {
-  const [editing, setEditing] = useState<Record<number, string>>({})
+  const [editId, setEditId] = useState<number | null>(null)
+  const [draft, setDraft] = useState('')
   const [zoomCard, setZoomCard] = useState<CardZoomData | null>(null)
   const { marginMultiplier } = useSettings()
 
-  function handleBlur(id: number, current: number) {
-    const val = parseInt(editing[id] ?? '')
+  function startEdit(id: number, current: number) {
+    setEditId(id)
+    setDraft(String(current))
+  }
+
+  function saveEdit(id: number, current: number) {
+    const val = parseInt(draft)
     if (!isNaN(val) && val >= 0 && val !== current) onStockChange(id, val)
-    setEditing(prev => { const n = { ...prev }; delete n[id]; return n })
+    setEditId(null)
   }
 
   return (
@@ -109,14 +115,34 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <Input
-                      className={`w-16 h-7 text-center text-sm ${isLow ? 'border-destructive text-destructive' : ''}`}
-                      value={item.id in editing ? editing[item.id] : item.quantity}
-                      onChange={e => setEditing(prev => ({ ...prev, [item.id]: e.target.value }))}
-                      onBlur={() => handleBlur(item.id, item.quantity)}
-                      type="number"
-                      min={0}
-                    />
+                    {editId === item.id ? (
+                      <div className="flex items-center gap-1">
+                        <Input
+                          className="w-16 h-7 text-center text-sm"
+                          value={draft}
+                          onChange={e => setDraft(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') saveEdit(item.id, item.quantity)
+                            if (e.key === 'Escape') setEditId(null)
+                          }}
+                          type="number"
+                          min={0}
+                          autoFocus
+                        />
+                        <Button variant="ghost" size="sm" className="h-7 px-1.5 text-emerald-400" onClick={() => saveEdit(item.id, item.quantity)} aria-label="Save stock">✓</Button>
+                        <Button variant="ghost" size="sm" className="h-7 px-1.5 text-muted-foreground" onClick={() => setEditId(null)} aria-label="Cancel">✕</Button>
+                      </div>
+                    ) : (
+                      <button
+                        className={`inline-flex items-center gap-1.5 h-7 px-2 rounded hover:bg-muted/40 transition-colors ${isLow ? 'text-destructive' : ''}`}
+                        onClick={() => startEdit(item.id, item.quantity)}
+                        title="Click to edit stock"
+                      >
+                        <span className="font-medium tabular-nums">{item.quantity}</span>
+                        {isLow && <span className="text-xs">low</span>}
+                        <span className="text-xs text-muted-foreground opacity-60">✎</span>
+                      </button>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{formatGBP(item.costPrice)}</td>
                   <td className="px-4 py-3 font-semibold text-foreground">{formatGBP(sellPrice)}</td>

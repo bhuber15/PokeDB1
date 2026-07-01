@@ -2,11 +2,8 @@ import { db } from '@/lib/db'
 import { creditLedger } from '@/lib/db/schema'
 import { eq, sql } from 'drizzle-orm'
 
-// Floor so we never overpay a customer by a rounding penny.
-export function calculateBuyPrice(market: number | null | undefined, pct: number): number | null {
-  if (market == null) return null
-  return Math.floor(market * pct * 100) / 100
-}
+// NOTE: calculateBuyPrice moved to lib/pricing.ts (pure, no DB) so client
+// components can import it without pulling the libSQL client into the browser.
 
 export async function getCustomerBalance(customerId: number): Promise<number> {
   const [row] = await db

@@ -11,15 +11,15 @@ export async function GET() {
     return NextResponse.json({ error: 'Admin only' }, { status: 403 })
   }
 
-  const todayStart = new Date()
-  todayStart.setUTCHours(0, 0, 0, 0)
-
+  // createdAt is stored via SQLite datetime('now') → "YYYY-MM-DD HH:MM:SS" (UTC, space separator).
+  // Compare against the same format — a JS toISOString() ("...T...Z") sorts differently and would
+  // silently exclude every sale.
   const [todayStats] = await db.select({
     totalRevenue: sql<number>`COALESCE(SUM(total), 0)`,
     saleCount: sql<number>`COUNT(*)`,
     cashTotal: sql<number>`COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END), 0)`,
     cardTotal: sql<number>`COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0)`,
-  }).from(sales).where(gte(sales.createdAt, todayStart.toISOString()))
+  }).from(sales).where(gte(sales.createdAt, sql`datetime('now','start of day')`))
 
   const recentSales = await db
     .select({ sale: sales, staffName: staff.name })

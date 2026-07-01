@@ -4,8 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CardZoomModal } from '@/components/shared/CardZoomModal'
 import { useSettings } from '@/components/shared/SettingsProvider'
-import { calculateBuyPrice } from '@/lib/credit'
-import { formatGBP } from '@/lib/pricing'
+import { calculateBuyPrice, formatGBP } from '@/lib/pricing'
 import type { Card, PriceCache } from '@/lib/db/schema'
 
 const CONDITIONS = ['NM', 'LP', 'MP', 'HP', 'DMG'] as const
