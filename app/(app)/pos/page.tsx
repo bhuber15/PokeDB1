@@ -74,7 +74,7 @@ export default function POSPage() {
     setResult(null)
   }
 
-  async function handleCheckoutConfirm(paymentMethod: string, discountAmount: number) {
+  async function handleCheckoutConfirm(paymentMethod: string, discountAmount: number, customerId?: number) {
     const res = await fetch('/api/sales', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -82,6 +82,7 @@ export default function POSPage() {
         items: cart.map(i => ({ inventoryItemId: i.inventoryItemId, quantity: i.quantity, priceAtSale: i.price })),
         paymentMethod,
         discountAmount,
+        ...(customerId != null ? { customerId } : {}),
       }),
     })
     if (res.ok) {

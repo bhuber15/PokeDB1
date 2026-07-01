@@ -6,7 +6,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { formatGBP } from '@/lib/pricing'
+import { CustomerPicker } from '@/components/shared/CustomerPicker'
 import type { CartItem } from './Cart'
+import type { Customer } from '@/lib/db/schema'
 
 const PAYMENT_METHODS = [
   { value: 'cash', label: '💵 Cash' },
@@ -19,28 +21,56 @@ interface CheckoutDialogProps {
   open: boolean
   items: CartItem[]
   onClose: () => void
-  onConfirm: (paymentMethod: string, discountAmount: number) => Promise<void>
+  onConfirm: (paymentMethod: string, discountAmount: number, customerId?: number) => Promise<void>
 }
 
 export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDialogProps) {
   const [method, setMethod] = useState('cash')
   const [discount, setDiscount] = useState('')
   const [loading, setLoading] = useState(false)
+  const [customer, setCustomer] = useState<Customer | null>(null)
+  const [customerBalance, setCustomerBalance] = useState<number | null>(null)
 
   const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0)
   const discountAmount = Math.min(parseFloat(discount) || 0, subtotal)
   const total = subtotal - discountAmount
 
+  const isStoreCredit = method === 'store_credit'
+  const insufficientBalance = isStoreCredit && customer !== null && customerBalance !== null && customerBalance < total
+  const confirmDisabled = loading || (isStoreCredit && !customer) || insufficientBalance
+
+  // When CustomerPicker calls onSelect, also fetch the balance so we can
+  // access it here for the balance guard. CustomerPicker shows the balance
+  // in its own UI; we also need it to check sufficiency.
+  function handleCustomerSelect(c: Customer | null) {
+    setCustomer(c)
+    setCustomerBalance(null)
+    if (c) {
+      fetch(`/api/customers/${c.id}`)
+        .then(r => r.json())
+        .then((data: { balance: number }) => setCustomerBalance(data.balance ?? null))
+        .catch(() => setCustomerBalance(null))
+    }
+  }
+
   async function confirm() {
     setLoading(true)
-    await onConfirm(method, discountAmount)
+    await onConfirm(method, discountAmount, isStoreCredit && customer ? customer.id : undefined)
     setLoading(false)
     setDiscount('')
     setMethod('cash')
+    setCustomer(null)
+    setCustomerBalance(null)
+  }
+
+  function handleClose() {
+    setCustomer(null)
+    setCustomerBalance(null)
+    onClose()
   }
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-sm">
         <DialogTitle>Checkout</DialogTitle>
         <div className="space-y-4">
@@ -65,7 +95,7 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
           </div>
           <div>
             <Label className="mb-2 block">Payment Method</Label>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {PAYMENT_METHODS.map(m => (
                 <Button
                   key={m.value}
@@ -78,6 +108,22 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
               ))}
             </div>
           </div>
+
+          {isStoreCredit && (
+            <div className="space-y-2">
+              <Label>Customer</Label>
+              <CustomerPicker onSelect={handleCustomerSelect} selected={customer} />
+              {!customer && (
+                <p className="text-xs text-muted-foreground">Select a customer to pay with their store credit.</p>
+              )}
+              {insufficientBalance && (
+                <p className="text-xs text-destructive font-medium">
+                  Insufficient balance ({formatGBP(customerBalance ?? 0)}) — total is {formatGBP(total)}.
+                </p>
+              )}
+            </div>
+          )}
+
           <Separator />
           {discountAmount > 0 && (
             <div className="flex justify-between text-sm text-muted-foreground">
@@ -89,8 +135,8 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
           </div>
         </div>
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
-          <Button onClick={confirm} disabled={loading} className="flex-1">
+          <Button variant="outline" onClick={handleClose} disabled={loading}>Cancel</Button>
+          <Button onClick={confirm} disabled={confirmDisabled} className="flex-1">
             {loading ? 'Processing…' : `Confirm ${formatGBP(total)}`}
           </Button>
         </DialogFooter>
