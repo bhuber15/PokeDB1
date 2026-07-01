@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatGBP } from '@/lib/pricing'
 import { DateRangePicker } from '@/components/reports/DateRangePicker'
+import { RefundDialog } from '@/components/reports/RefundDialog'
 
 interface TodayStats {
   totalRevenue: number
@@ -46,6 +47,7 @@ export default function ReportsPage() {
   const todayISO = new Date().toISOString().slice(0, 10)
   const [range, setRange] = useState({ from: todayISO, to: todayISO })
   const [summary, setSummary] = useState<RangeSummary | null>(null)
+  const [refundSaleId, setRefundSaleId] = useState<number | null>(null)
 
   useEffect(() => {
     fetch(`/api/reports/sales?from=${range.from}&to=${range.to}`)
@@ -132,18 +134,28 @@ export default function ReportsPage() {
                   <span className="text-xs text-muted-foreground">-{formatGBP(sale.discountAmount)} disc.</span>
                 )}
               </div>
-              <div className="text-right text-sm">
-                <div className="text-muted-foreground">{staffName ?? 'Unknown'}</div>
-                <div className="text-xs text-muted-foreground">
-                  {new Date(sale.createdAt).toLocaleString('en-GB', {
-                    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-                  })}
+              <div className="flex items-center gap-3">
+                <div className="text-right text-sm">
+                  <div className="text-muted-foreground">{staffName ?? 'Unknown'}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {new Date(sale.createdAt).toLocaleString('en-GB', {
+                      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                    })}
+                  </div>
                 </div>
+                <Button size="sm" variant="outline" onClick={() => setRefundSaleId(sale.id)}>Refund</Button>
               </div>
             </div>
           ))}
         </div>
       </div>
+
+      <RefundDialog
+        saleId={refundSaleId}
+        open={refundSaleId !== null}
+        onClose={() => setRefundSaleId(null)}
+        onDone={() => fetch('/api/sales/history').then(r => r.json()).then(setData)}
+      />
     </div>
   )
 }
