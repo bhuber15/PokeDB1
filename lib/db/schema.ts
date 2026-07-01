@@ -74,6 +74,23 @@ export const saleItems = sqliteTable('sale_items', {
   priceAtSale: real('price_at_sale').notNull(),
 })
 
+export const refunds = sqliteTable('refunds', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  saleId: integer('sale_id').notNull().references(() => sales.id),
+  staffId: integer('staff_id').references(() => staff.id),
+  method: text('method').notNull(), // 'cash' | 'store_credit'
+  amount: real('amount').notNull(), // total refunded, GBP, includes reversed VAT
+  reason: text('reason'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const refundItems = sqliteTable('refund_items', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  refundId: integer('refund_id').notNull().references(() => refunds.id),
+  saleItemId: integer('sale_item_id').notNull().references(() => saleItems.id),
+  quantity: integer('quantity').notNull(),
+})
+
 // Single-row shop settings (always id = 1)
 export const settings = sqliteTable('settings', {
   id: integer('id').primaryKey(),
@@ -149,3 +166,5 @@ export type CreditLedger = typeof creditLedger.$inferSelect
 export type BuyTransaction = typeof buyTransactions.$inferSelect
 export type BuyItem = typeof buyItems.$inferSelect
 export type WantListItem = typeof wantList.$inferSelect
+export type Refund = typeof refunds.$inferSelect
+export type RefundItem = typeof refundItems.$inferSelect
