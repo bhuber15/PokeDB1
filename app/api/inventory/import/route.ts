@@ -40,32 +40,41 @@ export async function POST(req: NextRequest) {
       if (!Number.isInteger(quantity) || quantity < 1) throw new Error('bad quantity')
       if (!(costPrice >= 0)) throw new Error('bad cost_price')
 
-      let cardId: number | null = null
-      if (externalId) {
-        const [c] = await db.select().from(cards).where(eq(cards.externalId, externalId)).limit(1)
-        if (c) cardId = c.id
-      }
-      if (!cardId && name && setNumber) {
-        const [c] = await db.select().from(cards)
-          .where(and(eq(cards.name, name), eq(cards.setNumber, setNumber))).limit(1)
-        if (c) cardId = c.id
-      }
-      if (!cardId) {
-        if (!name || !setNumber) throw new Error('no card match and missing name/set_number to create one')
-        const [c] = await db.insert(cards).values({
-          name, setName: setName ?? '', setNumber, externalId,
-        }).returning()
-        cardId = c.id
-        await db.insert(priceCache).values({ cardId }).onConflictDoNothing()
+      const sellOverrideRaw = col(r, 'sell_price_override')
+      let sellPriceOverride: number | null = null
+      if (sellOverrideRaw) {
+        const parsed = parseFloat(sellOverrideRaw)
+        if (!Number.isFinite(parsed) || parsed < 0) throw new Error('bad sell_price_override')
+        sellPriceOverride = round2(parsed)
       }
 
-      const sellOverrideRaw = col(r, 'sell_price_override')
-      await db.insert(inventoryItems).values({
-        cardId, condition, quantity, costPrice: round2(costPrice),
-        sellPriceOverride: sellOverrideRaw ? round2(parseFloat(sellOverrideRaw)) : null,
-        qrCode: generateQRId(),
-        location: col(r, 'location') || null,
-        defectNotes: col(r, 'defect_notes') || null,
+      await db.transaction(async (tx) => {
+        let cardId: number | null = null
+        if (externalId) {
+          const [c] = await tx.select().from(cards).where(eq(cards.externalId, externalId)).limit(1)
+          if (c) cardId = c.id
+        }
+        if (!cardId && name && setNumber) {
+          const [c] = await tx.select().from(cards)
+            .where(and(eq(cards.name, name), eq(cards.setNumber, setNumber))).limit(1)
+          if (c) cardId = c.id
+        }
+        if (!cardId) {
+          if (!name || !setNumber) throw new Error('no card match and missing name/set_number to create one')
+          const [c] = await tx.insert(cards).values({
+            name, setName: setName ?? '', setNumber, externalId,
+          }).returning()
+          cardId = c.id
+          await tx.insert(priceCache).values({ cardId }).onConflictDoNothing()
+        }
+
+        await tx.insert(inventoryItems).values({
+          cardId, condition, quantity, costPrice: round2(costPrice),
+          sellPriceOverride,
+          qrCode: generateQRId(),
+          location: col(r, 'location') || null,
+          defectNotes: col(r, 'defect_notes') || null,
+        })
       })
       created++
     } catch (e) {
