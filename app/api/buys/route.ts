@@ -24,8 +24,9 @@ export async function POST(req: NextRequest) {
     if (!CONDITIONS.has(it.condition)) return NextResponse.json({ error: 'Invalid condition' }, { status: 400 })
     if (!Number.isInteger(it.quantity) || it.quantity < 1) return NextResponse.json({ error: 'Invalid quantity' }, { status: 400 })
     if (!(it.payPrice >= 0)) return NextResponse.json({ error: 'Invalid pay price' }, { status: 400 })
+    if (!Number.isInteger(it.cardId) || it.cardId < 1) return NextResponse.json({ error: 'Invalid cardId' }, { status: 400 })
   }
-  const total = round2(body.items.reduce((s, i) => s + i.payPrice * i.quantity, 0))
+  const total = round2(body.items.reduce((s, i) => s + round2(i.payPrice) * i.quantity, 0))
 
   try {
     const buyId = await db.transaction(async (tx) => {
@@ -54,7 +55,8 @@ export async function POST(req: NextRequest) {
       return buy.id
     })
     return NextResponse.json({ buyId, total })
-  } catch {
+  } catch (e) {
+    console.error('Buy failed:', e)
     return NextResponse.json({ error: 'Buy failed' }, { status: 500 })
   }
 }
