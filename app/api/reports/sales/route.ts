@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { sales, saleItems, inventoryItems, cards } from '@/lib/db/schema'
-import { and, gte, lt, eq, sql } from 'drizzle-orm'
+import { and, gte, lt, eq, sql, isNotNull } from 'drizzle-orm'
 import { getSession } from '@/lib/auth'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
     .from(saleItems)
     .innerJoin(sales, eq(saleItems.saleId, sales.id))
     .leftJoin(inventoryItems, eq(saleItems.inventoryItemId, inventoryItems.id))
-    .where(rangeWhere)
+    .where(and(rangeWhere, isNotNull(inventoryItems.costPrice)))
 
   const topCardsRaw = await db.select({
     cardId: inventoryItems.cardId,
@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
     .innerJoin(sales, eq(saleItems.saleId, sales.id))
     .leftJoin(inventoryItems, eq(saleItems.inventoryItemId, inventoryItems.id))
     .leftJoin(cards, eq(inventoryItems.cardId, cards.id))
-    .where(rangeWhere)
+    .where(and(rangeWhere, isNotNull(inventoryItems.cardId)))
     .groupBy(inventoryItems.cardId, cards.name)
     .orderBy(sql`SUM(${saleItems.quantity}) DESC`)
     .limit(10)
@@ -76,7 +76,6 @@ export async function GET(req: NextRequest) {
     saleCount: totals.saleCount,
     byPaymentMethod: byPaymentMethod.map(r => ({ ...r, total: round2(r.total) })),
     topCards: topCardsRaw
-      .filter(r => r.cardId != null)
       .map(r => ({ cardId: r.cardId!, name: r.name ?? 'Unknown', quantitySold: r.quantitySold, revenue: round2(r.revenue) })),
   })
 }
