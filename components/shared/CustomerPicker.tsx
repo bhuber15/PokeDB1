@@ -11,7 +11,7 @@ interface CustomerWithBalance extends Customer {
 }
 
 interface CustomerPickerProps {
-  onSelect: (customer: Customer) => void
+  onSelect: (customer: Customer | null) => void
   selected?: Customer | null
 }
 
@@ -50,10 +50,14 @@ export function CustomerPicker({ onSelect, selected }: CustomerPickerProps) {
   async function search(q: string) {
     setQuery(q)
     if (!q.trim()) { setResults([]); setOpen(false); return }
-    const res = await fetch(`/api/customers?q=${encodeURIComponent(q)}`)
-    const data: Customer[] = await res.json()
-    setResults(data)
-    setOpen(true)
+    try {
+      const res = await fetch(`/api/customers?q=${encodeURIComponent(q)}`)
+      const data: Customer[] = await res.json()
+      setResults(data)
+      setOpen(true)
+    } catch {
+      setResults([])
+    }
   }
 
   function pick(c: Customer) {
@@ -94,7 +98,7 @@ export function CustomerPicker({ onSelect, selected }: CustomerPickerProps) {
               <span className="ml-2 text-xs text-muted-foreground">Balance: {formatGBP(balance)}</span>
             ) : null}
           </div>
-          <Button variant="ghost" size="sm" onClick={() => { onSelect(null as unknown as Customer); setBalance(null) }}>
+          <Button variant="ghost" size="sm" onClick={() => { onSelect(null); setBalance(null) }}>
             Change
           </Button>
         </div>

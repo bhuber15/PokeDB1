@@ -115,7 +115,7 @@ export function BuyCard({ card, prices, onAdd }: BuyCardProps) {
             <Button variant="outline" size="sm" onClick={() => setQty(q => q + 1)}>+</Button>
           </div>
           <div className="ml-auto flex items-center gap-3">
-            {cashOffer != null && (
+            {(cashOffer != null || creditOffer != null) && (
               <span className="text-sm text-muted-foreground">
                 Cash {formatGBP(cashOffer)} / Credit {formatGBP(creditOffer)}
               </span>

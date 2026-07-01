@@ -132,7 +132,7 @@ export function BuyCart({ lines, onRemove, onClear }: BuyCartProps) {
           </div>
           <CustomerPicker
             selected={customer}
-            onSelect={c => setCustomer(c)}
+            onSelect={(c: Customer | null) => setCustomer(c)}
           />
         </div>
 
