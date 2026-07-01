@@ -1,5 +1,5 @@
 'use client'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -7,6 +7,8 @@ import { CardZoomModal, type CardZoomData } from '@/components/shared/CardZoomMo
 import { formatGBP, usdToGbp } from '@/lib/pricing'
 import { useSettings } from '@/components/shared/SettingsProvider'
 import type { PokemonTCGCard, AllPrices } from '@/lib/apis/pokemon-tcg'
+
+type CardmarketPrices = { trend: number | null; low: number | null; avg: number | null }
 
 type PriceRow = { market?: number; low?: number; mid?: number; high?: number }
 // TCG prices are USD — convert each field to GBP for display at the shop's rate
@@ -48,6 +50,17 @@ function CardPriceRow({ card, onZoom }: { card: PokemonTCGCard; onZoom: (c: Card
   const variants = (Object.entries(prices) as [string, PriceRow][])
     .map(([k, p]) => [k, toGbpRow(p, rate)] as [string, PriceRow])
   const bestMarket = variants.map(([, p]) => p.market ?? 0).reduce((a, b) => Math.max(a, b), 0) || null
+
+  // Lazily fetch Cardmarket prices (best-effort)
+  const [cmPrices, setCmPrices] = useState<CardmarketPrices | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/prices/cardmarket?id=${encodeURIComponent(card.id)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (!cancelled && data) setCmPrices(data) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [card.id])
 
   return (
     <div className="border border-border rounded-xl p-4 bg-card hover:border-border/80 transition-colors">
@@ -114,11 +127,20 @@ function CardPriceRow({ card, onZoom }: { card: PokemonTCGCard; onZoom: (c: Card
           </div>
 
           {/* Price variants */}
-          {variants.length > 0 && (
+          {(variants.length > 0 || cmPrices) && (
             <div className="flex gap-2 flex-wrap">
               {variants.map(([variant, p]) => (
                 <PriceBlock key={variant} label={VARIANT_LABELS[variant] ?? variant} p={p} />
               ))}
+              {/* Cardmarket (GBP) — lazy best-effort */}
+              <div className="bg-muted/30 rounded-lg p-2.5 min-w-[100px]">
+                <div className="text-xs text-muted-foreground mb-1.5 font-medium">Cardmarket (GBP)</div>
+                <div className="space-y-0.5 text-xs">
+                  <div className="flex justify-between gap-3"><span className="text-muted-foreground">Trend</span><span className="font-bold text-foreground">{cmPrices?.trend != null ? formatGBP(cmPrices.trend) : '—'}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-muted-foreground">Low</span><span>{cmPrices?.low != null ? formatGBP(cmPrices.low) : '—'}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-muted-foreground">Avg</span><span>{cmPrices?.avg != null ? formatGBP(cmPrices.avg) : '—'}</span></div>
+                </div>
+              </div>
             </div>
           )}
 

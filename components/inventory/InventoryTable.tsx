@@ -2,7 +2,7 @@
 import { Fragment, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { calculateSellPrice, formatGBP } from '@/lib/pricing'
+import { calculateSellPrice, formatGBP, pickMarketPrice } from '@/lib/pricing'
 import { CardZoomModal, type CardZoomData } from '@/components/shared/CardZoomModal'
 import { useSettings } from '@/components/shared/SettingsProvider'
 import type { Card, InventoryItem, PriceCache } from '@/lib/db/schema'
@@ -58,7 +58,7 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
   const [draft, setDraft] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [zoomCard, setZoomCard] = useState<CardZoomData | null>(null)
-  const { marginMultiplier } = useSettings()
+  const { marginMultiplier, primaryPriceSource } = useSettings()
 
   const groups = groupRows(rows)
 
@@ -121,7 +121,7 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
         <table className="w-full text-sm">
           <thead className="border-b border-border bg-muted/30">
             <tr>
-              {['Card', 'Condition', 'Stock', 'Sell Price', 'TCG Market', ''].map(h => (
+              {['Card', 'Condition', 'Stock', 'Sell Price', 'TCG Market', 'CM Trend', ''].map(h => (
                 <th key={h} className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">{h}</th>
               ))}
             </tr>
@@ -129,13 +129,14 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
           <tbody>
             {groups.map(group => {
               const { card, prices } = group
-              const sellPrice = calculateSellPrice(prices?.tcgplayerMarket, group.items[0].item.sellPriceOverride, marginMultiplier)
+              const sellPrice = calculateSellPrice(pickMarketPrice(prices, primaryPriceSource), group.items[0].item.sellPriceOverride, marginMultiplier)
               const multi = group.items.length > 1
               const isOpen = expanded.has(group.key)
               const zoom = () => card && setZoomCard({
                 name: card.name, setName: card.setName, setNumber: card.setNumber,
                 variant: card.variant, imageUrlLarge: card.imageUrlLarge, imageUrl: card.imageUrl,
-                condition: group.condition, tcgplayerMarket: prices?.tcgplayerMarket, sellPrice: sellPrice ?? undefined,
+                condition: group.condition, tcgplayerMarket: prices?.tcgplayerMarket,
+                cardmarketTrend: prices?.cardmarketTrend, sellPrice: sellPrice ?? undefined,
               })
               return (
                 <Fragment key={group.key}>
@@ -186,6 +187,9 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
                         </span>
                       </div>
                     </td>
+                    <td className="px-4 py-3 tabular-nums text-muted-foreground">
+                      {formatGBP(prices?.cardmarketTrend)}
+                    </td>
                     <td className="px-4 py-3">
                       {multi ? (
                         <Button variant="ghost" size="sm" className="text-xs" onClick={() => toggleExpand(group.key)}>
@@ -205,6 +209,7 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
                       <td className="px-4 py-2"><StockCell item={item} /></td>
                       <td className="px-4 py-2" />
                       <td className="px-4 py-2" />
+                      <td className="px-4 py-2" />
                       <td className="px-4 py-2">
                         <Button variant="ghost" size="sm" className="text-xs" onClick={() => onPrintQR(item.id)}>QR</Button>
                       </td>
@@ -214,7 +219,7 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
               )
             })}
             {groups.length === 0 && (
-              <tr><td colSpan={6} className="p-12 text-center text-muted-foreground">No inventory items yet</td></tr>
+              <tr><td colSpan={7} className="p-12 text-center text-muted-foreground">No inventory items yet</td></tr>
             )}
           </tbody>
         </table>

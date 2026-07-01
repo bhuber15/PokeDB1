@@ -21,7 +21,7 @@ export async function PATCH(req: NextRequest) {
   if (typeof body.shopName === 'string' && body.shopName.trim()) {
     patch.shopName = body.shopName.trim().slice(0, 60)
   }
-  for (const key of ['usdToGbp', 'marginMultiplier', 'highValueThreshold'] as const) {
+  for (const key of ['usdToGbp', 'eurToGbp', 'marginMultiplier', 'highValueThreshold'] as const) {
     if (body[key] != null) {
       const n = Number(body[key])
       if (!Number.isFinite(n) || n <= 0) {
@@ -29,6 +29,12 @@ export async function PATCH(req: NextRequest) {
       }
       patch[key] = n
     }
+  }
+  if (body.primaryPriceSource != null) {
+    if (body.primaryPriceSource !== 'cardmarket' && body.primaryPriceSource !== 'tcgplayer') {
+      return NextResponse.json({ error: 'Invalid primaryPriceSource' }, { status: 400 })
+    }
+    patch.primaryPriceSource = body.primaryPriceSource
   }
   for (const key of ['buyCashPct', 'buyCreditPct'] as const) {
     if (body[key] != null) {

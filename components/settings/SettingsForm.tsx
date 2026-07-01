@@ -13,17 +13,23 @@ export function SettingsForm() {
   const router = useRouter()
   const [shopName, setShopName] = useState(String(current.shopName))
   const [usdToGbp, setUsdToGbp] = useState(String(current.usdToGbp))
+  const [eurToGbp, setEurToGbp] = useState(String(current.eurToGbp))
   const [marginMultiplier, setMarginMultiplier] = useState(String(current.marginMultiplier))
   const [highValueThreshold, setHighValueThreshold] = useState(String(current.highValueThreshold))
   const [buyCashPct, setBuyCashPct] = useState(String(current.buyCashPct))
   const [buyCreditPct, setBuyCreditPct] = useState(String(current.buyCreditPct))
+  const [primaryPriceSource, setPrimaryPriceSource] = useState<'cardmarket' | 'tcgplayer'>(current.primaryPriceSource)
   const [saving, setSaving] = useState(false)
 
   const rate = parseFloat(usdToGbp) || 0
+  const eurRate = parseFloat(eurToGbp) || 0
   const margin = parseFloat(marginMultiplier) || 0
-  // Worked example: a $10 USD card
+  // Worked example: a $10 USD card (TCGplayer)
   const exampleGbp = 10 * rate
   const exampleSell = exampleGbp * margin
+  // Worked example: a €10 EUR card (Cardmarket)
+  const exampleCmGbp = 10 * eurRate
+  const exampleCmSell = exampleCmGbp * margin
   // Worked example: a £10 card for buy percentages
   const cashExample = 10 * (parseFloat(buyCashPct) || 0)
   const creditExample = 10 * (parseFloat(buyCreditPct) || 0)
@@ -37,10 +43,12 @@ export function SettingsForm() {
         body: JSON.stringify({
           shopName,
           usdToGbp: parseFloat(usdToGbp),
+          eurToGbp: parseFloat(eurToGbp),
           marginMultiplier: parseFloat(marginMultiplier),
           highValueThreshold: parseFloat(highValueThreshold),
           buyCashPct: parseFloat(buyCashPct),
           buyCreditPct: parseFloat(buyCreditPct),
+          primaryPriceSource,
         }),
       })
       if (!res.ok) {
@@ -87,6 +95,45 @@ export function SettingsForm() {
         </div>
 
         <div className="space-y-1.5">
+          <Label htmlFor="settings-eur-gbp">EUR → GBP rate</Label>
+          <Input id="settings-eur-gbp" name="eurToGbp" type="number" inputMode="decimal" step="0.01" min={0} value={eurToGbp} onChange={e => setEurToGbp(e.target.value)} />
+          <p className="text-xs text-muted-foreground">
+            Cardmarket prices are in Euros. This converts them to £. Update it when the exchange rate moves.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>Sell price source</Label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setPrimaryPriceSource('cardmarket')}
+              className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                primaryPriceSource === 'cardmarket'
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'border-border hover:bg-muted'
+              }`}
+            >
+              Cardmarket
+            </button>
+            <button
+              type="button"
+              onClick={() => setPrimaryPriceSource('tcgplayer')}
+              className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                primaryPriceSource === 'tcgplayer'
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'border-border hover:bg-muted'
+              }`}
+            >
+              TCGplayer
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Which market price drives sell-price calculations in POS and Inventory.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
           <Label htmlFor="settings-margin">Margin multiplier</Label>
           <Input id="settings-margin" name="marginMultiplier" type="number" inputMode="decimal" step="0.01" min={0} value={marginMultiplier} onChange={e => setMarginMultiplier(e.target.value)} />
           <p className="text-xs text-muted-foreground">
@@ -103,10 +150,14 @@ export function SettingsForm() {
         </div>
 
         {/* Live worked example */}
-        <div className="bg-muted/30 rounded-lg p-3 text-sm">
-          <div className="text-xs text-muted-foreground mb-1">Worked example — a $10 USD card:</div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Market in £</span><span className="font-medium">{formatGBP(exampleGbp)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Auto sell price</span><span className="font-bold text-primary">{formatGBP(exampleSell)}</span></div>
+        <div className="bg-muted/30 rounded-lg p-3 text-sm space-y-2">
+          <div className="text-xs text-muted-foreground mb-1">Worked example — a $10 TCGplayer card / €10 Cardmarket card:</div>
+          <div className="flex justify-between"><span className="text-muted-foreground">TCGplayer market in £</span><span className="font-medium">{formatGBP(exampleGbp)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Cardmarket market in £</span><span className="font-medium">{formatGBP(exampleCmGbp)}</span></div>
+          <div className="flex justify-between border-t border-border/40 pt-1.5">
+            <span className="text-muted-foreground">Auto sell price ({primaryPriceSource === 'cardmarket' ? 'CM' : 'TCG'})</span>
+            <span className="font-bold text-primary">{formatGBP(primaryPriceSource === 'cardmarket' ? exampleCmSell : exampleSell)}</span>
+          </div>
         </div>
       </section>
 
