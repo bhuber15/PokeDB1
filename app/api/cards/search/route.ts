@@ -69,7 +69,9 @@ async function insertCardSafely(apiCard: PokemonTCGCard, threshold: number, rate
           tcgplayerHigh: usdToGbp(p.high, rate),
           isHighValue: (market ?? 0) >= threshold,
         })
-        await syncCardmarketForCard(card.id, card.externalId, card.variant, eurRate)
+        // Fire-and-forget: don't add a TCGdex round-trip to search latency.
+        // Durable population is guaranteed by the nightly cron + backfill script.
+        void syncCardmarketForCard(card.id, card.externalId, card.variant, eurRate).catch(() => {})
       } catch {
         // priceCache.cardId is unique — a concurrent insert already wrote it. Fine.
       }
