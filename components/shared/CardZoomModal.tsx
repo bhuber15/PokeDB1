@@ -1,5 +1,6 @@
 'use client'
 import { useEffect } from 'react'
+import { XIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { formatGBP } from '@/lib/pricing'
 
@@ -51,9 +52,10 @@ export function CardZoomModal({ card, onClose }: CardZoomModalProps) {
       >
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 text-muted-foreground hover:text-foreground text-xl leading-none"
+          aria-label="Close"
+          className="absolute top-3 right-3 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
         >
-          ✕
+          <XIcon className="size-5" aria-hidden="true" />
         </button>
 
         {img && (
@@ -61,6 +63,8 @@ export function CardZoomModal({ card, onClose }: CardZoomModalProps) {
             <img
               src={img}
               alt={card.name}
+              width={176}
+              height={246}
               className="w-44 rounded-xl shadow-lg"
             />
           </div>

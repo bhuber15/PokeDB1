@@ -53,40 +53,49 @@ function CardPriceRow({ card, onZoom }: { card: PokemonTCGCard; onZoom: (c: Card
     <div className="border border-border rounded-xl p-4 bg-card hover:border-border/80 transition-colors">
       <div className="flex gap-4">
         {/* Card image */}
-        <div className="shrink-0">
+        <button
+          type="button"
+          className="shrink-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={`Zoom ${card.name}`}
+          onClick={() => onZoom({
+            name: card.name,
+            setName: card.set.name,
+            setNumber: card.number,
+            variant: card.subtypes?.join(' / '),
+            imageUrlLarge: card.images.large,
+            imageUrl: card.images.small,
+            tcgplayerMarket: bestMarket,
+          })}
+        >
           <img
             src={card.images.small}
-            alt={card.name}
+            alt=""
+            width={64}
+            height={89}
             className="w-16 rounded-lg cursor-zoom-in hover:scale-110 transition-transform shadow-md"
-            onClick={() => onZoom({
-              name: card.name,
-              setName: card.set.name,
-              setNumber: card.number,
-              variant: card.subtypes?.join(' / '),
-              imageUrlLarge: card.images.large,
-              imageUrl: card.images.small,
-              tcgplayerMarket: bestMarket,
-            })}
           />
-        </div>
+        </button>
 
         {/* Card info */}
         <div className="flex-1 min-w-0 space-y-2">
           <div className="flex items-start justify-between gap-2 flex-wrap">
             <div>
-              <h3
-                className="font-bold text-base leading-tight cursor-pointer hover:text-primary transition-colors"
-                onClick={() => onZoom({
-                  name: card.name,
-                  setName: card.set.name,
-                  setNumber: card.number,
-                  variant: card.subtypes?.join(' / '),
-                  imageUrlLarge: card.images.large,
-                  imageUrl: card.images.small,
-                  tcgplayerMarket: bestMarket,
-                })}
-              >
-                {card.name}
+              <h3 className="font-bold text-base leading-tight">
+                <button
+                  type="button"
+                  className="hover:text-primary transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                  onClick={() => onZoom({
+                    name: card.name,
+                    setName: card.set.name,
+                    setNumber: card.number,
+                    variant: card.subtypes?.join(' / '),
+                    imageUrlLarge: card.images.large,
+                    imageUrl: card.images.small,
+                    tcgplayerMarket: bestMarket,
+                  })}
+                >
+                  {card.name}
+                </button>
               </h3>
               <p className="text-sm text-muted-foreground">{card.set.name} · #{card.number}</p>
             </div>

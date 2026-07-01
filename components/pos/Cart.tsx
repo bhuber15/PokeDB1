@@ -1,4 +1,5 @@
 'use client'
+import { XIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { formatGBP } from '@/lib/pricing'
 
@@ -42,8 +43,9 @@ export function Cart({ items, onRemove, onCheckout }: CartProps) {
               size="sm"
               className="shrink-0 text-muted-foreground hover:text-destructive"
               onClick={() => onRemove(item.inventoryItemId)}
+              aria-label={`Remove ${item.name} from cart`}
             >
-              ✕
+              <XIcon className="size-4" aria-hidden="true" />
             </Button>
           </div>
         ))}
@@ -54,7 +56,7 @@ export function Cart({ items, onRemove, onCheckout }: CartProps) {
           <span className="text-xl font-bold">{formatGBP(subtotal)}</span>
         </div>
         <Button className="w-full h-11 text-base" onClick={onCheckout}>
-          Checkout →
+          Checkout
         </Button>
       </div>
     </div>

@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { MinusIcon, PlusIcon, RefreshCwIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { calculateSellPrice, formatGBP } from '@/lib/pricing'
@@ -55,22 +56,32 @@ export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefr
       <div className="border rounded-xl p-4 space-y-3 bg-card">
         <div className="flex gap-4">
           {(card.imageUrlLarge ?? card.imageUrl) && (
-            <img
-              src={card.imageUrlLarge ?? card.imageUrl!}
-              alt={card.name}
-              className="w-24 h-32 object-contain flex-shrink-0 cursor-zoom-in hover:scale-105 transition-transform"
+            <button
+              type="button"
               onClick={() => setZoomed(true)}
-              title="Click to zoom"
-            />
+              aria-label={`Zoom ${card.name}`}
+              className="shrink-0 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <img
+                src={card.imageUrlLarge ?? card.imageUrl!}
+                alt=""
+                width={96}
+                height={128}
+                className="w-24 h-32 object-contain cursor-zoom-in hover:scale-105 transition-transform"
+              />
+            </button>
           )}
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <h2
-                  className="text-lg font-bold leading-tight cursor-pointer hover:text-primary transition-colors"
-                  onClick={() => setZoomed(true)}
-                >
-                  {card.name}
+                <h2 className="text-lg font-bold leading-tight">
+                  <button
+                    type="button"
+                    onClick={() => setZoomed(true)}
+                    className="hover:text-primary transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                  >
+                    {card.name}
+                  </button>
                 </h2>
                 <p className="text-sm text-muted-foreground">{card.setName} · #{card.setNumber}</p>
               </div>
@@ -85,8 +96,9 @@ export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefr
               {prices?.tcgplayerLow != null && (
                 <Badge variant="outline">Low {formatGBP(prices.tcgplayerLow)}</Badge>
               )}
-              <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={onRefreshPrice}>
-                ↻ Refresh
+              <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={onRefreshPrice}>
+                <RefreshCwIcon className="size-3" aria-hidden="true" />
+                Refresh
               </Button>
             </div>
           </div>
@@ -115,9 +127,9 @@ export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefr
               <div className="flex items-center gap-3 pt-1 border-t">
                 <span className="text-2xl font-bold">{formatGBP(sellPrice)}</span>
                 <div className="flex items-center gap-2 ml-auto">
-                  <Button variant="outline" size="sm" onClick={() => setQty(q => Math.max(1, q - 1))}>−</Button>
-                  <span className="w-8 text-center font-semibold">{qty}</span>
-                  <Button variant="outline" size="sm" onClick={() => setQty(q => Math.min(selected.quantity, q + 1))}>+</Button>
+                  <Button variant="outline" size="sm" aria-label="Decrease quantity" onClick={() => setQty(q => Math.max(1, q - 1))}><MinusIcon className="size-3.5" aria-hidden="true" /></Button>
+                  <span className="w-8 text-center font-semibold tabular-nums">{qty}</span>
+                  <Button variant="outline" size="sm" aria-label="Increase quantity" onClick={() => setQty(q => Math.min(selected.quantity, q + 1))}><PlusIcon className="size-3.5" aria-hidden="true" /></Button>
                   <Button
                     disabled={!sellPrice}
                     onClick={() => sellPrice && onAddToCart(selected.itemId, card.name, selected.condition, sellPrice, qty)}

@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { DeleteIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface PinPadProps {
@@ -42,8 +43,9 @@ export function PinPad({ onSubmit, error, loading }: PinPadProps) {
             className="w-16 h-16 text-xl"
             disabled={!key || loading}
             onClick={() => key === '⌫' ? setPin(p => p.slice(0, -1)) : key && handleDigit(key)}
+            aria-label={key === '⌫' ? 'Delete digit' : key ? `Digit ${key}` : undefined}
           >
-            {key}
+            {key === '⌫' ? <DeleteIcon className="size-5" aria-hidden="true" /> : key}
           </Button>
         ))}
       </div>

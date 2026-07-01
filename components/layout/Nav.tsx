@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import { ShoppingCartIcon, BanknoteIcon, UserIcon, StarIcon, PackageIcon, SearchIcon, BarChart3Icon, SettingsIcon, LockIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
@@ -20,15 +21,15 @@ export function Nav({ shopName = 'PokeDB', staffName, staffRole }: NavProps) {
   }
 
   const links = [
-    { href: '/pos', label: '🛒 POS' },
-    { href: '/buylist', label: '💰 Buy' },
-    { href: '/customers', label: '👤 Customers' },
-    { href: '/wants', label: '⭐ Wants' },
-    { href: '/inventory', label: '📦 Inventory' },
-    { href: '/prices', label: '🔍 Prices' },
+    { href: '/pos', label: 'POS', icon: ShoppingCartIcon },
+    { href: '/buylist', label: 'Buy', icon: BanknoteIcon },
+    { href: '/customers', label: 'Customers', icon: UserIcon },
+    { href: '/wants', label: 'Wants', icon: StarIcon },
+    { href: '/inventory', label: 'Inventory', icon: PackageIcon },
+    { href: '/prices', label: 'Prices', icon: SearchIcon },
     ...(staffRole === 'admin' ? [
-      { href: '/reports', label: '📊 Reports' },
-      { href: '/settings', label: '⚙️ Settings' },
+      { href: '/reports', label: 'Reports', icon: BarChart3Icon },
+      { href: '/settings', label: 'Settings', icon: SettingsIcon },
     ] : []),
   ]
 
@@ -44,15 +45,19 @@ export function Nav({ shopName = 'PokeDB', staffName, staffRole }: NavProps) {
         <div className="flex">
           {links.map(l => {
             const active = pathname.startsWith(l.href)
+            const Icon = l.icon
             return (
-              <Link key={l.href} href={l.href}>
-                <button className={`px-4 h-14 text-sm font-medium border-b-2 transition-colors ${
+              <Link
+                key={l.href}
+                href={l.href}
+                className={`flex items-center gap-1.5 px-4 h-14 text-sm font-medium border-b-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${
                   active
                     ? 'border-primary text-primary'
                     : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}>
-                  {l.label}
-                </button>
+                }`}
+              >
+                <Icon className="size-4" aria-hidden="true" />
+                {l.label}
               </Link>
             )
           })}
@@ -68,8 +73,9 @@ export function Nav({ shopName = 'PokeDB', staffName, staffRole }: NavProps) {
             <Badge variant="outline" className="text-xs border-primary/30 text-primary hidden sm:flex">{staffRole}</Badge>
           </div>
         )}
-        <Button variant="ghost" size="sm" onClick={lock} className="text-muted-foreground hover:text-foreground text-xs">
-          🔒 Lock
+        <Button variant="ghost" size="sm" onClick={lock} className="text-muted-foreground hover:text-foreground text-xs gap-1.5">
+          <LockIcon className="size-3.5" aria-hidden="true" />
+          Lock
         </Button>
       </div>
     </nav>
