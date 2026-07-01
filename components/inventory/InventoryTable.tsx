@@ -103,13 +103,13 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
     }
     return (
       <button
-        className={`inline-flex items-center gap-1.5 h-7 px-2 rounded hover:bg-muted/40 transition-colors ${isLow ? 'text-destructive' : ''}`}
+        className={`inline-flex items-center gap-1.5 h-7 px-2 rounded hover:bg-muted/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isLow ? 'text-destructive' : ''}`}
         onClick={() => startEdit(item.id, item.quantity)}
-        title="Click to edit stock"
+        aria-label={`Edit stock, currently ${item.quantity}${isLow ? ', low stock' : ''}`}
       >
         <span className="font-medium tabular-nums">{item.quantity}</span>
         {isLow && <span className="text-xs">low</span>}
-        <span className="text-xs text-muted-foreground opacity-60">✎</span>
+        <span className="text-xs text-muted-foreground opacity-60" aria-hidden="true">✎</span>
       </button>
     )
   }
@@ -143,16 +143,23 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         {card?.imageUrl ? (
-                          <img src={card.imageUrl} alt={card.name}
-                            className="w-8 h-11 object-contain flex-shrink-0 cursor-zoom-in hover:scale-110 transition-transform"
-                            onClick={zoom} title="Click to zoom" />
+                          <button type="button" onClick={zoom} aria-label={`Zoom ${card.name}`}
+                            className="shrink-0 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <img src={card.imageUrl} alt="" width={32} height={44}
+                              className="w-8 h-11 object-contain cursor-zoom-in hover:scale-110 transition-transform" />
+                          </button>
                         ) : (
                           <div className="w-8 h-11 bg-muted rounded flex-shrink-0" />
                         )}
                         <div>
-                          <div className="font-medium cursor-pointer hover:text-primary transition-colors" onClick={zoom}>
-                            {card?.name ?? '—'}
-                          </div>
+                          {card ? (
+                            <button type="button" onClick={zoom}
+                              className="font-medium hover:text-primary transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+                              {card.name}
+                            </button>
+                          ) : (
+                            <div className="font-medium">—</div>
+                          )}
                           <div className="text-xs text-muted-foreground">{card?.setName} · #{card?.setNumber}</div>
                           {card?.variant && <div className="text-xs text-accent">{card.variant}</div>}
                         </div>
@@ -170,11 +177,11 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
                         <StockCell item={group.items[0].item} />
                       )}
                     </td>
-                    <td className="px-4 py-3 font-semibold text-foreground">{formatGBP(sellPrice)}</td>
+                    <td className="px-4 py-3 font-semibold text-foreground tabular-nums">{formatGBP(sellPrice)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
-                        {prices?.isHighValue && <span className="text-destructive text-xs">⚠</span>}
-                        <span className={prices?.isHighValue ? 'text-destructive font-medium' : 'text-muted-foreground'}>
+                        {prices?.isHighValue && <span className="text-destructive text-xs" aria-hidden="true">⚠</span>}
+                        <span className={`tabular-nums ${prices?.isHighValue ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
                           {formatGBP(prices?.tcgplayerMarket)}
                         </span>
                       </div>
@@ -182,7 +189,7 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
                     <td className="px-4 py-3">
                       {multi ? (
                         <Button variant="ghost" size="sm" className="text-xs" onClick={() => toggleExpand(group.key)}>
-                          {isOpen ? 'Hide' : `${group.items.length} items`} {isOpen ? '▲' : '▼'}
+                          {isOpen ? 'Hide' : `${group.items.length} items`} <span aria-hidden="true">{isOpen ? '▲' : '▼'}</span>
                         </Button>
                       ) : (
                         <Button variant="ghost" size="sm" className="text-xs" onClick={() => onPrintQR(group.items[0].item.id)}>QR</Button>

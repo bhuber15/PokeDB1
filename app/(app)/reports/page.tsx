@@ -48,7 +48,7 @@ export default function ReportsPage() {
               <CardTitle className="text-sm font-medium text-muted-foreground">{stat.label}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stat.value}</div>
+              <div className="text-2xl font-bold tabular-nums">{stat.value}</div>
             </CardContent>
           </Card>
         ))}

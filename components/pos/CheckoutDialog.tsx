@@ -83,9 +83,12 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
             ))}
           </div>
           <div>
-            <Label>Discount (£)</Label>
+            <Label htmlFor="checkout-discount">Discount (£)</Label>
             <Input
+              id="checkout-discount"
+              name="discount"
               type="number"
+              inputMode="decimal"
               step="0.01"
               min="0"
               value={discount}

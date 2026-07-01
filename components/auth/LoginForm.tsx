@@ -48,7 +48,10 @@ export function LoginForm({ shopName }: { shopName: string }) {
               <Label htmlFor="password" className="text-sm">Password</Label>
               <Input
                 id="password"
+                name="password"
                 type="password"
+                autoComplete="current-password"
+                spellCheck={false}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 autoFocus

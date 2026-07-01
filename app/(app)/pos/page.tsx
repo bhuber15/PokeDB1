@@ -5,6 +5,7 @@ import { CardResult, InventoryOption } from '@/components/pos/CardResult'
 import { Cart, CartItem } from '@/components/pos/Cart'
 import { CheckoutDialog } from '@/components/pos/CheckoutDialog'
 import { toast } from 'sonner'
+import { formatGBP } from '@/lib/pricing'
 import type { Card, PriceCache } from '@/lib/db/schema'
 
 interface SearchState {
@@ -101,7 +102,7 @@ export default function POSPage() {
       const { total } = await res.json()
       setCart([])
       setCheckoutOpen(false)
-      toast.success(`Sale complete — £${total.toFixed(2)}`)
+      toast.success(`Sale complete — ${formatGBP(total)}`)
     } else {
       toast.error('Sale failed — please try again')
     }

@@ -1,5 +1,6 @@
 'use client'
 import { Button } from '@/components/ui/button'
+import { toast } from 'sonner'
 
 interface QRLabelProps {
   dataUrl: string
@@ -9,9 +10,17 @@ interface QRLabelProps {
   onClose: () => void
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
+}
+
 export function QRLabel({ dataUrl, cardName, condition, sellPrice, onClose }: QRLabelProps) {
   function print() {
-    const win = window.open('', '_blank')!
+    const win = window.open('', '_blank')
+    if (!win) {
+      toast.error('Allow pop-ups for this site to print labels')
+      return
+    }
     win.document.write(`<!DOCTYPE html><html><head><title>Label</title>
       <style>
         body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh}
@@ -23,9 +32,9 @@ export function QRLabel({ dataUrl, cardName, condition, sellPrice, onClose }: QR
       </style></head><body>
       <div class="label">
         <img src="${dataUrl}"/>
-        <div class="name">${cardName}</div>
-        <div class="cond">${condition}</div>
-        <div class="price">${sellPrice}</div>
+        <div class="name">${escapeHtml(cardName)}</div>
+        <div class="cond">${escapeHtml(condition)}</div>
+        <div class="price">${escapeHtml(sellPrice)}</div>
       </div></body></html>`)
     win.document.close()
     win.focus()
@@ -34,7 +43,7 @@ export function QRLabel({ dataUrl, cardName, condition, sellPrice, onClose }: QR
 
   return (
     <div className="flex flex-col items-center gap-4 p-2">
-      <img src={dataUrl} alt="QR Code" className="w-40 h-40" />
+      <img src={dataUrl} alt="QR Code" width={160} height={160} className="w-40 h-40" />
       <div className="text-center">
         <div className="font-semibold">{cardName}</div>
         <div className="text-sm text-muted-foreground">{condition} · {sellPrice}</div>

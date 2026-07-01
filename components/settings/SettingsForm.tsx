@@ -68,8 +68,8 @@ export function SettingsForm() {
       <section className="bg-card border border-border rounded-xl p-5 space-y-4">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Branding</h2>
         <div className="space-y-1.5">
-          <Label>Shop name</Label>
-          <Input value={shopName} onChange={e => setShopName(e.target.value)} maxLength={60} />
+          <Label htmlFor="settings-shop-name">Shop name</Label>
+          <Input id="settings-shop-name" name="shopName" value={shopName} onChange={e => setShopName(e.target.value)} maxLength={60} />
           <p className="text-xs text-muted-foreground">Shown in the top bar and on the login screen.</p>
         </div>
       </section>
@@ -79,24 +79,24 @@ export function SettingsForm() {
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Pricing</h2>
 
         <div className="space-y-1.5">
-          <Label>USD → GBP rate</Label>
-          <Input type="number" step="0.01" min={0} value={usdToGbp} onChange={e => setUsdToGbp(e.target.value)} />
+          <Label htmlFor="settings-usd-gbp">USD → GBP rate</Label>
+          <Input id="settings-usd-gbp" name="usdToGbp" type="number" inputMode="decimal" step="0.01" min={0} value={usdToGbp} onChange={e => setUsdToGbp(e.target.value)} />
           <p className="text-xs text-muted-foreground">
             TCG prices are in US dollars. This converts them to £. Update it when the exchange rate moves.
           </p>
         </div>
 
         <div className="space-y-1.5">
-          <Label>Margin multiplier</Label>
-          <Input type="number" step="0.01" min={0} value={marginMultiplier} onChange={e => setMarginMultiplier(e.target.value)} />
+          <Label htmlFor="settings-margin">Margin multiplier</Label>
+          <Input id="settings-margin" name="marginMultiplier" type="number" inputMode="decimal" step="0.01" min={0} value={marginMultiplier} onChange={e => setMarginMultiplier(e.target.value)} />
           <p className="text-xs text-muted-foreground">
             Sell price = market price × this. e.g. 0.85 = sell at 85% of market.
           </p>
         </div>
 
         <div className="space-y-1.5">
-          <Label>High-value threshold (£)</Label>
-          <Input type="number" step="1" min={0} value={highValueThreshold} onChange={e => setHighValueThreshold(e.target.value)} />
+          <Label htmlFor="settings-high-value">High-value threshold (£)</Label>
+          <Input id="settings-high-value" name="highValueThreshold" type="number" inputMode="decimal" step="1" min={0} value={highValueThreshold} onChange={e => setHighValueThreshold(e.target.value)} />
           <p className="text-xs text-muted-foreground">
             Cards at or above this market value get a ⚠ warning for stale prices.
           </p>
@@ -114,20 +114,20 @@ export function SettingsForm() {
       <section className="bg-card border border-border rounded-xl p-5 space-y-4">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Buylist Rates</h2>
         <p className="text-xs text-muted-foreground">
-          Enter as a decimal fraction (0–1). e.g. 0.5 = 50% of a card's sell price.
+          Enter as a decimal fraction (0–1). e.g. 0.5 = 50% of a card&apos;s sell price.
         </p>
 
         <div className="space-y-1.5">
-          <Label>Cash buy % (0–1)</Label>
-          <Input type="number" step="0.01" min={0} max={1} value={buyCashPct} onChange={e => setBuyCashPct(e.target.value)} />
+          <Label htmlFor="settings-buy-cash">Cash buy % (0–1)</Label>
+          <Input id="settings-buy-cash" name="buyCashPct" type="number" inputMode="decimal" step="0.01" min={0} max={1} value={buyCashPct} onChange={e => setBuyCashPct(e.target.value)} />
           <p className="text-xs text-muted-foreground">
             Fraction of sell price paid in cash. e.g. 0.5 = pay 50% of market.
           </p>
         </div>
 
         <div className="space-y-1.5">
-          <Label>Credit buy % (0–1)</Label>
-          <Input type="number" step="0.01" min={0} max={1} value={buyCreditPct} onChange={e => setBuyCreditPct(e.target.value)} />
+          <Label htmlFor="settings-buy-credit">Credit buy % (0–1)</Label>
+          <Input id="settings-buy-credit" name="buyCreditPct" type="number" inputMode="decimal" step="0.01" min={0} max={1} value={buyCreditPct} onChange={e => setBuyCreditPct(e.target.value)} />
           <p className="text-xs text-muted-foreground">
             Fraction of sell price paid as store credit. Usually higher than cash.
           </p>
