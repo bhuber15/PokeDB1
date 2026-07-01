@@ -13,53 +13,65 @@ interface SearchState {
   inventoryOptions: InventoryOption[]
 }
 
+interface InvRow {
+  item: { id: number; cardId: number | null; condition: string; quantity: number; sellPriceOverride: number | null }
+  card: Card | null
+  prices: PriceCache | null
+}
+
+// Group raw inventory rows into one SearchState per distinct card (in-stock only).
+function groupByCard(rows: InvRow[]): SearchState[] {
+  const byCard = new Map<number, SearchState>()
+  for (const r of rows) {
+    if (r.item.quantity <= 0) continue
+    const cid = r.card?.id ?? r.item.cardId
+    if (cid == null) continue
+    let g = byCard.get(cid)
+    if (!g) {
+      g = { card: r.card ?? ({ id: cid } as Card), prices: r.prices, inventoryOptions: [] }
+      byCard.set(cid, g)
+    }
+    g.inventoryOptions.push({
+      itemId: r.item.id, condition: r.item.condition,
+      quantity: r.item.quantity, sellPriceOverride: r.item.sellPriceOverride,
+    })
+  }
+  return [...byCard.values()]
+}
+
 export default function POSPage() {
-  const [result, setResult] = useState<SearchState | null>(null)
+  const [results, setResults] = useState<SearchState[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  async function loadCardWithInventory(cardId: number, allRows: Record<string, unknown>[]) {
-    const row0 = allRows[0] as { card: Card; prices: PriceCache | null } | undefined
-    setResult({
-      card: row0?.card ?? ({ id: cardId } as Card),
-      prices: row0?.prices ?? null,
-      inventoryOptions: allRows
-        .map((r: Record<string, unknown>) => {
-          const item = r.item as { id: number; condition: string; quantity: number; sellPriceOverride: number | null }
-          return { itemId: item.id, condition: item.condition, quantity: item.quantity, sellPriceOverride: item.sellPriceOverride }
-        })
-        .filter((o: InventoryOption) => o.quantity > 0),
-    })
-  }
-
   async function handleSearch(query: string) {
     setLoading(true)
-    const res = await fetch(`/api/cards/search?q=${encodeURIComponent(query)}`)
-    const data = await res.json()
-    if (!data.cards?.length) {
-      toast.error(`No cards found for "${query}"`)
+    const res = await fetch(`/api/inventory?q=${encodeURIComponent(query)}`)
+    const rows = (await res.json()) as InvRow[]
+    const grouped = groupByCard(rows)
+    if (grouped.length === 0) {
+      toast.error(`No in-stock cards found for "${query}"`)
+      setResults([])
       setLoading(false)
       return
     }
-    const card = data.cards[0] as Card
-    const invRes = await fetch(`/api/inventory?cardId=${card.id}`)
-    const rows = await invRes.json()
-    await loadCardWithInventory(card.id, rows)
+    setResults(grouped)
     setLoading(false)
   }
 
   async function handleQRDetected(qrCode: string) {
     setLoading(true)
     const res = await fetch(`/api/inventory?qrCode=${encodeURIComponent(qrCode)}`)
-    const rows = await res.json()
-    if (!rows.length) {
+    const rows = (await res.json()) as InvRow[]
+    const grouped = groupByCard(rows)
+    if (grouped.length === 0) {
       toast.error('QR code not found in inventory')
+      setResults([])
       setLoading(false)
       return
     }
-    const { card } = rows[0] as { card: Card }
-    await loadCardWithInventory(card.id, rows)
+    setResults(grouped)
     setLoading(false)
   }
 
@@ -71,7 +83,7 @@ export default function POSPage() {
       }
       return [...prev, { inventoryItemId: itemId, name, condition, price, quantity: qty }]
     })
-    setResult(null)
+    // Keep the search results so several different cards can be rung up from one search.
   }
 
   async function handleCheckoutConfirm(paymentMethod: string, discountAmount: number, customerId?: number) {
@@ -99,15 +111,16 @@ export default function POSPage() {
     <div className="grid grid-cols-[1fr_360px] gap-6" style={{ height: 'calc(100vh - 120px)' }}>
       <div className="flex flex-col gap-4 overflow-y-auto">
         <SearchBar onSearch={handleSearch} onQRDetected={handleQRDetected} loading={loading} />
-        {result && (
+        {results.map(r => (
           <CardResult
-            card={result.card}
-            prices={result.prices}
-            inventoryOptions={result.inventoryOptions}
+            key={r.card.id}
+            card={r.card}
+            prices={r.prices}
+            inventoryOptions={r.inventoryOptions}
             onAddToCart={handleAddToCart}
             onRefreshPrice={() => toast.info('Live price refresh coming in Phase 4')}
           />
-        )}
+        ))}
       </div>
       <div>
         <Cart

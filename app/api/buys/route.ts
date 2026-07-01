@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { buyTransactions, buyItems, inventoryItems, creditLedger, customers } from '@/lib/db/schema'
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, and } from 'drizzle-orm'
 import { getSession } from '@/lib/auth'
 import { generateQRId } from '@/lib/qr'
 
@@ -41,12 +41,32 @@ export async function POST(req: NextRequest) {
       }).returning()
 
       for (const it of body.items) {
-        const [inv] = await tx.insert(inventoryItems).values({
-          cardId: it.cardId, condition: it.condition, quantity: it.quantity,
-          costPrice: round2(it.payPrice), qrCode: generateQRId(),
-        }).returning()
+        // Merge on intake: increment an existing active row for this card+condition,
+        // blending the cost basis; otherwise create a new stock row.
+        const [existing] = await tx.select().from(inventoryItems).where(and(
+          eq(inventoryItems.cardId, it.cardId),
+          eq(inventoryItems.condition, it.condition),
+          eq(inventoryItems.isActive, true),
+        )).limit(1)
+
+        let inventoryItemId: number
+        if (existing) {
+          const newQty = existing.quantity + it.quantity
+          const newCost = round2((existing.costPrice * existing.quantity + round2(it.payPrice) * it.quantity) / newQty)
+          await tx.update(inventoryItems)
+            .set({ quantity: newQty, costPrice: newCost })
+            .where(eq(inventoryItems.id, existing.id))
+          inventoryItemId = existing.id
+        } else {
+          const [inv] = await tx.insert(inventoryItems).values({
+            cardId: it.cardId, condition: it.condition, quantity: it.quantity,
+            costPrice: round2(it.payPrice), qrCode: generateQRId(),
+          }).returning()
+          inventoryItemId = inv.id
+        }
+
         await tx.insert(buyItems).values({
-          buyId: buy.id, cardId: it.cardId, inventoryItemId: inv.id,
+          buyId: buy.id, cardId: it.cardId, inventoryItemId,
           condition: it.condition, quantity: it.quantity, payPrice: round2(it.payPrice),
         })
       }
