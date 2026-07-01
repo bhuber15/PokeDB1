@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { buttonVariants } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { InventoryTable, InventoryRow } from '@/components/inventory/InventoryTable'
 import { QRLabel } from '@/components/inventory/QRLabel'
@@ -41,7 +41,10 @@ export default function InventoryPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Inventory</h1>
-        <Link href="/inventory/add" className={buttonVariants()}>+ Add Item</Link>
+        <div className="flex items-center gap-2">
+          <a href="/api/inventory/export"><Button variant="outline">Export CSV</Button></a>
+          <Link href="/inventory/add" className={buttonVariants()}>+ Add Item</Link>
+        </div>
       </div>
       <InventoryTable rows={rows} onStockChange={handleStockChange} onPrintQR={handlePrintQR} />
       <Dialog open={!!qrModal} onOpenChange={() => setQrModal(null)}>
