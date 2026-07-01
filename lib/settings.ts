@@ -17,8 +17,8 @@ export interface AppSettings {
 // or if the DB is briefly unreachable.
 export const DEFAULT_SETTINGS: AppSettings = {
   shopName: 'PokeDB',
-  usdToGbp: parseFloat(process.env.PRICE_USD_TO_GBP ?? '0.79') || 0.79,
-  eurToGbp: parseFloat(process.env.PRICE_EUR_TO_GBP ?? '0.86') || 0.86,
+  usdToGbp: parseFloat(process.env.PRICE_USD_TO_GBP ?? process.env.NEXT_PUBLIC_USD_TO_GBP ?? '0.79') || 0.79,
+  eurToGbp: parseFloat(process.env.PRICE_EUR_TO_GBP ?? process.env.NEXT_PUBLIC_EUR_TO_GBP ?? '0.86') || 0.86,
   marginMultiplier: parseFloat(process.env.MARGIN_MULTIPLIER ?? '0.85') || 0.85,
   highValueThreshold: parseFloat(process.env.HIGH_VALUE_THRESHOLD ?? '50') || 50,
   buyCashPct: 0.5,
