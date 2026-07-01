@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { buyTransactions, buyItems, inventoryItems, creditLedger } from '@/lib/db/schema'
-import { desc } from 'drizzle-orm'
+import { buyTransactions, buyItems, inventoryItems, creditLedger, customers } from '@/lib/db/schema'
+import { desc, eq } from 'drizzle-orm'
 import { getSession } from '@/lib/auth'
 import { generateQRId } from '@/lib/qr'
 
@@ -27,6 +27,11 @@ export async function POST(req: NextRequest) {
     if (!Number.isInteger(it.cardId) || it.cardId < 1) return NextResponse.json({ error: 'Invalid cardId' }, { status: 400 })
   }
   const total = round2(body.items.reduce((s, i) => s + round2(i.payPrice) * i.quantity, 0))
+
+  if (body.method === 'store_credit') {
+    const [customer] = await db.select().from(customers).where(eq(customers.id, body.customerId!)).limit(1)
+    if (!customer) return NextResponse.json({ error: 'Customer not found' }, { status: 404 })
+  }
 
   try {
     const buyId = await db.transaction(async (tx) => {

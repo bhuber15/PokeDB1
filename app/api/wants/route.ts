@@ -37,9 +37,7 @@ export async function GET() {
       .select({ cardId: inventoryItems.cardId })
       .from(inventoryItems)
       .where(and(eq(inventoryItems.isActive, true), inArray(inventoryItems.cardId, cardIds)))
-    for (const row of activeRows) {
-      if (row.cardId != null) inStockSet.add(row.cardId)
-    }
+    inStockSet = new Set(activeRows.map(r => r.cardId).filter((id): id is number => id != null))
   }
 
   const result = wants.map(w => ({
@@ -79,11 +77,13 @@ export async function DELETE(req: NextRequest) {
 
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+  const n = Number(id)
+  if (!Number.isInteger(n)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 })
 
   await db
     .update(wantList)
     .set({ fulfilledAt: new Date().toISOString() })
-    .where(eq(wantList.id, parseInt(id)))
+    .where(eq(wantList.id, n))
 
   return NextResponse.json({ ok: true })
 }

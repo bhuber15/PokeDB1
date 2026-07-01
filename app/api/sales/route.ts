@@ -1,7 +1,7 @@
 // app/api/sales/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { sales, saleItems, inventoryItems, creditLedger } from '@/lib/db/schema'
+import { sales, saleItems, inventoryItems, creditLedger, customers } from '@/lib/db/schema'
 import { eq, and, gte, sql, desc } from 'drizzle-orm'
 import { getSession } from '@/lib/auth'
 import { getCustomerBalance } from '@/lib/credit'
@@ -49,6 +49,8 @@ export async function POST(req: NextRequest) {
     if (!body.customerId) {
       return NextResponse.json({ error: 'customerId required for store credit' }, { status: 400 })
     }
+    const [customer] = await db.select().from(customers).where(eq(customers.id, body.customerId)).limit(1)
+    if (!customer) return NextResponse.json({ error: 'Customer not found' }, { status: 404 })
     const balance = await getCustomerBalance(body.customerId)
     if (balance < total) {
       return NextResponse.json({ error: 'Insufficient store credit' }, { status: 409 })

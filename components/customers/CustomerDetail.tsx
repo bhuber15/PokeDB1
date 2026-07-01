@@ -6,13 +6,26 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { formatGBP } from '@/lib/pricing'
-import type { Customer, CreditLedger, WantListItem, Card } from '@/lib/db/schema'
+import type { Customer, CreditLedger, Card } from '@/lib/db/schema'
+
+interface WantWithCard {
+  id: number
+  customerId: number
+  cardId: number | null
+  freeText: string | null
+  notify: boolean | null
+  createdAt: string
+  fulfilledAt: string | null
+  cardName: string | null
+  cardSetName: string | null
+  cardSetNumber: string | null
+}
 
 interface CustomerData {
   customer: Customer
   balance: number
   ledger: CreditLedger[]
-  wants: WantListItem[]
+  wants: WantWithCard[]
 }
 
 interface Props {
@@ -180,6 +193,7 @@ export function CustomerDetail({ id }: Props) {
   if (!data) return null
 
   const { customer, balance, ledger, wants } = data
+  const openWants = wants.filter(w => !w.fulfilledAt)
 
   return (
     <div className="max-w-2xl space-y-5">
@@ -294,14 +308,14 @@ export function CustomerDetail({ id }: Props) {
       {/* Want list */}
       <section className="bg-card border border-border rounded-xl p-5 space-y-3">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Want List</h2>
-        {wants.filter(w => !w.fulfilledAt).length === 0 ? (
+        {openWants.length === 0 ? (
           <p className="text-sm text-muted-foreground">No open wants.</p>
         ) : (
           <ul className="space-y-1.5">
-            {wants.filter(w => !w.fulfilledAt).map(w => (
+            {openWants.map(w => (
               <li key={w.id} className="flex items-center gap-2 text-sm">
                 <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-muted-foreground" />
-                <span>{w.freeText ?? `Card #${w.cardId}`}</span>
+                <span>{w.freeText ?? w.cardName ?? `Card #${w.cardId}`}</span>
                 {w.notify && (
                   <span className="text-xs border border-primary/30 text-primary px-1.5 py-0.5 rounded ml-auto">notify</span>
                 )}
