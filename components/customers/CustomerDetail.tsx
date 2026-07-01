@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { formatGBP } from '@/lib/pricing'
-import type { Customer, CreditLedger, WantListItem } from '@/lib/db/schema'
+import type { Customer, CreditLedger, WantListItem, Card } from '@/lib/db/schema'
 
 interface CustomerData {
   customer: Customer
@@ -35,6 +35,15 @@ export function CustomerDetail({ id }: Props) {
   // Adjust credit
   const [creditDelta, setCreditDelta] = useState('')
   const [adjusting, setAdjusting] = useState(false)
+
+  // Add want
+  const [wantQuery, setWantQuery] = useState('')
+  const [wantResults, setWantResults] = useState<Card[]>([])
+  const [wantCard, setWantCard] = useState<Card | null>(null)
+  const [wantFreeText, setWantFreeText] = useState('')
+  const [wantSearching, setWantSearching] = useState(false)
+  const [wantSaving, setWantSaving] = useState(false)
+  const [wantMode, setWantMode] = useState<'card' | 'text'>('card')
 
   useEffect(() => {
     fetch(`/api/customers/${id}`)
@@ -108,6 +117,56 @@ export function CustomerDetail({ id }: Props) {
       toast.error('Could not reach the server')
     } finally {
       setAdjusting(false)
+    }
+  }
+
+  async function searchWantCards() {
+    if (wantQuery.trim().length < 2) return
+    setWantSearching(true)
+    try {
+      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(wantQuery.trim())}`)
+      const d = await res.json()
+      setWantResults(d.cards ?? [])
+    } catch {
+      toast.error('Card search failed')
+    } finally {
+      setWantSearching(false)
+    }
+  }
+
+  async function addWant() {
+    if (!data) return
+    if (wantMode === 'card' && !wantCard) { toast.error('Select a card first'); return }
+    if (wantMode === 'text' && !wantFreeText.trim()) { toast.error('Enter a description'); return }
+    setWantSaving(true)
+    try {
+      const res = await fetch('/api/wants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId: data.customer.id,
+          cardId: wantMode === 'card' ? wantCard?.id ?? null : null,
+          freeText: wantMode === 'text' ? wantFreeText.trim() : null,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error ?? 'Could not add want')
+        return
+      }
+      toast.success('Want added')
+      // Reset form
+      setWantCard(null)
+      setWantQuery('')
+      setWantResults([])
+      setWantFreeText('')
+      // Refresh customer data (includes wants list)
+      const refresh = await fetch(`/api/customers/${id}`)
+      if (refresh.ok) setData(await refresh.json())
+    } catch {
+      toast.error('Could not reach the server')
+    } finally {
+      setWantSaving(false)
     }
   }
 
@@ -235,28 +294,109 @@ export function CustomerDetail({ id }: Props) {
       {/* Want list */}
       <section className="bg-card border border-border rounded-xl p-5 space-y-3">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Want List</h2>
-        {wants.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No items on the want list.</p>
+        {wants.filter(w => !w.fulfilledAt).length === 0 ? (
+          <p className="text-sm text-muted-foreground">No open wants.</p>
         ) : (
           <ul className="space-y-1.5">
-            {wants.map(w => (
+            {wants.filter(w => !w.fulfilledAt).map(w => (
               <li key={w.id} className="flex items-center gap-2 text-sm">
-                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${w.fulfilledAt ? 'bg-emerald-400' : 'bg-muted-foreground'}`} />
-                <span className={w.fulfilledAt ? 'text-muted-foreground line-through' : ''}>
-                  {w.freeText ?? `Card #${w.cardId}`}
-                </span>
-                {w.fulfilledAt && (
-                  <span className="text-xs text-muted-foreground">
-                    (fulfilled {new Date(w.fulfilledAt).toLocaleDateString('en-GB')})
-                  </span>
-                )}
-                {w.notify && !w.fulfilledAt && (
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-muted-foreground" />
+                <span>{w.freeText ?? `Card #${w.cardId}`}</span>
+                {w.notify && (
                   <span className="text-xs border border-primary/30 text-primary px-1.5 py-0.5 rounded ml-auto">notify</span>
                 )}
               </li>
             ))}
           </ul>
         )}
+
+        {/* Add want form */}
+        <div className="border-t border-border pt-4 space-y-3">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Add Want</p>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant={wantMode === 'card' ? 'default' : 'outline'}
+              onClick={() => setWantMode('card')}
+            >
+              Search card
+            </Button>
+            <Button
+              size="sm"
+              variant={wantMode === 'text' ? 'default' : 'outline'}
+              onClick={() => setWantMode('text')}
+            >
+              Free text
+            </Button>
+          </div>
+
+          {wantMode === 'card' && (
+            <div className="space-y-2">
+              {wantCard ? (
+                <div className="flex items-center gap-2 p-2 border border-border rounded-lg">
+                  {wantCard.imageUrl && (
+                    <img src={wantCard.imageUrl} alt={wantCard.name} className="w-8 h-11 object-contain flex-shrink-0" />
+                  )}
+                  <div className="flex-1 text-sm">
+                    <div className="font-medium">{wantCard.name}</div>
+                    <div className="text-muted-foreground text-xs">{wantCard.setName} · #{wantCard.setNumber}</div>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setWantCard(null)}>Change</Button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex gap-2">
+                    <Input
+                      value={wantQuery}
+                      onChange={e => setWantQuery(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && searchWantCards()}
+                      placeholder="Search card name…"
+                      className="h-9"
+                    />
+                    <Button size="sm" className="h-9" onClick={searchWantCards} disabled={wantSearching}>
+                      {wantSearching ? '…' : 'Search'}
+                    </Button>
+                  </div>
+                  {wantResults.length > 0 && (
+                    <div className="border border-border rounded-lg divide-y max-h-48 overflow-y-auto">
+                      {wantResults.map(card => (
+                        <button
+                          key={card.id}
+                          className="w-full flex items-center gap-2 p-2 hover:bg-muted/50 text-left transition-colors text-sm"
+                          onClick={() => { setWantCard(card); setWantResults([]) }}
+                        >
+                          {card.imageUrl && <img src={card.imageUrl} alt={card.name} className="w-7 h-10 object-contain flex-shrink-0" />}
+                          <div>
+                            <div className="font-medium">{card.name}</div>
+                            <div className="text-xs text-muted-foreground">{card.setName} · #{card.setNumber}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {wantMode === 'text' && (
+            <Input
+              value={wantFreeText}
+              onChange={e => setWantFreeText(e.target.value)}
+              placeholder="e.g. Charizard VMAX secret rare"
+              className="h-9"
+            />
+          )}
+
+          <Button
+            size="sm"
+            className="w-full"
+            onClick={addWant}
+            disabled={wantSaving || (wantMode === 'card' && !wantCard) || (wantMode === 'text' && !wantFreeText.trim())}
+          >
+            {wantSaving ? 'Adding…' : 'Add to want list'}
+          </Button>
+        </div>
       </section>
     </div>
   )

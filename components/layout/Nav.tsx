@@ -23,6 +23,7 @@ export function Nav({ shopName = 'PokeDB', staffName, staffRole }: NavProps) {
     { href: '/pos', label: '🛒 POS' },
     { href: '/buylist', label: '💰 Buy' },
     { href: '/customers', label: '👤 Customers' },
+    { href: '/wants', label: '⭐ Wants' },
     { href: '/inventory', label: '📦 Inventory' },
     { href: '/prices', label: '🔍 Prices' },
     ...(staffRole === 'admin' ? [
