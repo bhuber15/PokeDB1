@@ -1,6 +1,5 @@
 'use client'
-import { useState } from 'react'
-import { Badge } from '@/components/ui/badge'
+import { Fragment, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { calculateSellPrice, formatGBP } from '@/lib/pricing'
@@ -28,21 +27,91 @@ const CONDITION_BADGE: Record<string, string> = {
   DMG: 'border-red-500/40 text-red-400',
 }
 
+interface Group {
+  key: string
+  card: Card | null
+  condition: string
+  prices: PriceCache | null
+  items: InventoryRow[]
+  totalQty: number
+}
+
+// Group identical card + condition into one display row (each physical item is kept
+// underneath, expandable, so per-item QR/cost/location are still accessible).
+function groupRows(rows: InventoryRow[]): Group[] {
+  const map = new Map<string, Group>()
+  for (const row of rows) {
+    const key = `${row.item.cardId ?? 'x'}|${row.item.condition}`
+    let g = map.get(key)
+    if (!g) {
+      g = { key, card: row.card, condition: row.item.condition, prices: row.prices, items: [], totalQty: 0 }
+      map.set(key, g)
+    }
+    g.items.push(row)
+    g.totalQty += row.item.quantity
+  }
+  return [...map.values()]
+}
+
 export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTableProps) {
   const [editId, setEditId] = useState<number | null>(null)
   const [draft, setDraft] = useState('')
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [zoomCard, setZoomCard] = useState<CardZoomData | null>(null)
   const { marginMultiplier } = useSettings()
+
+  const groups = groupRows(rows)
 
   function startEdit(id: number, current: number) {
     setEditId(id)
     setDraft(String(current))
   }
-
   function saveEdit(id: number, current: number) {
     const val = parseInt(draft)
     if (!isNaN(val) && val >= 0 && val !== current) onStockChange(id, val)
     setEditId(null)
+  }
+  function toggleExpand(key: string) {
+    setExpanded(prev => {
+      const n = new Set(prev)
+      n.has(key) ? n.delete(key) : n.add(key)
+      return n
+    })
+  }
+
+  function StockCell({ item }: { item: InventoryItem }) {
+    const isLow = item.quantity <= item.lowStockThreshold
+    if (editId === item.id) {
+      return (
+        <div className="flex items-center gap-1">
+          <Input
+            className="w-16 h-7 text-center text-sm"
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') saveEdit(item.id, item.quantity)
+              if (e.key === 'Escape') setEditId(null)
+            }}
+            type="number"
+            min={0}
+            autoFocus
+          />
+          <Button variant="ghost" size="sm" className="h-7 px-1.5 text-emerald-400" onClick={() => saveEdit(item.id, item.quantity)} aria-label="Save stock">✓</Button>
+          <Button variant="ghost" size="sm" className="h-7 px-1.5 text-muted-foreground" onClick={() => setEditId(null)} aria-label="Cancel">✕</Button>
+        </div>
+      )
+    }
+    return (
+      <button
+        className={`inline-flex items-center gap-1.5 h-7 px-2 rounded hover:bg-muted/40 transition-colors ${isLow ? 'text-destructive' : ''}`}
+        onClick={() => startEdit(item.id, item.quantity)}
+        title="Click to edit stock"
+      >
+        <span className="font-medium tabular-nums">{item.quantity}</span>
+        {isLow && <span className="text-xs">low</span>}
+        <span className="text-xs text-muted-foreground opacity-60">✎</span>
+      </button>
+    )
   }
 
   return (
@@ -52,117 +121,93 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
         <table className="w-full text-sm">
           <thead className="border-b border-border bg-muted/30">
             <tr>
-              {['Card', 'Condition', 'Stock', 'Cost', 'Sell Price', 'TCG Market', 'Location', ''].map(h => (
+              {['Card', 'Condition', 'Stock', 'Sell Price', 'TCG Market', ''].map(h => (
                 <th key={h} className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ item, card, prices }) => {
-              const sellPrice = calculateSellPrice(prices?.tcgplayerMarket, item.sellPriceOverride, marginMultiplier)
-              const isLow = item.quantity <= item.lowStockThreshold
+            {groups.map(group => {
+              const { card, prices } = group
+              const sellPrice = calculateSellPrice(prices?.tcgplayerMarket, group.items[0].item.sellPriceOverride, marginMultiplier)
+              const multi = group.items.length > 1
+              const isOpen = expanded.has(group.key)
+              const zoom = () => card && setZoomCard({
+                name: card.name, setName: card.setName, setNumber: card.setNumber,
+                variant: card.variant, imageUrlLarge: card.imageUrlLarge, imageUrl: card.imageUrl,
+                condition: group.condition, tcgplayerMarket: prices?.tcgplayerMarket, sellPrice: sellPrice ?? undefined,
+              })
               return (
-                <tr key={item.id} className="border-b border-border/50 last:border-0 hover:bg-muted/10 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      {card?.imageUrl ? (
-                        <img
-                          src={card.imageUrl}
-                          alt={card.name}
-                          className="w-8 h-11 object-contain flex-shrink-0 cursor-zoom-in hover:scale-110 transition-transform"
-                          onClick={() => card && setZoomCard({
-                            name: card.name,
-                            setName: card.setName,
-                            setNumber: card.setNumber,
-                            variant: card.variant,
-                            imageUrlLarge: card.imageUrlLarge,
-                            imageUrl: card.imageUrl,
-                            condition: item.condition,
-                            tcgplayerMarket: prices?.tcgplayerMarket,
-                            sellPrice: sellPrice ?? undefined,
-                          })}
-                          title="Click to zoom"
-                        />
-                      ) : (
-                        <div className="w-8 h-11 bg-muted rounded flex-shrink-0" />
-                      )}
-                      <div>
-                        <div
-                          className="font-medium cursor-pointer hover:text-primary transition-colors"
-                          onClick={() => card && setZoomCard({
-                            name: card.name,
-                            setName: card.setName,
-                            setNumber: card.setNumber,
-                            variant: card.variant,
-                            imageUrlLarge: card.imageUrlLarge,
-                            imageUrl: card.imageUrl,
-                            condition: item.condition,
-                            tcgplayerMarket: prices?.tcgplayerMarket,
-                            sellPrice: sellPrice ?? undefined,
-                          })}
-                        >
-                          {card?.name ?? '—'}
+                <Fragment key={group.key}>
+                  <tr className="border-b border-border/50 last:border-0 hover:bg-muted/10 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        {card?.imageUrl ? (
+                          <img src={card.imageUrl} alt={card.name}
+                            className="w-8 h-11 object-contain flex-shrink-0 cursor-zoom-in hover:scale-110 transition-transform"
+                            onClick={zoom} title="Click to zoom" />
+                        ) : (
+                          <div className="w-8 h-11 bg-muted rounded flex-shrink-0" />
+                        )}
+                        <div>
+                          <div className="font-medium cursor-pointer hover:text-primary transition-colors" onClick={zoom}>
+                            {card?.name ?? '—'}
+                          </div>
+                          <div className="text-xs text-muted-foreground">{card?.setName} · #{card?.setNumber}</div>
+                          {card?.variant && <div className="text-xs text-accent">{card.variant}</div>}
                         </div>
-                        <div className="text-xs text-muted-foreground">{card?.setName} · #{card?.setNumber}</div>
-                        {card?.variant && <div className="text-xs text-accent">{card.variant}</div>}
-                        {item.defectNotes && <div className="text-xs text-orange-400 mt-0.5">{item.defectNotes}</div>}
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${CONDITION_BADGE[item.condition] ?? 'border-border text-muted-foreground'}`}>
-                      {item.condition}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {editId === item.id ? (
-                      <div className="flex items-center gap-1">
-                        <Input
-                          className="w-16 h-7 text-center text-sm"
-                          value={draft}
-                          onChange={e => setDraft(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') saveEdit(item.id, item.quantity)
-                            if (e.key === 'Escape') setEditId(null)
-                          }}
-                          type="number"
-                          min={0}
-                          autoFocus
-                        />
-                        <Button variant="ghost" size="sm" className="h-7 px-1.5 text-emerald-400" onClick={() => saveEdit(item.id, item.quantity)} aria-label="Save stock">✓</Button>
-                        <Button variant="ghost" size="sm" className="h-7 px-1.5 text-muted-foreground" onClick={() => setEditId(null)} aria-label="Cancel">✕</Button>
-                      </div>
-                    ) : (
-                      <button
-                        className={`inline-flex items-center gap-1.5 h-7 px-2 rounded hover:bg-muted/40 transition-colors ${isLow ? 'text-destructive' : ''}`}
-                        onClick={() => startEdit(item.id, item.quantity)}
-                        title="Click to edit stock"
-                      >
-                        <span className="font-medium tabular-nums">{item.quantity}</span>
-                        {isLow && <span className="text-xs">low</span>}
-                        <span className="text-xs text-muted-foreground opacity-60">✎</span>
-                      </button>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{formatGBP(item.costPrice)}</td>
-                  <td className="px-4 py-3 font-semibold text-foreground">{formatGBP(sellPrice)}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1">
-                      {prices?.isHighValue && <span className="text-destructive text-xs">⚠</span>}
-                      <span className={prices?.isHighValue ? 'text-destructive font-medium' : 'text-muted-foreground'}>
-                        {formatGBP(prices?.tcgplayerMarket)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${CONDITION_BADGE[group.condition] ?? 'border-border text-muted-foreground'}`}>
+                        {group.condition}
                       </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">{item.location ?? '—'}</td>
-                  <td className="px-4 py-3">
-                    <Button variant="ghost" size="sm" className="text-xs" onClick={() => onPrintQR(item.id)}>QR</Button>
-                  </td>
-                </tr>
+                    </td>
+                    <td className="px-4 py-3">
+                      {multi ? (
+                        <span className="font-medium tabular-nums">{group.totalQty}</span>
+                      ) : (
+                        <StockCell item={group.items[0].item} />
+                      )}
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-foreground">{formatGBP(sellPrice)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1">
+                        {prices?.isHighValue && <span className="text-destructive text-xs">⚠</span>}
+                        <span className={prices?.isHighValue ? 'text-destructive font-medium' : 'text-muted-foreground'}>
+                          {formatGBP(prices?.tcgplayerMarket)}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {multi ? (
+                        <Button variant="ghost" size="sm" className="text-xs" onClick={() => toggleExpand(group.key)}>
+                          {isOpen ? 'Hide' : `${group.items.length} items`} {isOpen ? '▲' : '▼'}
+                        </Button>
+                      ) : (
+                        <Button variant="ghost" size="sm" className="text-xs" onClick={() => onPrintQR(group.items[0].item.id)}>QR</Button>
+                      )}
+                    </td>
+                  </tr>
+                  {multi && isOpen && group.items.map(({ item }) => (
+                    <tr key={item.id} className="border-b border-border/50 bg-muted/10 text-xs">
+                      <td className="px-4 py-2 pl-16 text-muted-foreground">
+                        {item.location ? item.location : 'no location'}{item.defectNotes ? ` · ${item.defectNotes}` : ''}
+                      </td>
+                      <td className="px-4 py-2 text-muted-foreground">cost {formatGBP(item.costPrice)}</td>
+                      <td className="px-4 py-2"><StockCell item={item} /></td>
+                      <td className="px-4 py-2" />
+                      <td className="px-4 py-2" />
+                      <td className="px-4 py-2">
+                        <Button variant="ghost" size="sm" className="text-xs" onClick={() => onPrintQR(item.id)}>QR</Button>
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
               )
             })}
-            {rows.length === 0 && (
-              <tr><td colSpan={8} className="p-12 text-center text-muted-foreground">No inventory items yet</td></tr>
+            {groups.length === 0 && (
+              <tr><td colSpan={6} className="p-12 text-center text-muted-foreground">No inventory items yet</td></tr>
             )}
           </tbody>
         </table>
