@@ -5,10 +5,12 @@ import { eq } from 'drizzle-orm'
 export interface AppSettings {
   shopName: string
   usdToGbp: number
+  eurToGbp: number
   marginMultiplier: number
   highValueThreshold: number
   buyCashPct: number
   buyCreditPct: number
+  primaryPriceSource: 'cardmarket' | 'tcgplayer'
 }
 
 // Defaults fall back to env so pricing still works before the row exists
@@ -16,20 +18,24 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
   shopName: 'PokeDB',
   usdToGbp: parseFloat(process.env.PRICE_USD_TO_GBP ?? '0.79') || 0.79,
+  eurToGbp: parseFloat(process.env.PRICE_EUR_TO_GBP ?? '0.86') || 0.86,
   marginMultiplier: parseFloat(process.env.MARGIN_MULTIPLIER ?? '0.85') || 0.85,
   highValueThreshold: parseFloat(process.env.HIGH_VALUE_THRESHOLD ?? '50') || 50,
   buyCashPct: 0.5,
   buyCreditPct: 0.65,
+  primaryPriceSource: 'cardmarket',
 }
 
 function toAppSettings(row: Settings): AppSettings {
   return {
     shopName: row.shopName,
     usdToGbp: row.usdToGbp,
+    eurToGbp: row.eurToGbp,
     marginMultiplier: row.marginMultiplier,
     highValueThreshold: row.highValueThreshold,
     buyCashPct: row.buyCashPct,
     buyCreditPct: row.buyCreditPct,
+    primaryPriceSource: row.primaryPriceSource as 'cardmarket' | 'tcgplayer',
   }
 }
 

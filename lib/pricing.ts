@@ -29,3 +29,23 @@ export function usdToGbp(
   if (usd == null) return null
   return Math.round(usd * rate * 100) / 100
 }
+
+export function eurToGbp(
+  eur: number | null | undefined,
+  rate = parseFloat(process.env.PRICE_EUR_TO_GBP ?? process.env.NEXT_PUBLIC_EUR_TO_GBP ?? '0.86') || 0.86
+): number | null {
+  if (eur == null) return null
+  return Math.round(eur * rate * 100) / 100
+}
+
+// Pick the "market" price that drives sell-price math, per shop setting.
+// Both inputs are already GBP. Falls back to the other source if the chosen one is missing.
+export function pickMarketPrice(
+  prices: { tcgplayerMarket?: number | null; cardmarketTrend?: number | null } | null | undefined,
+  source: 'cardmarket' | 'tcgplayer'
+): number | null {
+  if (!prices) return null
+  const cm = prices.cardmarketTrend ?? null
+  const tcg = prices.tcgplayerMarket ?? null
+  return source === 'cardmarket' ? (cm ?? tcg) : (tcg ?? cm)
+}
