@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { formatGBP } from '@/lib/pricing'
 
 interface TodayStats {
@@ -35,7 +36,10 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <h1 className="text-2xl font-bold">Reports</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Reports</h1>
+        <a href="/api/reports/sales/export"><Button variant="outline">Export CSV</Button></a>
+      </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: "Today's Revenue", value: formatGBP(todayStats.totalRevenue) },
