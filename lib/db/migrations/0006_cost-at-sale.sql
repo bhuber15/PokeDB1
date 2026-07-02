@@ -1,0 +1,1 @@
+ALTER TABLE `sale_items` ADD `cost_at_sale` real;

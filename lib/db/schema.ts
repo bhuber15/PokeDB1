@@ -72,6 +72,7 @@ export const saleItems = sqliteTable('sale_items', {
   inventoryItemId: integer('inventory_item_id').references(() => inventoryItems.id),
   quantity: integer('quantity').notNull(),
   priceAtSale: real('price_at_sale').notNull(),
+  costAtSale: real('cost_at_sale'), // cost_price snapshot; VAT-margin groundwork
 })
 
 export const refunds = sqliteTable('refunds', {
