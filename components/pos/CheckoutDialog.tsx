@@ -55,8 +55,11 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
 
   async function confirm() {
     setLoading(true)
-    await onConfirm(method, discountAmount, total, isStoreCredit && customer ? customer.id : undefined)
-    setLoading(false)
+    try {
+      await onConfirm(method, discountAmount, total, isStoreCredit && customer ? customer.id : undefined)
+    } finally {
+      setLoading(false)
+    }
     setDiscount('')
     setMethod('cash')
     setCustomer(null)
