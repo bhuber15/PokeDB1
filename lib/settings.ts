@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { db, type Db } from '@/lib/db'
 import { settings, type Settings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 
@@ -41,19 +41,19 @@ function toAppSettings(row: Settings): AppSettings {
 
 // Reads the single settings row, lazily creating it with defaults on first call.
 // Degrades to DEFAULT_SETTINGS if the DB is unreachable so the app never crashes.
-export async function getSettings(): Promise<AppSettings> {
+export async function getSettings(dbc: Db = db): Promise<AppSettings> {
   try {
-    const [row] = await db.select().from(settings).where(eq(settings.id, 1)).limit(1)
+    const [row] = await dbc.select().from(settings).where(eq(settings.id, 1)).limit(1)
     if (row) return toAppSettings(row)
 
-    const [created] = await db.insert(settings)
+    const [created] = await dbc.insert(settings)
       .values({ id: 1, ...DEFAULT_SETTINGS })
       .onConflictDoNothing()
       .returning()
     if (created) return toAppSettings(created)
 
     // A concurrent call created it — read again.
-    const [row2] = await db.select().from(settings).where(eq(settings.id, 1)).limit(1)
+    const [row2] = await dbc.select().from(settings).where(eq(settings.id, 1)).limit(1)
     return row2 ? toAppSettings(row2) : DEFAULT_SETTINGS
   } catch {
     return DEFAULT_SETTINGS

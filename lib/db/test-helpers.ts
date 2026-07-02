@@ -1,7 +1,8 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, unlinkSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { createClient } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
+import { randomBytes } from 'node:crypto'
 import * as schema from './schema'
 import type { Db } from './index'
 
@@ -9,7 +10,11 @@ const MIGRATIONS_DIR = join(process.cwd(), 'lib', 'db', 'migrations')
 
 // Fresh in-memory database with every migration applied in journal order.
 export async function createTestDb(): Promise<Db> {
-  const client = createClient({ url: ':memory:' })
+  // Use file-based temp database to work around libsql :memory: + transaction bug
+  const dbId = randomBytes(8).toString('hex')
+  const dbPath = `file:/tmp/test-${dbId}.db`
+  const client = createClient({ url: dbPath })
+
   const journal = JSON.parse(
     readFileSync(join(MIGRATIONS_DIR, 'meta', '_journal.json'), 'utf8'),
   ) as { entries: { tag: string }[] }
