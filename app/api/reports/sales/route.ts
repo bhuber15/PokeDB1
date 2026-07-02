@@ -3,15 +3,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { sales, saleItems, inventoryItems, cards } from '@/lib/db/schema'
 import { and, gte, lt, eq, sql, isNotNull } from 'drizzle-orm'
-import { getSession } from '@/lib/auth'
+import { getSession, requireAdmin } from '@/lib/auth'
+import { guarded } from '@/lib/api'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
-export async function GET(req: NextRequest) {
-  const session = await getSession()
-  if (session.staffRole !== 'admin' && !session.isOwnerLoggedIn) {
-    return NextResponse.json({ error: 'Admin only' }, { status: 403 })
-  }
+export const GET = guarded(async (req: NextRequest) => {
+  requireAdmin(await getSession())
 
   const from = req.nextUrl.searchParams.get('from') ?? ''
   const to = req.nextUrl.searchParams.get('to') ?? ''
@@ -78,4 +76,4 @@ export async function GET(req: NextRequest) {
     topCards: topCardsRaw
       .map(r => ({ cardId: r.cardId!, name: r.name ?? 'Unknown', quantitySold: r.quantitySold, revenue: round2(r.revenue) })),
   })
-}
+})

@@ -2,12 +2,12 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { inventoryItems, cards } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
-import { getSession } from '@/lib/auth'
+import { getSession, requireStaff } from '@/lib/auth'
+import { guarded } from '@/lib/api'
 import { toCSV } from '@/lib/csv'
 
-export async function GET() {
-  const session = await getSession()
-  if (!session.staffId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export const GET = guarded(async () => {
+  requireStaff(await getSession())
 
   const rows = await db.select({ item: inventoryItems, card: cards })
     .from(inventoryItems)
@@ -29,4 +29,4 @@ export async function GET() {
       'Content-Disposition': `attachment; filename="inventory-${date}.csv"`,
     },
   })
-}
+})

@@ -3,14 +3,14 @@ import { db } from '@/lib/db'
 import { cards, priceCache } from '@/lib/db/schema'
 import { or, like, eq } from 'drizzle-orm'
 import { searchPokemonCards, extractBestPrice, type PokemonTCGCard } from '@/lib/apis/pokemon-tcg'
-import { getSession } from '@/lib/auth'
+import { getSession, requireStaff } from '@/lib/auth'
+import { guarded } from '@/lib/api'
 import { getSettings } from '@/lib/settings'
 import { usdToGbp } from '@/lib/pricing'
 import { syncCardmarketForCard } from '@/lib/prices/sync'
 
-export async function GET(req: NextRequest) {
-  const session = await getSession()
-  if (!session.staffId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export const GET = guarded(async (req: NextRequest) => {
+  requireStaff(await getSession())
 
   const q = req.nextUrl.searchParams.get('q')?.trim() ?? ''
   if (q.length < 2) return NextResponse.json({ cards: [] })
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   )).filter((c): c is typeof cards.$inferSelect => c != null)
 
   return NextResponse.json({ cards: [...dbCards, ...newCards] })
-}
+})
 
 // Resilient insert: re-checks for an existing row (handles a race between the
 // two parallel queries) and swallows unique-constraint violations from a

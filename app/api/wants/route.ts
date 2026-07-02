@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { wantList, cards, customers, inventoryItems } from '@/lib/db/schema'
 import { eq, isNull, and, inArray, desc } from 'drizzle-orm'
-import { getSession } from '@/lib/auth'
+import { getSession, requireStaff } from '@/lib/auth'
+import { guarded } from '@/lib/api'
 
-export async function GET() {
-  const session = await getSession()
-  if (!session.staffId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export const GET = guarded(async () => {
+  requireStaff(await getSession())
 
   // Fetch open wants with card and customer info
   const wants = await db
@@ -46,11 +46,10 @@ export async function GET() {
   }))
 
   return NextResponse.json({ wants: result })
-}
+})
 
-export async function POST(req: NextRequest) {
-  const session = await getSession()
-  if (!session.staffId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export const POST = guarded(async (req: NextRequest) => {
+  requireStaff(await getSession())
 
   const body = await req.json()
   const { customerId, cardId, freeText } = body
@@ -69,11 +68,10 @@ export async function POST(req: NextRequest) {
   }).returning()
 
   return NextResponse.json(item, { status: 201 })
-}
+})
 
-export async function DELETE(req: NextRequest) {
-  const session = await getSession()
-  if (!session.staffId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export const DELETE = guarded(async (req: NextRequest) => {
+  requireStaff(await getSession())
 
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
@@ -86,4 +84,4 @@ export async function DELETE(req: NextRequest) {
     .where(eq(wantList.id, n))
 
   return NextResponse.json({ ok: true })
-}
+})

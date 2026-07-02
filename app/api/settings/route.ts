@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession } from '@/lib/auth'
+import { getSession, requireStaff, requireAdmin } from '@/lib/auth'
+import { guarded } from '@/lib/api'
 import { getSettings, updateSettings, type AppSettings } from '@/lib/settings'
 
-export async function GET() {
-  const session = await getSession()
-  if (!session.staffId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export const GET = guarded(async () => {
+  requireStaff(await getSession())
   return NextResponse.json(await getSettings())
-}
+})
 
-export async function PATCH(req: NextRequest) {
-  const session = await getSession()
-  // Only the owner / admins can change shop settings
-  if (session.staffRole !== 'admin' && !session.isOwnerLoggedIn) {
-    return NextResponse.json({ error: 'Admin only' }, { status: 403 })
-  }
+export const PATCH = guarded(async (req: NextRequest) => {
+  // Only admins can change shop settings
+  requireAdmin(await getSession())
 
   const body = await req.json()
   const patch: Partial<AppSettings> = {}
@@ -51,4 +48,4 @@ export async function PATCH(req: NextRequest) {
   }
 
   return NextResponse.json(await updateSettings(patch))
-}
+})

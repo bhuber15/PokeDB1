@@ -3,14 +3,14 @@ import { db } from '@/lib/db'
 import { inventoryItems, cards, priceCache } from '@/lib/db/schema'
 import { eq, and, like } from 'drizzle-orm'
 import { generateQRId } from '@/lib/qr'
-import { getSession } from '@/lib/auth'
+import { getSession, requireStaff } from '@/lib/auth'
+import { guarded } from '@/lib/api'
 
 const CONDITIONS = new Set(['NM', 'LP', 'MP', 'HP', 'DMG'])
 const round2 = (n: number) => Math.round(n * 100) / 100
 
-export async function GET(req: NextRequest) {
-  const session = await getSession()
-  if (!session.staffId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export const GET = guarded(async (req: NextRequest) => {
+  requireStaff(await getSession())
 
   const cardId = req.nextUrl.searchParams.get('cardId')
   const qrCode = req.nextUrl.searchParams.get('qrCode')
@@ -42,11 +42,10 @@ export async function GET(req: NextRequest) {
     )))
   }
   return NextResponse.json(await base.where(eq(inventoryItems.isActive, true)))
-}
+})
 
-export async function POST(req: NextRequest) {
-  const session = await getSession()
-  if (!session.isOwnerLoggedIn) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export const POST = guarded(async (req: NextRequest) => {
+  requireStaff(await getSession())
 
   const { cardId, condition, quantity, costPrice, sellPriceOverride, location, defectNotes } = await req.json()
 
@@ -89,4 +88,4 @@ export async function POST(req: NextRequest) {
   }).returning()
 
   return NextResponse.json(item, { status: 201 })
-}
+})

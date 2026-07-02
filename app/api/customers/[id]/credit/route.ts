@@ -2,14 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { creditLedger, customers } from '@/lib/db/schema'
-import { getSession } from '@/lib/auth'
+import { getSession, requireAdmin } from '@/lib/auth'
+import { guarded } from '@/lib/api'
 import { getCustomerBalance } from '@/lib/credit'
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await getSession()
-  if (session.staffRole !== 'admin' && !session.isOwnerLoggedIn) {
-    return NextResponse.json({ error: 'Admin only' }, { status: 403 })
-  }
+export const POST = guarded(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+  const session = requireAdmin(await getSession())
   const customerId = parseInt((await params).id)
   const { delta } = await req.json()
   const n = Number(delta)
@@ -21,4 +19,4 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     staffId: session.staffId ?? null,
   })
   return NextResponse.json({ balance: await getCustomerBalance(customerId) })
-}
+})

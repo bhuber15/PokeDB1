@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession } from '@/lib/auth'
+import { getSession, requireStaff } from '@/lib/auth'
+import { guarded } from '@/lib/api'
 import { searchPokemonCards } from '@/lib/apis/pokemon-tcg'
 
-export async function GET(req: NextRequest) {
-  const session = await getSession()
-  if (!session.staffId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export const GET = guarded(async (req: NextRequest) => {
+  requireStaff(await getSession())
 
   const q = req.nextUrl.searchParams.get('q')?.trim() ?? ''
   if (q.length < 2) return NextResponse.json({ cards: [] })
@@ -18,4 +18,4 @@ export async function GET(req: NextRequest) {
     console.error('Price lookup failed for', q, '→', e)
     return NextResponse.json({ cards: [], unavailable: true })
   }
-}
+})

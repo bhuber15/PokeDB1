@@ -3,13 +3,11 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { sales, staff } from '@/lib/db/schema'
 import { eq, sql, gte } from 'drizzle-orm'
-import { getSession } from '@/lib/auth'
+import { getSession, requireAdmin } from '@/lib/auth'
+import { guarded } from '@/lib/api'
 
-export async function GET() {
-  const session = await getSession()
-  if (session.staffRole !== 'admin' && !session.isOwnerLoggedIn) {
-    return NextResponse.json({ error: 'Admin only' }, { status: 403 })
-  }
+export const GET = guarded(async () => {
+  requireAdmin(await getSession())
 
   // createdAt is stored via SQLite datetime('now') → "YYYY-MM-DD HH:MM:SS" (UTC, space separator).
   // Compare against the same format — a JS toISOString() ("...T...Z") sorts differently and would
@@ -29,4 +27,4 @@ export async function GET() {
     .limit(25)
 
   return NextResponse.json({ todayStats, recentSales })
-}
+})

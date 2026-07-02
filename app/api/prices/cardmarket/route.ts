@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession } from '@/lib/auth'
+import { getSession, requireStaff } from '@/lib/auth'
+import { guarded } from '@/lib/api'
 import { fetchCardmarketPrices } from '@/lib/apis/tcgdex'
 import { getSettings } from '@/lib/settings'
 import { eurToGbp } from '@/lib/pricing'
 
-export async function GET(req: NextRequest) {
-  const session = await getSession()
-  if (!session.staffId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export const GET = guarded(async (req: NextRequest) => {
+  requireStaff(await getSession())
 
   const id = req.nextUrl.searchParams.get('id')?.trim() ?? ''
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
@@ -27,4 +27,4 @@ export async function GET(req: NextRequest) {
   } catch {
     return NextResponse.json({ trend: null, low: null, avg: null })
   }
-}
+})

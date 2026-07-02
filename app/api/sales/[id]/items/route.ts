@@ -3,11 +3,11 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { sales, saleItems, inventoryItems, cards, refundItems } from '@/lib/db/schema'
 import { eq, sql } from 'drizzle-orm'
-import { getSession } from '@/lib/auth'
+import { getSession, requireStaff } from '@/lib/auth'
+import { guarded } from '@/lib/api'
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await getSession()
-  if (!session.staffId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export const GET = guarded(async (_req: Request, { params }: { params: Promise<{ id: string }> }) => {
+  requireStaff(await getSession())
 
   const saleId = parseInt((await params).id)
   if (!Number.isInteger(saleId)) return NextResponse.json({ error: 'Invalid sale id' }, { status: 400 })
@@ -39,4 +39,4 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     },
     items: rows.map(r => ({ ...r, name: r.name ?? 'Unknown card', condition: r.condition ?? null })),
   })
-}
+})

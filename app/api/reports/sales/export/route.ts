@@ -2,14 +2,12 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { sales, staff } from '@/lib/db/schema'
 import { eq, desc } from 'drizzle-orm'
-import { getSession } from '@/lib/auth'
+import { getSession, requireAdmin } from '@/lib/auth'
+import { guarded } from '@/lib/api'
 import { toCSV } from '@/lib/csv'
 
-export async function GET() {
-  const session = await getSession()
-  if (session.staffRole !== 'admin' && !session.isOwnerLoggedIn) {
-    return NextResponse.json({ error: 'Admin only' }, { status: 403 })
-  }
+export const GET = guarded(async () => {
+  requireAdmin(await getSession())
   const rows = await db.select({ sale: sales, staffName: staff.name })
     .from(sales).leftJoin(staff, eq(sales.staffId, staff.id))
     .orderBy(desc(sales.createdAt))
@@ -27,4 +25,4 @@ export async function GET() {
       'Content-Disposition': `attachment; filename="sales-${date}.csv"`,
     },
   })
-}
+})

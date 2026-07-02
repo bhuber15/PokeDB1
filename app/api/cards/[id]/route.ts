@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { cards, priceCache } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
-import { getSession } from '@/lib/auth'
+import { getSession, requireStaff } from '@/lib/auth'
+import { guarded } from '@/lib/api'
 
-export async function GET(
+export const GET = guarded(async (
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
-  const session = await getSession()
-  if (!session.staffId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+) => {
+  requireStaff(await getSession())
 
   const { id } = await params
   const [card] = await db.select().from(cards).where(eq(cards.id, parseInt(id)))
@@ -17,4 +17,4 @@ export async function GET(
 
   const [prices] = await db.select().from(priceCache).where(eq(priceCache.cardId, card.id))
   return NextResponse.json({ ...card, priceCache: prices ?? null })
-}
+})
