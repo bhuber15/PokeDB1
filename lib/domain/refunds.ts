@@ -80,7 +80,14 @@ export async function createRefund(
     // Reverse VAT/discount proportionally to how this sale's total related to its subtotal,
     // so a partial refund doesn't over- or under-credit versus what was actually charged.
     const chargedRatio = sale.subtotal > 0 ? sale.total / sale.subtotal : 1
-    const amount = round2(netAmount * chargedRatio)
+    const uncapped = round2(netAmount * chargedRatio)
+
+    // Residual cap: total refunded can never exceed what was charged (sale.total).
+    // Without this, rounding across successive single-unit refunds can compound to 1p over.
+    const [{ refundedSoFar }] = await tx.select({
+      refundedSoFar: sql<number>`COALESCE(SUM(amount), 0)`,
+    }).from(refunds).where(eq(refunds.saleId, sale.id))
+    const amount = Math.max(0, Math.min(uncapped, round2(sale.total - round2(refundedSoFar))))
 
     const [refund] = await tx.insert(refunds).values({
       saleId: sale.id,

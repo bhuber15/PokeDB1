@@ -89,7 +89,7 @@ Routes map codes → HTTP status (`INVALID_INPUT` 400, `NOT_FOUND` 404, conflict
 - Migration: `UPDATE t SET col = CAST(ROUND(col * 100) AS INTEGER)` per column (SQLite tolerates the type change; Drizzle schema changes to `integer`).
 - `lib/pricing.ts` reworks to pence in/pence out: `calculateSellPrice`, `calculateBuyPrice`, `usdToGbp`, `eurToGbp` return integer pence (ceil for sell, floor for buy, round for FX — preserving current rounding directions). `formatGBP(pence)` becomes the **only** pence→pounds conversion; a `parsePounds(input): pence` helper is the only pounds→pence path for form inputs.
 - All UI money inputs/outputs and the CSV import/export convert at the boundary via those two helpers. CSV files keep pounds (human-facing format unchanged).
-- `round2` disappears from money paths (integer arithmetic; proportional splits use integer math with largest-remainder rounding where needed — the refund VAT ratio becomes `amountP = round(netP × sale.totalP / sale.subtotalP)`).
+- `round2` disappears from money paths (integer arithmetic; proportional splits use integer math with largest-remainder rounding where needed — the refund VAT ratio becomes `amountP = round(netP × sale.totalP / sale.subtotalP)`, capped at `sale.totalP − SUM(prior refund amounts)` (residual cap — total refunded can never exceed what was charged)).
 
 ### VAT groundwork
 

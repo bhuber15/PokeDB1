@@ -86,6 +86,20 @@ test('store credit refund writes a positive ledger row', async () => {
   assert.equal(ledger[0].reason, 'refund')
 })
 
+test('cumulative refunds never exceed the amount charged', async () => {
+  // Sale: 3 units × £8.50 = subtotal £25.50, total £20.00 (£5.50 discount)
+  // Ratio = 20/25.50 ≈ 0.7843. Per-unit uncapped = round2(8.50 × 0.7843) = 6.67.
+  // Without a residual cap, 3 × 6.67 = 20.01 — 1p over the charged amount.
+  // With the cap the third refund is trimmed to 6.66 so the running total stays at 20.00.
+  const r1 = await createRefund({ staffId: 1, saleId, method: 'cash', items: [{ saleItemId, quantity: 1 }] }, dbc)
+  assert.equal(r1.amount, 6.67)
+  const r2 = await createRefund({ staffId: 1, saleId, method: 'cash', items: [{ saleItemId, quantity: 1 }] }, dbc)
+  assert.equal(r2.amount, 6.67)
+  const r3 = await createRefund({ staffId: 1, saleId, method: 'cash', items: [{ saleItemId, quantity: 1 }] }, dbc)
+  // residual cap: 20.00 − (6.67 + 6.67) = 6.66, not the uncapped 6.67
+  assert.equal(r3.amount, 6.66)
+})
+
 test('validation and not-found errors', async () => {
   await assert.rejects(
     createRefund({ staffId: 1, saleId: 999, method: 'cash', items: [{ saleItemId, quantity: 1 }] }, dbc),

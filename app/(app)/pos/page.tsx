@@ -88,17 +88,23 @@ export default function POSPage() {
   }
 
   async function handleCheckoutConfirm(paymentMethod: string, discountAmount: number, expectedTotal: number, customerId?: number) {
-    const res = await fetch('/api/sales', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        items: cart.map(i => ({ inventoryItemId: i.inventoryItemId, quantity: i.quantity })),
-        paymentMethod,
-        discountAmount,
-        expectedTotal,
-        ...(customerId != null ? { customerId } : {}),
-      }),
-    })
+    let res: Response
+    try {
+      res = await fetch('/api/sales', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: cart.map(i => ({ inventoryItemId: i.inventoryItemId, quantity: i.quantity })),
+          paymentMethod,
+          discountAmount,
+          expectedTotal,
+          ...(customerId != null ? { customerId } : {}),
+        }),
+      })
+    } catch {
+      toast.error('Network error — check Reports → Recent Sales before retrying, the sale may have gone through')
+      return
+    }
     if (res.ok) {
       const { total } = await res.json()
       setCart([])
