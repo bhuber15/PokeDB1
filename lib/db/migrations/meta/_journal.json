@@ -50,6 +50,13 @@
       "when": 1782986200006,
       "tag": "0006_cost-at-sale",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1783004541726,
+      "tag": "0007_pence-migration",
+      "breakpoints": true
     }
   ]
 }
