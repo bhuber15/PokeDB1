@@ -66,6 +66,7 @@ test('store credit buy writes a positive ledger row', async () => {
   assert.equal(ledger[0].delta, 6.5)
   assert.equal(ledger[0].reason, 'buylist')
   assert.equal(ledger[0].refId, buyId)
+  assert.equal(ledger[0].refType, 'buy')
 })
 
 test('validation and not-found errors', async () => {
