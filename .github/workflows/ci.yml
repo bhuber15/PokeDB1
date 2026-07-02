@@ -18,9 +18,9 @@ jobs:
       PRICE_USD_TO_GBP: '0.8'
       PRICE_EUR_TO_GBP: '0.85'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
