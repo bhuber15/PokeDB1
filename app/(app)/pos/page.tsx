@@ -87,14 +87,15 @@ export default function POSPage() {
     // Keep the search results so several different cards can be rung up from one search.
   }
 
-  async function handleCheckoutConfirm(paymentMethod: string, discountAmount: number, customerId?: number) {
+  async function handleCheckoutConfirm(paymentMethod: string, discountAmount: number, expectedTotal: number, customerId?: number) {
     const res = await fetch('/api/sales', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        items: cart.map(i => ({ inventoryItemId: i.inventoryItemId, quantity: i.quantity, priceAtSale: i.price })),
+        items: cart.map(i => ({ inventoryItemId: i.inventoryItemId, quantity: i.quantity })),
         paymentMethod,
         discountAmount,
+        expectedTotal,
         ...(customerId != null ? { customerId } : {}),
       }),
     })
@@ -104,7 +105,12 @@ export default function POSPage() {
       setCheckoutOpen(false)
       toast.success(`Sale complete — ${formatGBP(total)}`)
     } else {
-      toast.error('Sale failed — please try again')
+      const data = await res.json().catch(() => null)
+      toast.error(
+        data?.code === 'PRICE_CHANGED'
+          ? 'Prices changed since this search — re-search the cards and rebuild the cart'
+          : data?.error ?? 'Sale failed — please try again',
+      )
     }
   }
 

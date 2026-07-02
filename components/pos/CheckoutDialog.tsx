@@ -21,7 +21,7 @@ interface CheckoutDialogProps {
   open: boolean
   items: CartItem[]
   onClose: () => void
-  onConfirm: (paymentMethod: string, discountAmount: number, customerId?: number) => Promise<void>
+  onConfirm: (paymentMethod: string, discountAmount: number, expectedTotal: number, customerId?: number) => Promise<void>
 }
 
 export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDialogProps) {
@@ -55,7 +55,7 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
 
   async function confirm() {
     setLoading(true)
-    await onConfirm(method, discountAmount, isStoreCredit && customer ? customer.id : undefined)
+    await onConfirm(method, discountAmount, total, isStoreCredit && customer ? customer.id : undefined)
     setLoading(false)
     setDiscount('')
     setMethod('cash')
