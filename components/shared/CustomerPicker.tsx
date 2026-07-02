@@ -21,19 +21,24 @@ export function CustomerPicker({ onSelect, selected }: CustomerPickerProps) {
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
-  const [balance, setBalance] = useState<number | null>(null)
-  const [loadingBalance, setLoadingBalance] = useState(false)
+  const [balanceInfo, setBalanceInfo] = useState<{ customerId: number; balance: number | null } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Balance/loading are derived from balanceInfo so a slow response for a
+  // previously selected customer can never show against the current one
+  const balance = selected && balanceInfo?.customerId === selected.id ? balanceInfo.balance : null
+  const loadingBalance = !!selected && balanceInfo?.customerId !== selected.id
 
   // Fetch balance when selected customer changes
   useEffect(() => {
-    if (!selected) { setBalance(null); return }
-    setLoadingBalance(true)
-    fetch(`/api/customers/${selected.id}`)
+    const id = selected?.id
+    if (id == null) return
+    let stale = false
+    fetch(`/api/customers/${id}`)
       .then(r => r.json())
-      .then((data: { balance: number }) => setBalance(data.balance ?? null))
-      .catch(() => setBalance(null))
-      .finally(() => setLoadingBalance(false))
+      .then((data: { balance: number }) => { if (!stale) setBalanceInfo({ customerId: id, balance: data.balance ?? null }) })
+      .catch(() => { if (!stale) setBalanceInfo({ customerId: id, balance: null }) })
+    return () => { stale = true }
   }, [selected?.id])
 
   // Close dropdown when clicking outside
@@ -98,7 +103,7 @@ export function CustomerPicker({ onSelect, selected }: CustomerPickerProps) {
               <span className="ml-2 text-xs text-muted-foreground">Balance: {formatGBP(balance)}</span>
             ) : null}
           </div>
-          <Button variant="ghost" size="sm" onClick={() => { onSelect(null); setBalance(null) }}>
+          <Button variant="ghost" size="sm" onClick={() => onSelect(null)}>
             Change
           </Button>
         </div>

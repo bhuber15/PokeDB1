@@ -36,7 +36,11 @@ export default function WantsPage() {
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  // Timer defers the fetch past the effect's sync phase (set-state-in-effect)
+  useEffect(() => {
+    const t = setTimeout(load, 0)
+    return () => clearTimeout(t)
+  }, [load])
 
   async function markDone(id: number) {
     try {

@@ -34,6 +34,7 @@ export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefr
     : null
 
   const hoursOld = prices
+    // eslint-disable-next-line react-hooks/purity -- staleness badge; a fresh clock reading each render is intended
     ? (Date.now() - new Date(prices.lastSyncedAt).getTime()) / 3_600_000
     : null
 

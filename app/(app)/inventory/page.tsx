@@ -48,6 +48,7 @@ export default function InventoryPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Inventory</h1>
         <div className="flex items-center gap-2">
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- API-route file download, not a page navigation */}
           <a href="/api/inventory/export"><Button variant="outline">Export CSV</Button></a>
           <Button variant="outline" onClick={() => setImportOpen(true)}>Import CSV</Button>
           <Link href="/inventory/add" className={buttonVariants()}>+ Add Item</Link>
