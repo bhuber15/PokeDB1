@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    env:
+      # Dummy values so `next build` can boot modules that read env at import
+      # time. No real database or secrets are touched in CI.
+      TURSO_DATABASE_URL: ':memory:'
+      SESSION_SECRET: 'ci-only-dummy-session-secret-32-chars!'
+      OWNER_PASSWORD_HASH: 'ci-dummy'
+      CRON_SECRET: 'ci-dummy'
+      PRICE_USD_TO_GBP: '0.8'
+      PRICE_EUR_TO_GBP: '0.85'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
