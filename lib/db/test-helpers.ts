@@ -1,5 +1,6 @@
-import { readFileSync, unlinkSync, existsSync } from 'node:fs'
+import { readFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { createClient } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
 import { randomBytes } from 'node:crypto'
@@ -7,13 +8,34 @@ import * as schema from './schema'
 import type { Db } from './index'
 
 const MIGRATIONS_DIR = join(process.cwd(), 'lib', 'db', 'migrations')
+const tempFiles: string[] = []
 
-// Fresh in-memory database with every migration applied in journal order.
+// Clean up temporary test database files on process exit
+process.on('exit', () => {
+  for (const filePath of tempFiles) {
+    // Remove .db file and its associated WAL files
+    for (const suffix of ['', '-wal', '-shm']) {
+      try {
+        unlinkSync(filePath + suffix)
+      } catch {
+        // Ignore missing files
+      }
+    }
+  }
+})
+
+// Fresh database with every migration applied in journal order.
+// Note: libsql :memory: databases cannot be used here because each connection
+// (including transactions) gets its own empty database. Since drizzle transactions
+// run on a separate connection, a transaction cannot see tables created by the
+// migration statements. File-backed temp databases (cleaned up on process exit)
+// are required to ensure transaction isolation works correctly.
 export async function createTestDb(): Promise<Db> {
-  // Use file-based temp database to work around libsql :memory: + transaction bug
   const dbId = randomBytes(8).toString('hex')
-  const dbPath = `file:/tmp/test-${dbId}.db`
-  const client = createClient({ url: dbPath })
+  const dbPath = join(tmpdir(), `test-${dbId}.db`)
+  const dbUrl = `file:${dbPath}`
+  tempFiles.push(dbPath)
+  const client = createClient({ url: dbUrl })
 
   const journal = JSON.parse(
     readFileSync(join(MIGRATIONS_DIR, 'meta', '_journal.json'), 'utf8'),
