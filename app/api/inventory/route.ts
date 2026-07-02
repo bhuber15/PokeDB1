@@ -1,13 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { db } from '@/lib/db'
 import { inventoryItems, cards, priceCache } from '@/lib/db/schema'
 import { eq, and, like } from 'drizzle-orm'
 import { generateQRId } from '@/lib/qr'
 import { getSession, requireStaff } from '@/lib/auth'
 import { guarded } from '@/lib/api'
+import { parseBody } from '@/lib/validation'
 
-const CONDITIONS = new Set(['NM', 'LP', 'MP', 'HP', 'DMG'])
 const round2 = (n: number) => Math.round(n * 100) / 100
+
+const createInventoryBody = z.object({
+  cardId: z.number().int(),
+  condition: z.enum(['NM', 'LP', 'MP', 'HP', 'DMG']),
+  quantity: z.number().int(),
+  costPrice: z.number(),
+  sellPriceOverride: z.number().nullable().optional(),
+  location: z.string().nullable().optional(),
+  defectNotes: z.string().nullable().optional(),
+})
 
 export const GET = guarded(async (req: NextRequest) => {
   requireStaff(await getSession())
@@ -47,14 +58,8 @@ export const GET = guarded(async (req: NextRequest) => {
 export const POST = guarded(async (req: NextRequest) => {
   requireStaff(await getSession())
 
-  const { cardId, condition, quantity, costPrice, sellPriceOverride, location, defectNotes } = await req.json()
-
-  if (!cardId || !condition || quantity == null || costPrice == null) {
-    return NextResponse.json({ error: 'cardId, condition, quantity and costPrice are required' }, { status: 400 })
-  }
-  if (!CONDITIONS.has(condition)) {
-    return NextResponse.json({ error: 'Invalid condition' }, { status: 400 })
-  }
+  const { cardId, condition, quantity, costPrice, sellPriceOverride, location, defectNotes } =
+    await parseBody(req, createInventoryBody)
 
   // Merge on intake: one active row per card+condition. If it already exists,
   // add to its quantity and blend the cost basis (weighted average).

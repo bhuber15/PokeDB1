@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { db } from '@/lib/db'
 import { inventoryItems } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { getSession, requireStaff, requireAdmin } from '@/lib/auth'
 import { guarded } from '@/lib/api'
+import { parseBody } from '@/lib/validation'
 
-const PATCHABLE_FIELDS = new Set([
-  'quantity', 'condition', 'costPrice', 'sellPriceOverride',
-  'location', 'defectNotes', 'lowStockThreshold',
-])
+const patchInventoryBody = z.object({
+  quantity: z.number().int().optional(),
+  condition: z.enum(['NM', 'LP', 'MP', 'HP', 'DMG']).optional(),
+  costPrice: z.number().optional(),
+  sellPriceOverride: z.number().nullable().optional(),
+  location: z.string().nullable().optional(),
+  defectNotes: z.string().nullable().optional(),
+  lowStockThreshold: z.number().int().nullable().optional(),
+})
 
 export const PATCH = guarded(async (
   req: NextRequest,
@@ -17,9 +24,9 @@ export const PATCH = guarded(async (
   requireStaff(await getSession())
 
   const { id } = await params
-  const body = await req.json()
+  const body = await parseBody(req, patchInventoryBody)
   const updates = Object.fromEntries(
-    Object.entries(body).filter(([k]) => PATCHABLE_FIELDS.has(k))
+    Object.entries(body).filter(([, v]) => v !== undefined)
   )
 
   if (Object.keys(updates).length === 0) {

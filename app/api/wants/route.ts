@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { db } from '@/lib/db'
 import { wantList, cards, customers, inventoryItems } from '@/lib/db/schema'
 import { eq, isNull, and, inArray, desc } from 'drizzle-orm'
 import { getSession, requireStaff } from '@/lib/auth'
 import { guarded } from '@/lib/api'
+import { parseBody } from '@/lib/validation'
+
+const createWantBody = z.object({
+  customerId: z.number().int(),
+  cardId: z.number().int().nullable().optional(),
+  freeText: z.string().nullable().optional(),
+}).refine(b => b.cardId != null || b.freeText?.trim(), 'Either cardId or freeText is required')
 
 export const GET = guarded(async () => {
   requireStaff(await getSession())
@@ -51,15 +59,7 @@ export const GET = guarded(async () => {
 export const POST = guarded(async (req: NextRequest) => {
   requireStaff(await getSession())
 
-  const body = await req.json()
-  const { customerId, cardId, freeText } = body
-
-  if (!customerId || typeof customerId !== 'number') {
-    return NextResponse.json({ error: 'customerId is required' }, { status: 400 })
-  }
-  if (!cardId && !freeText?.trim()) {
-    return NextResponse.json({ error: 'Either cardId or freeText is required' }, { status: 400 })
-  }
+  const { customerId, cardId, freeText } = await parseBody(req, createWantBody)
 
   const [item] = await db.insert(wantList).values({
     customerId,
