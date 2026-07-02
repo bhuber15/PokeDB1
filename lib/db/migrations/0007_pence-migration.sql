@@ -42,4 +42,5 @@ UPDATE `refunds` SET `amount` = CAST(ROUND(`amount` * 100) AS INTEGER) WHERE `am
 UPDATE `credit_ledger` SET `delta` = CAST(ROUND(`delta` * 100) AS INTEGER) WHERE `delta` IS NOT NULL;--> statement-breakpoint
 UPDATE `buy_transactions` SET `total` = CAST(ROUND(`total` * 100) AS INTEGER) WHERE `total` IS NOT NULL;--> statement-breakpoint
 UPDATE `buy_items` SET `pay_price` = CAST(ROUND(`pay_price` * 100) AS INTEGER) WHERE `pay_price` IS NOT NULL;--> statement-breakpoint
+UPDATE `settings` SET `high_value_threshold` = CAST(ROUND(`high_value_threshold` * 100) AS INTEGER) WHERE `high_value_threshold` IS NOT NULL;--> statement-breakpoint
 UPDATE `settings` SET `vat_scheme` = 'none' WHERE `vat_scheme` IS NULL;
