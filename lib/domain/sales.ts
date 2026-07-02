@@ -15,7 +15,6 @@ export interface CreateSaleInput {
 }
 
 const PAYMENT_METHODS = new Set(['cash', 'card', 'store_credit', 'other'])
-const round2 = (n: number) => Math.round(n * 100) / 100
 
 export async function createSale(
   input: CreateSaleInput,
@@ -58,12 +57,13 @@ export async function createSale(
     return { ...item, unitPrice, costAtSale: row.item.costPrice }
   })
 
-  const subtotal = round2(lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0))
-  const discount = round2(Math.min(Math.max(0, input.discount ?? 0), subtotal))
-  const vatAmount = 0 // shop not VAT-registered; becomes a setting in Package B
-  const total = round2(subtotal - discount + vatAmount)
+  const subtotal = lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
+  const discount = Math.min(Math.max(0, input.discount ?? 0), subtotal)
+  const afterDiscount = subtotal - discount
+  const vatAmount = settings.vatScheme === 'standard' ? Math.round(afterDiscount * 0.2) : 0
+  const total = afterDiscount + vatAmount
 
-  if (total !== round2(input.expectedTotal)) {
+  if (total !== input.expectedTotal) {
     throw new DomainError('PRICE_CHANGED', `Prices changed: server total is ${total}`, { total, expectedTotal: input.expectedTotal })
   }
 
@@ -92,8 +92,8 @@ export async function createSale(
       const [{ balance }] = await tx.select({ balance: sql<number>`COALESCE(SUM(delta), 0)` })
         .from(creditLedger)
         .where(eq(creditLedger.customerId, input.customerId!))
-      if (round2(balance) < total) {
-        throw new DomainError('INSUFFICIENT_CREDIT', 'Insufficient store credit', { balance: round2(balance), total })
+      if (balance < total) {
+        throw new DomainError('INSUFFICIENT_CREDIT', 'Insufficient store credit', { balance, total })
       }
     }
 
@@ -102,7 +102,7 @@ export async function createSale(
       subtotal,
       discountAmount: discount,
       vatAmount,
-      vatScheme: 'none',
+      vatScheme: settings.vatScheme,
       total,
       paymentMethod: input.paymentMethod,
     }).returning()

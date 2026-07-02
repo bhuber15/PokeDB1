@@ -12,7 +12,6 @@ export interface CreateBuyInput {
 }
 
 const CONDITIONS = new Set(['NM', 'LP', 'MP', 'HP', 'DMG'])
-const round2 = (n: number) => Math.round(n * 100) / 100
 
 export async function createBuy(
   input: CreateBuyInput,
@@ -29,7 +28,7 @@ export async function createBuy(
     if (!(it.payPrice >= 0)) throw new DomainError('INVALID_INPUT', 'Invalid pay price')
     if (!Number.isInteger(it.cardId) || it.cardId < 1) throw new DomainError('INVALID_INPUT', 'Invalid cardId')
   }
-  const total = round2(input.items.reduce((s, i) => s + round2(i.payPrice) * i.quantity, 0))
+  const total = input.items.reduce((s, i) => s + i.payPrice * i.quantity, 0)
 
   if (input.method === 'store_credit') {
     const [customer] = await dbc.select().from(customers).where(eq(customers.id, input.customerId!)).limit(1)
@@ -56,7 +55,8 @@ export async function createBuy(
       let inventoryItemId: number
       if (existing) {
         const newQty = existing.quantity + it.quantity
-        const newCost = round2((existing.costPrice * existing.quantity + round2(it.payPrice) * it.quantity) / newQty)
+        // Division can produce a fraction of a pence even with integer inputs — round to nearest pence.
+        const newCost = Math.round((existing.costPrice * existing.quantity + it.payPrice * it.quantity) / newQty)
         await tx.update(inventoryItems)
           .set({ quantity: newQty, costPrice: newCost })
           .where(eq(inventoryItems.id, existing.id))
@@ -66,7 +66,7 @@ export async function createBuy(
           cardId: it.cardId,
           condition: it.condition,
           quantity: it.quantity,
-          costPrice: round2(it.payPrice),
+          costPrice: it.payPrice,
           qrCode: generateQRId(),
         }).returning()
         inventoryItemId = inv.id
@@ -78,7 +78,7 @@ export async function createBuy(
         inventoryItemId,
         condition: it.condition,
         quantity: it.quantity,
-        payPrice: round2(it.payPrice),
+        payPrice: it.payPrice,
       })
     }
 

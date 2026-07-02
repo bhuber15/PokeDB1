@@ -20,17 +20,17 @@ const domainCode = (code: string) => (e: unknown) =>
 beforeEach(async () => {
   dbc = await createTestDb()
   await seedBase(dbc)
-  await dbc.insert(schema.priceCache).values({ cardId: 1, cardmarketTrend: 10 }) // sell £8.50
+  await dbc.insert(schema.priceCache).values({ cardId: 1, cardmarketTrend: 1000 }) // sell 850p
   await dbc.insert(schema.inventoryItems).values({
-    id: 1, cardId: 1, condition: 'NM', quantity: 5, costPrice: 3, qrCode: 'qr-1',
+    id: 1, cardId: 1, condition: 'NM', quantity: 5, costPrice: 300, qrCode: 'qr-1',
   })
-  // A sale of 3 units with a £5.50 discount: subtotal 25.50, total 20. Ratio 20/25.50.
+  // A sale of 3 units with a 550p discount: subtotal 2550, total 2000. Ratio 2000/2550.
   const sale = await createSale({
     staffId: 1,
     items: [{ inventoryItemId: 1, quantity: 3 }],
     paymentMethod: 'cash',
-    discount: 5.5,
-    expectedTotal: 20,
+    discount: 550,
+    expectedTotal: 2000,
   }, dbc)
   saleId = sale.saleId
   const items = await dbc.select().from(schema.saleItems).where(eq(schema.saleItems.saleId, saleId))
@@ -46,8 +46,8 @@ test('partial refund restocks and reverses the discount proportionally', async (
   const { amount } = await createRefund({
     staffId: 1, saleId, method: 'cash', items: [{ saleItemId, quantity: 1 }],
   }, dbc)
-  // net 8.50 × (20 / 25.50) = 6.666… → 6.67
-  assert.equal(amount, 6.67)
+  // net 850 × (2000 / 2550) = 666.67… → 667
+  assert.equal(amount, 667)
   assert.equal(await stockOf(1), 3) // 5 − 3 sold + 1 back
 })
 
@@ -59,7 +59,7 @@ test('cannot refund more than remains, across successive refunds', async () => {
   )
   // the one remaining unit still refundable
   const { amount } = await createRefund({ staffId: 1, saleId, method: 'cash', items: [{ saleItemId, quantity: 1 }] }, dbc)
-  assert.equal(amount, 6.67)
+  assert.equal(amount, 667)
 })
 
 test('two lines referencing the same sale item are counted together', async () => {
@@ -79,25 +79,25 @@ test('store credit refund writes a positive ledger row', async () => {
     staffId: 1, saleId, method: 'store_credit', customerId: 1,
     items: [{ saleItemId, quantity: 3 }],
   }, dbc)
-  assert.equal(amount, 20) // full refund = full charged total
+  assert.equal(amount, 2000) // full refund = full charged total
   const ledger = await dbc.select().from(schema.creditLedger).where(eq(schema.creditLedger.customerId, 1))
   assert.equal(ledger.length, 1)
-  assert.equal(ledger[0].delta, 20)
+  assert.equal(ledger[0].delta, 2000)
   assert.equal(ledger[0].reason, 'refund')
 })
 
 test('cumulative refunds never exceed the amount charged', async () => {
-  // Sale: 3 units × £8.50 = subtotal £25.50, total £20.00 (£5.50 discount)
-  // Ratio = 20/25.50 ≈ 0.7843. Per-unit uncapped = round2(8.50 × 0.7843) = 6.67.
-  // Without a residual cap, 3 × 6.67 = 20.01 — 1p over the charged amount.
-  // With the cap the third refund is trimmed to 6.66 so the running total stays at 20.00.
+  // Sale: 3 units × 850p = subtotal 2550p, total 2000p (550p discount)
+  // Ratio = 2000/2550 ≈ 0.7843. Per-unit uncapped = round(850 × 0.7843) = 667.
+  // Without a residual cap, 3 × 667 = 2001 — 1p over the charged amount.
+  // With the cap the third refund is trimmed to 666 so the running total stays at 2000.
   const r1 = await createRefund({ staffId: 1, saleId, method: 'cash', items: [{ saleItemId, quantity: 1 }] }, dbc)
-  assert.equal(r1.amount, 6.67)
+  assert.equal(r1.amount, 667)
   const r2 = await createRefund({ staffId: 1, saleId, method: 'cash', items: [{ saleItemId, quantity: 1 }] }, dbc)
-  assert.equal(r2.amount, 6.67)
+  assert.equal(r2.amount, 667)
   const r3 = await createRefund({ staffId: 1, saleId, method: 'cash', items: [{ saleItemId, quantity: 1 }] }, dbc)
-  // residual cap: 20.00 − (6.67 + 6.67) = 6.66, not the uncapped 6.67
-  assert.equal(r3.amount, 6.66)
+  // residual cap: 2000 − (667 + 667) = 666, not the uncapped 667
+  assert.equal(r3.amount, 666)
 })
 
 test('validation and not-found errors', async () => {
