@@ -10,8 +10,8 @@ import { parseBody } from '@/lib/validation'
 const patchInventoryBody = z.object({
   quantity: z.number().int().optional(),
   condition: z.enum(['NM', 'LP', 'MP', 'HP', 'DMG']).optional(),
-  costPrice: z.number().optional(),
-  sellPriceOverride: z.number().nullable().optional(),
+  costPrice: z.number().int().nonnegative().optional(), // pence
+  sellPriceOverride: z.number().int().nonnegative().nullable().optional(), // pence
   location: z.string().nullable().optional(),
   defectNotes: z.string().nullable().optional(),
   lowStockThreshold: z.number().int().nullable().optional(),

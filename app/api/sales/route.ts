@@ -15,9 +15,9 @@ const createSaleBody = z.object({
     quantity: z.number().int(),
   })).default([]),
   paymentMethod: z.enum(['cash', 'card', 'store_credit', 'other']),
-  discountAmount: z.number().optional(),
+  discountAmount: z.number().int().nonnegative().optional(), // pence
   customerId: z.number().int().optional(),
-  expectedTotal: z.number(),
+  expectedTotal: z.number().int(), // pence
 })
 
 export const POST = guarded(async (req: NextRequest) => {

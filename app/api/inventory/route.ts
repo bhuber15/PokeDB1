@@ -12,8 +12,8 @@ const createInventoryBody = z.object({
   cardId: z.number().int(),
   condition: z.enum(['NM', 'LP', 'MP', 'HP', 'DMG']),
   quantity: z.number().int(),
-  costPrice: z.number(),
-  sellPriceOverride: z.number().nullable().optional(),
+  costPrice: z.number().int().nonnegative(), // pence
+  sellPriceOverride: z.number().int().nonnegative().nullable().optional(), // pence
   location: z.string().nullable().optional(),
   defectNotes: z.string().nullable().optional(),
 })

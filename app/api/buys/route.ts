@@ -13,7 +13,7 @@ const createBuyBody = z.object({
     cardId: z.number().int(),
     condition: z.string(),
     quantity: z.number().int(),
-    payPrice: z.number(),
+    payPrice: z.number().int().nonnegative(), // pence
   })).default([]),
   method: z.enum(['cash', 'store_credit']),
   customerId: z.number().int().optional(),

@@ -9,7 +9,7 @@ import { parseBody } from '@/lib/validation'
 import { getCustomerBalance } from '@/lib/credit'
 
 const creditAdjustmentBody = z.object({
-  delta: z.coerce.number().refine(n => Number.isFinite(n) && n !== 0, 'Invalid delta'),
+  delta: z.number().int().refine(n => n !== 0, 'Invalid delta'), // pence
 })
 
 export const POST = guarded(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
@@ -19,7 +19,7 @@ export const POST = guarded(async (req: NextRequest, { params }: { params: Promi
   const [customer] = await db.select().from(customers).where(eq(customers.id, customerId)).limit(1)
   if (!customer) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   await db.insert(creditLedger).values({
-    customerId, delta: Math.round(n), reason: 'adjustment', // integer pence
+    customerId, delta: n, reason: 'adjustment',
     staffId: session.staffId ?? null,
   })
   return NextResponse.json({ balance: await getCustomerBalance(customerId) })
