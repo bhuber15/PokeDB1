@@ -1,5 +1,5 @@
 // lib/db/schema.ts
-import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, real, unique } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
 
 export const staff = sqliteTable('staff', {
@@ -18,7 +18,7 @@ export const cards = sqliteTable('cards', {
   setNumber: text('set_number').notNull(),
   variant: text('variant'),
   language: text('language').notNull().default('EN'),
-  externalId: text('external_id'), // Pokemon TCG API card id e.g. "xy7-54"
+  externalId: text('external_id').unique(), // Pokemon TCG API card id e.g. "xy7-54"
   tcgplayerId: text('tcgplayer_id'),
   imageUrl: text('image_url'),
   imageUrlLarge: text('image_url_large'),
@@ -38,6 +38,16 @@ export const inventoryItems = sqliteTable('inventory_items', {
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
+
+// Daily price snapshots (pence). Only recorded for in-stock or high-value
+// cards; pruned after 90 days by the sync cron.
+export const priceHistory = sqliteTable('price_history', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  cardId: integer('card_id').notNull().references(() => cards.id),
+  cardmarketTrend: integer('cardmarket_trend'),
+  tcgplayerMarket: integer('tcgplayer_market'),
+  recordedOn: text('recorded_on').notNull(), // YYYY-MM-DD
+}, t => [unique().on(t.cardId, t.recordedOn)])
 
 export const priceCache = sqliteTable('price_cache', {
   id: integer('id').primaryKey({ autoIncrement: true }),

@@ -57,6 +57,13 @@
       "when": 1783004541726,
       "tag": "0007_pence-migration",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1783181690593,
+      "tag": "0008_catalogue-price-history",
+      "breakpoints": true
     }
   ]
 }
