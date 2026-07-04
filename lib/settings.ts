@@ -1,6 +1,7 @@
 import { db, type Db } from '@/lib/db'
 import { settings, type Settings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
+import { parsePounds } from '@/lib/pricing'
 
 export interface AppSettings {
   shopName: string
@@ -21,7 +22,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   usdToGbp: parseFloat(process.env.PRICE_USD_TO_GBP ?? process.env.NEXT_PUBLIC_USD_TO_GBP ?? '0.79') || 0.79,
   eurToGbp: parseFloat(process.env.PRICE_EUR_TO_GBP ?? process.env.NEXT_PUBLIC_EUR_TO_GBP ?? '0.86') || 0.86,
   marginMultiplier: parseFloat(process.env.MARGIN_MULTIPLIER ?? '0.85') || 0.85,
-  highValueThreshold: Math.round((parseFloat(process.env.HIGH_VALUE_THRESHOLD ?? '50') || 50) * 100),
+  highValueThreshold: parsePounds(process.env.HIGH_VALUE_THRESHOLD ?? '50') || 5000, // env is pounds
+
   buyCashPct: 0.5,
   buyCreditPct: 0.65,
   primaryPriceSource: 'cardmarket',

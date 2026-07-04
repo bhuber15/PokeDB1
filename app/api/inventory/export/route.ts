@@ -18,7 +18,10 @@ export const GET = guarded(async () => {
     ['inventory_id', 'external_id', 'name', 'set_name', 'set_number', 'condition', 'quantity', 'cost_price', 'sell_price_override', 'location', 'defect_notes'],
     rows.map(({ item, card }) => [
       item.id, card.externalId ?? '', card.name, card.setName, card.setNumber,
-      item.condition, item.quantity, item.costPrice, item.sellPriceOverride ?? '',
+      // CSV money columns are pounds (human-facing, opened in Excel) — bare
+      // numbers, not formatGBP, so the column stays numeric
+      item.condition, item.quantity, (item.costPrice / 100).toFixed(2),
+      item.sellPriceOverride != null ? (item.sellPriceOverride / 100).toFixed(2) : '',
       item.location ?? '', item.defectNotes ?? '',
     ]),
   )

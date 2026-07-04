@@ -62,18 +62,17 @@ export const GET = guarded(async (req: NextRequest) => {
     .orderBy(sql`SUM(${saleItems.quantity}) DESC`)
     .limit(10)
 
-  const round2 = (n: number) => Math.round(n * 100) / 100
-
+  // All money values are SUMs of integer pence — already exact, no rounding
   return NextResponse.json({
     range: { from, to },
-    revenue: round2(totals.revenue),
-    subtotal: round2(totals.subtotal),
-    discountTotal: round2(totals.discountTotal),
-    vatTotal: round2(totals.vatTotal),
-    grossMargin: round2(marginRow.revenue - marginRow.cost),
+    revenue: totals.revenue,
+    subtotal: totals.subtotal,
+    discountTotal: totals.discountTotal,
+    vatTotal: totals.vatTotal,
+    grossMargin: marginRow.revenue - marginRow.cost,
     saleCount: totals.saleCount,
-    byPaymentMethod: byPaymentMethod.map(r => ({ ...r, total: round2(r.total) })),
+    byPaymentMethod,
     topCards: topCardsRaw
-      .map(r => ({ cardId: r.cardId!, name: r.name ?? 'Unknown', quantitySold: r.quantitySold, revenue: round2(r.revenue) })),
+      .map(r => ({ cardId: r.cardId!, name: r.name ?? 'Unknown', quantitySold: r.quantitySold, revenue: r.revenue })),
   })
 })

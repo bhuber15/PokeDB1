@@ -33,6 +33,12 @@ export const PATCH = guarded(async (req: NextRequest) => {
     }
     patch.primaryPriceSource = body.primaryPriceSource
   }
+  if (body.vatScheme != null) {
+    if (body.vatScheme !== 'none' && body.vatScheme !== 'standard') {
+      return NextResponse.json({ error: 'Invalid vatScheme' }, { status: 400 })
+    }
+    patch.vatScheme = body.vatScheme
+  }
   for (const key of ['buyCashPct', 'buyCreditPct'] as const) {
     if (body[key] != null) {
       const n = Number(body[key])

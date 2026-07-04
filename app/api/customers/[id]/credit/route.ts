@@ -19,7 +19,7 @@ export const POST = guarded(async (req: NextRequest, { params }: { params: Promi
   const [customer] = await db.select().from(customers).where(eq(customers.id, customerId)).limit(1)
   if (!customer) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   await db.insert(creditLedger).values({
-    customerId, delta: Math.round(n * 100) / 100, reason: 'adjustment',
+    customerId, delta: Math.round(n), reason: 'adjustment', // integer pence
     staffId: session.staffId ?? null,
   })
   return NextResponse.json({ balance: await getCustomerBalance(customerId) })

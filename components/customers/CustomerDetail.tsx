@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { formatGBP } from '@/lib/pricing'
+import { formatGBP, parsePounds } from '@/lib/pricing'
 import type { Customer, CreditLedger, Card } from '@/lib/db/schema'
 
 interface WantWithCard {
@@ -100,14 +100,14 @@ export function CustomerDetail({ id }: Props) {
   }
 
   async function adjustCredit() {
-    const n = parseFloat(creditDelta)
-    if (!Number.isFinite(n) || n === 0) { toast.error('Enter a non-zero amount'); return }
+    const deltaPence = parsePounds(creditDelta) // input is pounds
+    if (deltaPence === 0) { toast.error('Enter a non-zero amount'); return }
     setAdjusting(true)
     try {
       const res = await fetch(`/api/customers/${id}/credit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ delta: n }),
+        body: JSON.stringify({ delta: deltaPence }),
       })
       if (res.status === 403) { toast.error('Admin access required'); return }
       if (!res.ok) {

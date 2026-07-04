@@ -8,8 +8,6 @@ import { getSession, requireStaff } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
 
-const round2 = (n: number) => Math.round(n * 100) / 100
-
 const createInventoryBody = z.object({
   cardId: z.number().int(),
   condition: z.enum(['NM', 'LP', 'MP', 'HP', 'DMG']),
@@ -72,7 +70,7 @@ export const POST = guarded(async (req: NextRequest) => {
   if (existing) {
     const newQty = existing.quantity + quantity
     const newCost = newQty > 0
-      ? round2((existing.costPrice * existing.quantity + costPrice * quantity) / newQty)
+      ? Math.round((existing.costPrice * existing.quantity + costPrice * quantity) / newQty)
       : existing.costPrice
     const [updated] = await db.update(inventoryItems)
       .set({ quantity: newQty, costPrice: newCost })
@@ -85,7 +83,7 @@ export const POST = guarded(async (req: NextRequest) => {
     cardId,
     condition,
     quantity,
-    costPrice: round2(costPrice),
+    costPrice,
     sellPriceOverride: sellPriceOverride ?? null,
     qrCode: generateQRId(),
     location: location ?? null,

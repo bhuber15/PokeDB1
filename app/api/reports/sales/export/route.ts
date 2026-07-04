@@ -13,9 +13,11 @@ export const GET = guarded(async () => {
     .orderBy(desc(sales.createdAt))
   const csv = toCSV(
     ['sale_id', 'datetime', 'staff', 'payment_method', 'subtotal', 'discount', 'vat', 'total'],
+    // CSV money columns are pounds (human-facing, opened in Excel)
     rows.map(({ sale, staffName }) => [
       sale.id, sale.createdAt, staffName ?? '', sale.paymentMethod,
-      sale.subtotal, sale.discountAmount, sale.vatAmount, sale.total,
+      (sale.subtotal / 100).toFixed(2), (sale.discountAmount / 100).toFixed(2),
+      (sale.vatAmount / 100).toFixed(2), (sale.total / 100).toFixed(2),
     ]),
   )
   const date = new Date().toISOString().slice(0, 10)

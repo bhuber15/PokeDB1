@@ -6,9 +6,9 @@ import { getSession, requireAdmin } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseCSV } from '@/lib/csv'
 import { generateQRId } from '@/lib/qr'
+import { parsePounds } from '@/lib/pricing'
 
 const CONDITIONS = new Set(['NM', 'LP', 'MP', 'HP', 'DMG'])
-const round2 = (n: number) => Math.round(n * 100) / 100
 
 export const POST = guarded(async (req: NextRequest) => {
   requireAdmin(await getSession())
@@ -45,7 +45,7 @@ export const POST = guarded(async (req: NextRequest) => {
       if (sellOverrideRaw) {
         const parsed = parseFloat(sellOverrideRaw)
         if (!Number.isFinite(parsed) || parsed < 0) throw new Error('bad sell_price_override')
-        sellPriceOverride = round2(parsed)
+        sellPriceOverride = parsePounds(parsed) // CSV column is pounds
       }
 
       await db.transaction(async (tx) => {
@@ -69,7 +69,7 @@ export const POST = guarded(async (req: NextRequest) => {
         }
 
         await tx.insert(inventoryItems).values({
-          cardId, condition, quantity, costPrice: round2(costPrice),
+          cardId, condition, quantity, costPrice: parsePounds(costPrice), // CSV column is pounds
           sellPriceOverride,
           qrCode: generateQRId(),
           location: col(r, 'location') || null,

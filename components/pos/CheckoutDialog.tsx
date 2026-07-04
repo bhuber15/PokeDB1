@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
-import { formatGBP } from '@/lib/pricing'
+import { formatGBP, parsePounds } from '@/lib/pricing'
 import { CustomerPicker } from '@/components/shared/CustomerPicker'
 import type { CartItem } from './Cart'
 import type { Customer } from '@/lib/db/schema'
@@ -32,7 +32,7 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
   const [customerBalance, setCustomerBalance] = useState<number | null>(null)
 
   const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0)
-  const discountAmount = Math.min(parseFloat(discount) || 0, subtotal)
+  const discountAmount = Math.min(parsePounds(discount), subtotal) // input is pounds, cart is pence
   const total = subtotal - discountAmount
 
   const isStoreCredit = method === 'store_credit'

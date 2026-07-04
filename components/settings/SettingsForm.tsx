@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useSettings } from '@/components/shared/SettingsProvider'
-import { formatGBP } from '@/lib/pricing'
+import { formatGBP, parsePounds, usdToGbp as usdToGbpPence, eurToGbp as eurToGbpPence, calculateSellPrice, calculateBuyPrice } from '@/lib/pricing'
 
 export function SettingsForm() {
   const current = useSettings()
@@ -15,24 +15,25 @@ export function SettingsForm() {
   const [usdToGbp, setUsdToGbp] = useState(String(current.usdToGbp))
   const [eurToGbp, setEurToGbp] = useState(String(current.eurToGbp))
   const [marginMultiplier, setMarginMultiplier] = useState(String(current.marginMultiplier))
-  const [highValueThreshold, setHighValueThreshold] = useState(String(current.highValueThreshold))
+  // Threshold is stored in pence; the input is edited in pounds
+  const [highValueThreshold, setHighValueThreshold] = useState(String(current.highValueThreshold / 100))
   const [buyCashPct, setBuyCashPct] = useState(String(current.buyCashPct))
   const [buyCreditPct, setBuyCreditPct] = useState(String(current.buyCreditPct))
   const [primaryPriceSource, setPrimaryPriceSource] = useState<'cardmarket' | 'tcgplayer'>(current.primaryPriceSource)
+  const [vatScheme, setVatScheme] = useState<'none' | 'standard'>(current.vatScheme)
   const [saving, setSaving] = useState(false)
 
   const rate = parseFloat(usdToGbp) || 0
   const eurRate = parseFloat(eurToGbp) || 0
   const margin = parseFloat(marginMultiplier) || 0
-  // Worked example: a $10 USD card (TCGplayer)
-  const exampleGbp = 10 * rate
-  const exampleSell = exampleGbp * margin
-  // Worked example: a €10 EUR card (Cardmarket)
-  const exampleCmGbp = 10 * eurRate
-  const exampleCmSell = exampleCmGbp * margin
-  // Worked example: a £10 card for buy percentages
-  const cashExample = 10 * (parseFloat(buyCashPct) || 0)
-  const creditExample = 10 * (parseFloat(buyCreditPct) || 0)
+  // Worked examples use the real pricing functions so they match actual behavior (all pence)
+  const exampleGbp = usdToGbpPence(10, rate) // a $10 TCGplayer card
+  const exampleSell = calculateSellPrice(exampleGbp, null, margin)
+  const exampleCmGbp = eurToGbpPence(10, eurRate) // a €10 Cardmarket card
+  const exampleCmSell = calculateSellPrice(exampleCmGbp, null, margin)
+  const TEN_POUNDS = 1000 // pence, for the buylist example
+  const cashExample = calculateBuyPrice(TEN_POUNDS, parseFloat(buyCashPct) || 0)
+  const creditExample = calculateBuyPrice(TEN_POUNDS, parseFloat(buyCreditPct) || 0)
 
   async function save() {
     setSaving(true)
@@ -45,10 +46,11 @@ export function SettingsForm() {
           usdToGbp: parseFloat(usdToGbp),
           eurToGbp: parseFloat(eurToGbp),
           marginMultiplier: parseFloat(marginMultiplier),
-          highValueThreshold: parseFloat(highValueThreshold),
+          highValueThreshold: parsePounds(highValueThreshold), // API speaks pence
           buyCashPct: parseFloat(buyCashPct),
           buyCreditPct: parseFloat(buyCreditPct),
           primaryPriceSource,
+          vatScheme,
         }),
       })
       if (!res.ok) {
@@ -130,6 +132,37 @@ export function SettingsForm() {
           </div>
           <p className="text-xs text-muted-foreground">
             Which market price drives sell-price calculations in POS and Inventory.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>VAT scheme</Label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setVatScheme('none')}
+              className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                vatScheme === 'none'
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'border-border hover:bg-muted'
+              }`}
+            >
+              Not registered
+            </button>
+            <button
+              type="button"
+              onClick={() => setVatScheme('standard')}
+              className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                vatScheme === 'standard'
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'border-border hover:bg-muted'
+              }`}
+            >
+              Standard VAT
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Applied to sales at checkout. Switch to Standard when the shop registers for VAT.
           </p>
         </div>
 
