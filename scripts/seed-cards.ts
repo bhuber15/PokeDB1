@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/libsql'
 import { eq } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import * as schema from '../lib/db/schema'
+import { parsePounds } from '../lib/pricing'
 
 const client = createClient({
   url: process.env.TURSO_DATABASE_URL!,
@@ -201,13 +202,14 @@ async function main() {
       .limit(1)
 
     if (existingPrice.length === 0) {
+      // MOCK_CARDS values are pounds; DB stores pence
       await db.insert(schema.priceCache).values({
         cardId,
-        tcgplayerMarket: card.market,
-        tcgplayerLow: Math.round(card.market * 0.85 * 100) / 100,
-        tcgplayerMid: Math.round(card.market * 0.95 * 100) / 100,
-        tcgplayerHigh: Math.round(card.market * 1.1 * 100) / 100,
-        isHighValue: card.market >= 50,
+        tcgplayerMarket: parsePounds(card.market),
+        tcgplayerLow: parsePounds(card.market * 0.85),
+        tcgplayerMid: parsePounds(card.market * 0.95),
+        tcgplayerHigh: parsePounds(card.market * 1.1),
+        isHighValue: parsePounds(card.market) >= 5000,
       })
     }
 
@@ -219,7 +221,7 @@ async function main() {
         cardId,
         condition,
         quantity: Math.floor(Math.random() * 3) + 1,
-        costPrice: card.cost,
+        costPrice: parsePounds(card.cost),
         sellPriceOverride: null,
         qrCode: randomUUID(),
         location: null,
