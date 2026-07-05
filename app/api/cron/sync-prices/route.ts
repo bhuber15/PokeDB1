@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSettings } from '@/lib/settings'
 import { sweepTcgplayerCatalogue, syncInStockCardmarket, pruneOldHistory } from '@/lib/prices/sync'
 
+// Full catalogue sweep takes minutes — allow the platform maximum
+export const maxDuration = 300
+
 export async function GET(req: NextRequest) {
   if (req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
