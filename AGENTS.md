@@ -21,7 +21,7 @@ PokeDB is a point-of-sale and inventory system for a UK Pokémon card shop: sell
 - `npm run lint` — eslint
 - `npm run test:e2e` — Playwright checkout smoke test (seeds a throwaway DB, drives the app in headless Chromium). Runs the server with `NODE_ENV=test` + `.env.test`. Two env gotchas: this Next version lets `.env.local` override real process env (inverted from docs), and the env parser expands `$` in values — escape as `\$` (see `.env.test`).
 - `npx drizzle-kit generate` — generate a migration after editing `lib/db/schema.ts`
-- Seeds/maintenance: `scripts/seed-cards.ts`, `seed-staff.ts`, `sync-cardmarket.ts`, `dedupe-inventory.ts` (run with `npx tsx`)
+- Scripts (run with `npx tsx`): `scripts/import-catalogue.ts` (full card catalogue import — same idempotent sweep as the nightly cron), `seed-staff.ts`, `sync-cardmarket.ts`, `dedupe-inventory.ts`, `reset-shop-data.ts` (wipe transactional data + catalogue, preview by default)
 
 ## Architecture
 
