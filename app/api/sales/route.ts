@@ -18,6 +18,7 @@ const createSaleBody = z.object({
   discountAmount: z.number().int().nonnegative().optional(), // pence
   customerId: z.number().int().optional(),
   expectedTotal: z.number().int(), // pence
+  clientUuid: z.string().uuid().optional(),
 })
 
 export const POST = guarded(async (req: NextRequest) => {
@@ -30,6 +31,7 @@ export const POST = guarded(async (req: NextRequest) => {
     discount: body.discountAmount ?? 0,
     customerId: body.customerId,
     expectedTotal: body.expectedTotal,
+    clientUuid: body.clientUuid,
   })
   return NextResponse.json(result)
 })

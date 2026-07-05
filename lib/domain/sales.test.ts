@@ -153,3 +153,33 @@ test('input validation', async () => {
     domainCode('NOT_FOUND'),
   )
 })
+
+test('idempotent replay: same clientUuid returns the original sale, stock decremented once', async () => {
+  const withUuid = { ...base, clientUuid: '11111111-1111-4111-8111-111111111111' }
+  const first = await createSale(withUuid, dbc)
+  assert.equal(await stockOf(1), 3)
+
+  const replay = await createSale(withUuid, dbc)
+  assert.deepEqual(replay, first)
+  assert.equal(await stockOf(1), 3) // no second decrement
+
+  const allSales = await dbc.select().from(schema.sales)
+  assert.equal(allSales.length, 1)
+})
+
+test('different clientUuid creates a separate sale', async () => {
+  await createSale({ ...base, clientUuid: '11111111-1111-4111-8111-111111111111' }, dbc)
+  await createSale({ ...base, clientUuid: '22222222-2222-4222-8222-222222222222' }, dbc)
+  assert.equal(await stockOf(1), 1)
+  const allSales = await dbc.select().from(schema.sales)
+  assert.equal(allSales.length, 2)
+})
+
+test('replay works even after stock has run out', async () => {
+  const withUuid = { ...base, items: [{ inventoryItemId: 1, quantity: 5 }], expectedTotal: 4250, clientUuid: '33333333-3333-4333-8333-333333333333' }
+  const first = await createSale(withUuid, dbc)
+  assert.equal(await stockOf(1), 0)
+  // A naive re-execution would throw INSUFFICIENT_STOCK; replay must not
+  const replay = await createSale(withUuid, dbc)
+  assert.deepEqual(replay, first)
+})
