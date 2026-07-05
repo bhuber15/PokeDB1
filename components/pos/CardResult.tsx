@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import Image from 'next/image'
 import { MinusIcon, PlusIcon, RefreshCwIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -64,7 +65,7 @@ export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefr
               aria-label={`Zoom ${card.name}`}
               className="shrink-0 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <img
+              <Image
                 src={card.imageUrlLarge ?? card.imageUrl!}
                 alt=""
                 width={96}

@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CardZoomModal } from '@/components/shared/CardZoomModal'
@@ -52,9 +53,11 @@ export function BuyCard({ card, prices, onAdd }: BuyCardProps) {
       <div className="border rounded-xl p-4 space-y-3 bg-card">
         <div className="flex gap-4">
           {(card.imageUrlLarge ?? card.imageUrl) && (
-            <img
+            <Image
               src={card.imageUrlLarge ?? card.imageUrl!}
               alt={card.name}
+              width={96}
+              height={128}
               className="w-24 h-32 object-contain flex-shrink-0 cursor-zoom-in hover:scale-105 transition-transform"
               onClick={() => setZoomed(true)}
               title="Click to zoom"

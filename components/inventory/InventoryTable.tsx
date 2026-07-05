@@ -1,5 +1,6 @@
 'use client'
 import { Fragment, useState } from 'react'
+import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { calculateSellPrice, formatGBP, pickMarketPrice } from '@/lib/pricing'
@@ -74,7 +75,8 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
   function toggleExpand(key: string) {
     setExpanded(prev => {
       const n = new Set(prev)
-      n.has(key) ? n.delete(key) : n.add(key)
+      if (n.has(key)) n.delete(key)
+      else n.add(key)
       return n
     })
   }
@@ -146,7 +148,7 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
                         {card?.imageUrl ? (
                           <button type="button" onClick={zoom} aria-label={`Zoom ${card.name}`}
                             className="shrink-0 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                            <img src={card.imageUrl} alt="" width={32} height={44}
+                            <Image src={card.imageUrl} alt="" width={32} height={44}
                               className="w-8 h-11 object-contain cursor-zoom-in hover:scale-110 transition-transform" />
                           </button>
                         ) : (

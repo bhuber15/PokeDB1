@@ -203,7 +203,10 @@ export async function syncInStockCardmarket(
     const results = await Promise.allSettled(
       batch.map(c => syncCardmarketForCard(c.id, c.externalId, c.variant, settings.eurToGbp, dbc)),
     )
-    for (const r of results) r.status === 'fulfilled' ? synced++ : failed++
+    for (const r of results) {
+      if (r.status === 'fulfilled') synced++
+      else failed++
+    }
   }
   return { synced, failed }
 }

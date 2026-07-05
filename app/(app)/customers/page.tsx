@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import type { Customer } from '@/lib/db/schema'
 
@@ -125,10 +126,13 @@ export default function CustomersPage() {
       {/* Customer list */}
       <div className="rounded-xl border border-border overflow-hidden">
         {loading ? (
-          <div className="p-8 text-center text-muted-foreground text-sm">Loading…</div>
+          <div className="p-3 space-y-2" role="status" aria-label="Loading customers">
+            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+          </div>
         ) : customers.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground text-sm">
-            {query ? `No customers found for "${query}"` : 'No customers yet'}
+          <div className="p-8 text-center text-muted-foreground text-sm space-y-1">
+            <p className="font-medium text-foreground">{query ? `No customers found for "${query}"` : 'No customers yet'}</p>
+            {!query && <p>Add one with “+ New Customer”, or they’re created automatically when store credit is used at the till.</p>}
           </div>
         ) : (
           <table className="w-full text-sm">

@@ -29,7 +29,7 @@ export function LoginForm({ shopName }: { shopName: string }) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
+    <main className="min-h-screen flex items-center justify-center bg-background">
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center space-y-3">
           <div className="mx-auto w-16 h-16 rounded-2xl bg-primary flex items-center justify-center text-primary-foreground text-3xl font-bold shadow-lg shadow-primary/30">
@@ -70,6 +70,6 @@ export function LoginForm({ shopName }: { shopName: string }) {
           </form>
         </div>
       </div>
-    </div>
+    </main>
   )
 }

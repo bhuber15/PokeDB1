@@ -58,7 +58,6 @@ export default function POSPage() {
     if (!q) return
     const t = setTimeout(() => handleSearch(q), 0)
     return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, [])
 
   // Replay queued offline sales: on load, when the browser comes back
@@ -190,8 +189,17 @@ export default function POSPage() {
 
   return (
     <div className="grid grid-cols-[1fr_360px] gap-6" style={{ height: 'calc(100vh - 120px)' }}>
+      <h1 className="sr-only">Point of Sale</h1>
       <div className="flex flex-col gap-4 overflow-y-auto">
         <SearchBar onSearch={handleSearch} onQRDetected={handleQRDetected} loading={loading} />
+        {results.length === 0 && !loading && (
+          <div className="flex-1 flex items-center justify-center text-center text-sm text-muted-foreground p-8">
+            <p>
+              Scan a QR label or search the catalogue to begin.<br />
+              <span className="text-xs">Tip: press <kbd className="px-1.5 py-0.5 rounded border border-border bg-muted/40 font-mono text-xs">/</kbd> to jump to search from anywhere.</span>
+            </p>
+          </div>
+        )}
         {results.map(r => (
           <CardResult
             key={r.card.id}

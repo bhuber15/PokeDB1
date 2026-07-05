@@ -6,10 +6,6 @@ import { toast } from 'sonner'
 import { formatGBP } from '@/lib/pricing'
 import type { Customer } from '@/lib/db/schema'
 
-interface CustomerWithBalance extends Customer {
-  balance?: number
-}
-
 interface CustomerPickerProps {
   onSelect: (customer: Customer | null) => void
   selected?: Customer | null

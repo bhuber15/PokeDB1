@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -349,7 +350,7 @@ export function CustomerDetail({ id }: Props) {
               {wantCard ? (
                 <div className="flex items-center gap-2 p-2 border border-border rounded-lg">
                   {wantCard.imageUrl && (
-                    <img src={wantCard.imageUrl} alt={wantCard.name} className="w-8 h-11 object-contain flex-shrink-0" />
+                    <Image src={wantCard.imageUrl} alt={wantCard.name} width={32} height={44} className="w-8 h-11 object-contain flex-shrink-0" />
                   )}
                   <div className="flex-1 text-sm">
                     <div className="font-medium">{wantCard.name}</div>
@@ -379,7 +380,7 @@ export function CustomerDetail({ id }: Props) {
                           className="w-full flex items-center gap-2 p-2 hover:bg-muted/50 text-left transition-colors text-sm"
                           onClick={() => { setWantCard(card); setWantResults([]) }}
                         >
-                          {card.imageUrl && <img src={card.imageUrl} alt={card.name} className="w-7 h-10 object-contain flex-shrink-0" />}
+                          {card.imageUrl && <Image src={card.imageUrl} alt={card.name} width={28} height={40} className="w-7 h-10 object-contain flex-shrink-0" />}
                           <div>
                             <div className="font-medium">{card.name}</div>
                             <div className="text-xs text-muted-foreground">{card.setName} · #{card.setNumber}</div>
