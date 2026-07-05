@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
-import { formatGBP } from '@/lib/pricing'
+import { formatGBP, parsePounds } from '@/lib/pricing'
 import { CustomerPicker } from '@/components/shared/CustomerPicker'
 import type { CartItem } from './Cart'
 import type { Customer } from '@/lib/db/schema'
@@ -21,7 +21,7 @@ interface CheckoutDialogProps {
   open: boolean
   items: CartItem[]
   onClose: () => void
-  onConfirm: (paymentMethod: string, discountAmount: number, customerId?: number) => Promise<void>
+  onConfirm: (paymentMethod: string, discountAmount: number, expectedTotal: number, customerId?: number) => Promise<void>
 }
 
 export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDialogProps) {
@@ -32,7 +32,7 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
   const [customerBalance, setCustomerBalance] = useState<number | null>(null)
 
   const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0)
-  const discountAmount = Math.min(parseFloat(discount) || 0, subtotal)
+  const discountAmount = Math.min(parsePounds(discount), subtotal) // input is pounds, cart is pence
   const total = subtotal - discountAmount
 
   const isStoreCredit = method === 'store_credit'
@@ -55,8 +55,11 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
 
   async function confirm() {
     setLoading(true)
-    await onConfirm(method, discountAmount, isStoreCredit && customer ? customer.id : undefined)
-    setLoading(false)
+    try {
+      await onConfirm(method, discountAmount, total, isStoreCredit && customer ? customer.id : undefined)
+    } finally {
+      setLoading(false)
+    }
     setDiscount('')
     setMethod('cash')
     setCustomer(null)

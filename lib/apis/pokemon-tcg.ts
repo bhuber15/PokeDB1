@@ -60,6 +60,28 @@ export async function searchPokemonCards(query: string, pageSize = 30): Promise<
   return (await res.json()).data as PokemonTCGCard[]
 }
 
+// One page of the full catalogue (ordered by id for stable pagination).
+// ~80 pages of 250 cover the English catalogue; used by the nightly sweep
+// and the one-time import, which are the same idempotent operation.
+export async function fetchCardPage(
+  page: number,
+  pageSize = 250,
+): Promise<{ cards: PokemonTCGCard[]; totalCount: number }> {
+  const params = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+    orderBy: 'id',
+    select: 'id,name,number,set,subtypes,images,tcgplayer',
+  })
+  const res = await fetch(`${BASE_URL}/cards?${params}`, {
+    headers: headers(),
+    cache: 'no-store',
+  })
+  if (!res.ok) throw new Error(`Pokemon TCG API ${res.status}: ${await res.text()}`)
+  const body = await res.json()
+  return { cards: body.data as PokemonTCGCard[], totalCount: body.totalCount as number }
+}
+
 export function extractBestPrice(card: PokemonTCGCard): PriceResult {
   const prices = card.tcgplayer?.prices
   if (!prices) return { market: null, low: null, mid: null, high: null }

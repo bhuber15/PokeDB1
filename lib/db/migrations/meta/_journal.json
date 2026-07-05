@@ -29,6 +29,41 @@
       "when": 1782854884940,
       "tag": "0003_messy_obadiah_stane",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1782936057436,
+      "tag": "0004_strange_human_cannonball",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1782942464279,
+      "tag": "0005_square_tenebrous",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1782986200006,
+      "tag": "0006_cost-at-sale",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1783004541726,
+      "tag": "0007_pence-migration",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1783181690593,
+      "tag": "0008_catalogue-price-history",
+      "breakpoints": true
     }
   ]
 }

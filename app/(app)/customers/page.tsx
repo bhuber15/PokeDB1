@@ -30,12 +30,9 @@ export default function CustomersPage() {
     }
   }, [])
 
-  // Initial load (recent customers)
-  useEffect(() => { fetchCustomers('') }, [fetchCustomers])
-
-  // Debounced search
+  // Initial load of recents (t=0), then debounced search
   useEffect(() => {
-    const t = setTimeout(() => fetchCustomers(query), 300)
+    const t = setTimeout(() => fetchCustomers(query), query ? 300 : 0)
     return () => clearTimeout(t)
   }, [query, fetchCustomers])
 

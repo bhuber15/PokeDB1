@@ -1,16 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { db } from '@/lib/db'
 import { inventoryItems, cards, priceCache } from '@/lib/db/schema'
 import { eq, and, like } from 'drizzle-orm'
 import { generateQRId } from '@/lib/qr'
-import { getSession } from '@/lib/auth'
+import { getSession, requireStaff } from '@/lib/auth'
+import { guarded } from '@/lib/api'
+import { parseBody } from '@/lib/validation'
 
-const CONDITIONS = new Set(['NM', 'LP', 'MP', 'HP', 'DMG'])
-const round2 = (n: number) => Math.round(n * 100) / 100
+const createInventoryBody = z.object({
+  cardId: z.number().int(),
+  condition: z.enum(['NM', 'LP', 'MP', 'HP', 'DMG']),
+  quantity: z.number().int(),
+  costPrice: z.number().int().nonnegative(), // pence
+  sellPriceOverride: z.number().int().nonnegative().nullable().optional(), // pence
+  location: z.string().nullable().optional(),
+  defectNotes: z.string().nullable().optional(),
+})
 
-export async function GET(req: NextRequest) {
-  const session = await getSession()
-  if (!session.staffId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export const GET = guarded(async (req: NextRequest) => {
+  requireStaff(await getSession())
 
   const cardId = req.nextUrl.searchParams.get('cardId')
   const qrCode = req.nextUrl.searchParams.get('qrCode')
@@ -42,20 +51,13 @@ export async function GET(req: NextRequest) {
     )))
   }
   return NextResponse.json(await base.where(eq(inventoryItems.isActive, true)))
-}
+})
 
-export async function POST(req: NextRequest) {
-  const session = await getSession()
-  if (!session.isOwnerLoggedIn) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export const POST = guarded(async (req: NextRequest) => {
+  requireStaff(await getSession())
 
-  const { cardId, condition, quantity, costPrice, sellPriceOverride, location, defectNotes } = await req.json()
-
-  if (!cardId || !condition || quantity == null || costPrice == null) {
-    return NextResponse.json({ error: 'cardId, condition, quantity and costPrice are required' }, { status: 400 })
-  }
-  if (!CONDITIONS.has(condition)) {
-    return NextResponse.json({ error: 'Invalid condition' }, { status: 400 })
-  }
+  const { cardId, condition, quantity, costPrice, sellPriceOverride, location, defectNotes } =
+    await parseBody(req, createInventoryBody)
 
   // Merge on intake: one active row per card+condition. If it already exists,
   // add to its quantity and blend the cost basis (weighted average).
@@ -68,7 +70,7 @@ export async function POST(req: NextRequest) {
   if (existing) {
     const newQty = existing.quantity + quantity
     const newCost = newQty > 0
-      ? round2((existing.costPrice * existing.quantity + costPrice * quantity) / newQty)
+      ? Math.round((existing.costPrice * existing.quantity + costPrice * quantity) / newQty)
       : existing.costPrice
     const [updated] = await db.update(inventoryItems)
       .set({ quantity: newQty, costPrice: newCost })
@@ -81,7 +83,7 @@ export async function POST(req: NextRequest) {
     cardId,
     condition,
     quantity,
-    costPrice: round2(costPrice),
+    costPrice,
     sellPriceOverride: sellPriceOverride ?? null,
     qrCode: generateQRId(),
     location: location ?? null,
@@ -89,4 +91,4 @@ export async function POST(req: NextRequest) {
   }).returning()
 
   return NextResponse.json(item, { status: 201 })
-}
+})

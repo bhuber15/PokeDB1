@@ -1,0 +1,85 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/lib/db'
+import { cards, inventoryItems, priceCache } from '@/lib/db/schema'
+import { eq, and } from 'drizzle-orm'
+import { getSession, requireAdmin } from '@/lib/auth'
+import { guarded } from '@/lib/api'
+import { parseCSV } from '@/lib/csv'
+import { generateQRId } from '@/lib/qr'
+import { parsePounds } from '@/lib/pricing'
+
+const CONDITIONS = new Set(['NM', 'LP', 'MP', 'HP', 'DMG'])
+
+export const POST = guarded(async (req: NextRequest) => {
+  requireAdmin(await getSession())
+
+  const text = await req.text()
+  const rows = parseCSV(text)
+  if (rows.length < 2) return NextResponse.json({ error: 'Empty or header-only CSV' }, { status: 400 })
+
+  const header = rows[0].map(h => h.trim().toLowerCase())
+  const idx = (name: string) => header.indexOf(name)
+  const col = (r: string[], name: string) => { const i = idx(name); return i >= 0 ? r[i]?.trim() : '' }
+
+  const errors: { row: number; message: string }[] = []
+  let created = 0
+
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i]
+    const rowNo = i + 1
+    try {
+      const condition = col(r, 'condition')?.toUpperCase()
+      const quantity = parseInt(col(r, 'quantity'))
+      const costPrice = parseFloat(col(r, 'cost_price'))
+      const externalId = col(r, 'external_id') || null
+      const name = col(r, 'name') || null
+      const setName = col(r, 'set_name') || null
+      const setNumber = col(r, 'set_number') || null
+
+      if (!CONDITIONS.has(condition)) throw new Error(`bad condition "${condition}"`)
+      if (!Number.isInteger(quantity) || quantity < 1) throw new Error('bad quantity')
+      if (!(costPrice >= 0)) throw new Error('bad cost_price')
+
+      const sellOverrideRaw = col(r, 'sell_price_override')
+      let sellPriceOverride: number | null = null
+      if (sellOverrideRaw) {
+        const parsed = parseFloat(sellOverrideRaw)
+        if (!Number.isFinite(parsed) || parsed < 0) throw new Error('bad sell_price_override')
+        sellPriceOverride = parsePounds(parsed) // CSV column is pounds
+      }
+
+      await db.transaction(async (tx) => {
+        let cardId: number | null = null
+        if (externalId) {
+          const [c] = await tx.select().from(cards).where(eq(cards.externalId, externalId)).limit(1)
+          if (c) cardId = c.id
+        }
+        if (!cardId && name && setNumber) {
+          const [c] = await tx.select().from(cards)
+            .where(and(eq(cards.name, name), eq(cards.setNumber, setNumber))).limit(1)
+          if (c) cardId = c.id
+        }
+        if (!cardId) {
+          if (!name || !setNumber) throw new Error('no card match and missing name/set_number to create one')
+          const [c] = await tx.insert(cards).values({
+            name, setName: setName ?? '', setNumber, externalId,
+          }).returning()
+          cardId = c.id
+          await tx.insert(priceCache).values({ cardId }).onConflictDoNothing()
+        }
+
+        await tx.insert(inventoryItems).values({
+          cardId, condition, quantity, costPrice: parsePounds(costPrice), // CSV column is pounds
+          sellPriceOverride,
+          qrCode: generateQRId(),
+          location: col(r, 'location') || null,
+          defectNotes: col(r, 'defect_notes') || null,
+        })
+      })
+      created++
+    } catch (e) {
+      errors.push({ row: rowNo, message: e instanceof Error ? e.message : 'error' })
+    }
+  }
+  return NextResponse.json({ created, errors })
+})

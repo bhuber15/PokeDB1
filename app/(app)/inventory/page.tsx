@@ -1,10 +1,11 @@
 'use client'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { buttonVariants } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { InventoryTable, InventoryRow } from '@/components/inventory/InventoryTable'
 import { QRLabel } from '@/components/inventory/QRLabel'
+import { ImportDialog } from '@/components/inventory/ImportDialog'
 import { calculateSellPrice, formatGBP } from '@/lib/pricing'
 
 export default function InventoryPage() {
@@ -12,9 +13,14 @@ export default function InventoryPage() {
   const [qrModal, setQrModal] = useState<{
     dataUrl: string; cardName: string; condition: string; sellPrice: string
   } | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
+
+  function refetch() {
+    fetch('/api/inventory').then(r => r.json()).then(setRows)
+  }
 
   useEffect(() => {
-    fetch('/api/inventory').then(r => r.json()).then(setRows)
+    refetch()
   }, [])
 
   async function handleStockChange(id: number, quantity: number) {
@@ -41,7 +47,12 @@ export default function InventoryPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Inventory</h1>
-        <Link href="/inventory/add" className={buttonVariants()}>+ Add Item</Link>
+        <div className="flex items-center gap-2">
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- API-route file download, not a page navigation */}
+          <a href="/api/inventory/export"><Button variant="outline">Export CSV</Button></a>
+          <Button variant="outline" onClick={() => setImportOpen(true)}>Import CSV</Button>
+          <Link href="/inventory/add" className={buttonVariants()}>+ Add Item</Link>
+        </div>
       </div>
       <InventoryTable rows={rows} onStockChange={handleStockChange} onPrintQR={handlePrintQR} />
       <Dialog open={!!qrModal} onOpenChange={() => setQrModal(null)}>
@@ -50,6 +61,11 @@ export default function InventoryPage() {
           {qrModal && <QRLabel {...qrModal} onClose={() => setQrModal(null)} />}
         </DialogContent>
       </Dialog>
+      <ImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onDone={refetch}
+      />
     </div>
   )
 }

@@ -1,8 +1,8 @@
+import './load-env'
 import { db } from '../lib/db'
 import { inventoryItems } from '../lib/db/schema'
 import { eq } from 'drizzle-orm'
 
-const round2 = (n: number) => Math.round(n * 100) / 100
 
 // One-time: collapse duplicate ACTIVE inventory rows for the same card+condition
 // into a single survivor row (sum quantity, weighted-average cost). The extra rows
@@ -26,7 +26,7 @@ async function main() {
     const survivor = items[0]
     const totalQty = items.reduce((s, i) => s + i.quantity, 0)
     const costSum = items.reduce((s, i) => s + i.costPrice * i.quantity, 0)
-    const newCost = totalQty > 0 ? round2(costSum / totalQty) : survivor.costPrice
+    const newCost = totalQty > 0 ? Math.round(costSum / totalQty) : survivor.costPrice // pence
 
     await db.update(inventoryItems)
       .set({ quantity: totalQty, costPrice: newCost })

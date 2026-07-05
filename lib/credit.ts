@@ -10,5 +10,5 @@ export async function getCustomerBalance(customerId: number): Promise<number> {
     .select({ balance: sql<number>`COALESCE(SUM(${creditLedger.delta}), 0)` })
     .from(creditLedger)
     .where(eq(creditLedger.customerId, customerId))
-  return Math.round((row?.balance ?? 0) * 100) / 100
+  return row?.balance ?? 0 // SUM of integer pence is integer pence
 }

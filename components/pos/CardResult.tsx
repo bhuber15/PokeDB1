@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { MinusIcon, PlusIcon, RefreshCwIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { calculateSellPrice, formatGBP } from '@/lib/pricing'
+import { calculateSellPrice, formatGBP, pickMarketPrice } from '@/lib/pricing'
 import { CardZoomModal } from '@/components/shared/CardZoomModal'
 import { useSettings } from '@/components/shared/SettingsProvider'
 import type { Card, PriceCache } from '@/lib/db/schema'
@@ -27,13 +27,14 @@ export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefr
   const [selected, setSelected] = useState<InventoryOption | null>(inventoryOptions[0] ?? null)
   const [qty, setQty] = useState(1)
   const [zoomed, setZoomed] = useState(false)
-  const { marginMultiplier } = useSettings()
+  const { marginMultiplier, primaryPriceSource } = useSettings()
 
   const sellPrice = selected
-    ? calculateSellPrice(prices?.tcgplayerMarket, selected.sellPriceOverride, marginMultiplier)
+    ? calculateSellPrice(pickMarketPrice(prices, primaryPriceSource), selected.sellPriceOverride, marginMultiplier)
     : null
 
   const hoursOld = prices
+    // eslint-disable-next-line react-hooks/purity -- staleness badge; a fresh clock reading each render is intended
     ? (Date.now() - new Date(prices.lastSyncedAt).getTime()) / 3_600_000
     : null
 
@@ -49,6 +50,7 @@ export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefr
           imageUrl: card.imageUrl,
           condition: selected?.condition,
           tcgplayerMarket: prices?.tcgplayerMarket,
+          cardmarketTrend: prices?.cardmarketTrend,
           sellPrice: sellPrice ?? undefined,
         } : null}
         onClose={() => setZoomed(false)}
@@ -95,6 +97,9 @@ export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefr
               )}
               {prices?.tcgplayerLow != null && (
                 <Badge variant="outline">Low {formatGBP(prices.tcgplayerLow)}</Badge>
+              )}
+              {prices?.cardmarketTrend != null && (
+                <Badge variant="outline">CM {formatGBP(prices.cardmarketTrend)}</Badge>
               )}
               <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={onRefreshPrice}>
                 <RefreshCwIcon className="size-3" aria-hidden="true" />

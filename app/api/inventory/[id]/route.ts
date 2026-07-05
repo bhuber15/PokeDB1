@@ -1,25 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { db } from '@/lib/db'
 import { inventoryItems } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
-import { getSession } from '@/lib/auth'
+import { getSession, requireStaff, requireAdmin } from '@/lib/auth'
+import { guarded } from '@/lib/api'
+import { parseBody } from '@/lib/validation'
 
-const PATCHABLE_FIELDS = new Set([
-  'quantity', 'condition', 'costPrice', 'sellPriceOverride',
-  'location', 'defectNotes', 'lowStockThreshold',
-])
+const patchInventoryBody = z.object({
+  quantity: z.number().int().optional(),
+  condition: z.enum(['NM', 'LP', 'MP', 'HP', 'DMG']).optional(),
+  costPrice: z.number().int().nonnegative().optional(), // pence
+  sellPriceOverride: z.number().int().nonnegative().nullable().optional(), // pence
+  location: z.string().nullable().optional(),
+  defectNotes: z.string().nullable().optional(),
+  lowStockThreshold: z.number().int().nullable().optional(),
+})
 
-export async function PATCH(
+export const PATCH = guarded(async (
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
-  const session = await getSession()
-  if (!session.isOwnerLoggedIn) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+) => {
+  requireStaff(await getSession())
 
   const { id } = await params
-  const body = await req.json()
+  const body = await parseBody(req, patchInventoryBody)
   const updates = Object.fromEntries(
-    Object.entries(body).filter(([k]) => PATCHABLE_FIELDS.has(k))
+    Object.entries(body).filter(([, v]) => v !== undefined)
   )
 
   if (Object.keys(updates).length === 0) {
@@ -33,16 +40,13 @@ export async function PATCH(
 
   if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(updated)
-}
+})
 
-export async function DELETE(
+export const DELETE = guarded(async (
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
-  const session = await getSession()
-  if (session.staffRole !== 'admin' && !session.isOwnerLoggedIn) {
-    return NextResponse.json({ error: 'Admin only' }, { status: 403 })
-  }
+) => {
+  requireAdmin(await getSession())
   const { id } = await params
   // Soft delete — preserves historical sale_items that reference this item
   const [updated] = await db.update(inventoryItems)
@@ -51,4 +55,4 @@ export async function DELETE(
     .returning()
   if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json({ ok: true })
-}
+})

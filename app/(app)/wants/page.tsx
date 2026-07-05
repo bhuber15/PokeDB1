@@ -36,7 +36,11 @@ export default function WantsPage() {
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  // Timer defers the fetch past the effect's sync phase (set-state-in-effect)
+  useEffect(() => {
+    const t = setTimeout(load, 0)
+    return () => clearTimeout(t)
+  }, [load])
 
   async function markDone(id: number) {
     try {
@@ -109,7 +113,15 @@ export default function WantsPage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {w.inStock && w.cardName && (
+                      <Link
+                        href={`/pos?q=${encodeURIComponent(w.cardName)}`}
+                        className="inline-flex items-center text-xs font-semibold text-emerald-400 hover:underline mr-3"
+                      >
+                        Sell →
+                      </Link>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"

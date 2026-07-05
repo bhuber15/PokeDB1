@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { parsePounds } from '@/lib/pricing'
 import type { Card } from '@/lib/db/schema'
 
 const CONDITIONS = ['NM', 'LP', 'MP', 'HP', 'DMG'] as const
@@ -42,8 +43,8 @@ export function AddItemForm() {
         cardId: selected.id,
         condition,
         quantity: parseInt(quantity),
-        costPrice: parseFloat(costPrice),
-        sellPriceOverride: sellOverride ? parseFloat(sellOverride) : null,
+        costPrice: parsePounds(costPrice), // inputs are pounds
+        sellPriceOverride: sellOverride ? parsePounds(sellOverride) : null,
         location: location || null,
         defectNotes: defectNotes || null,
       }),

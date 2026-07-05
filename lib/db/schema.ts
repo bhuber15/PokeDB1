@@ -1,5 +1,5 @@
 // lib/db/schema.ts
-import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, real, unique } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
 
 export const staff = sqliteTable('staff', {
@@ -18,7 +18,7 @@ export const cards = sqliteTable('cards', {
   setNumber: text('set_number').notNull(),
   variant: text('variant'),
   language: text('language').notNull().default('EN'),
-  externalId: text('external_id'), // Pokemon TCG API card id e.g. "xy7-54"
+  externalId: text('external_id').unique(), // Pokemon TCG API card id e.g. "xy7-54"
   tcgplayerId: text('tcgplayer_id'),
   imageUrl: text('image_url'),
   imageUrlLarge: text('image_url_large'),
@@ -29,8 +29,8 @@ export const inventoryItems = sqliteTable('inventory_items', {
   cardId: integer('card_id').references(() => cards.id),
   condition: text('condition').notNull(), // NM | LP | MP | HP | DMG
   quantity: integer('quantity').notNull().default(0),
-  costPrice: real('cost_price').notNull(),
-  sellPriceOverride: real('sell_price_override'),
+  costPrice: integer('cost_price').notNull(),
+  sellPriceOverride: integer('sell_price_override'),
   qrCode: text('qr_code').notNull().unique(),
   location: text('location'),
   defectNotes: text('defect_notes'),
@@ -39,13 +39,27 @@ export const inventoryItems = sqliteTable('inventory_items', {
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
+// Daily price snapshots (pence). Only recorded for in-stock or high-value
+// cards; pruned after 90 days by the sync cron.
+export const priceHistory = sqliteTable('price_history', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  cardId: integer('card_id').notNull().references(() => cards.id),
+  cardmarketTrend: integer('cardmarket_trend'),
+  tcgplayerMarket: integer('tcgplayer_market'),
+  recordedOn: text('recorded_on').notNull(), // YYYY-MM-DD
+}, t => [unique().on(t.cardId, t.recordedOn)])
+
 export const priceCache = sqliteTable('price_cache', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   cardId: integer('card_id').notNull().references(() => cards.id).unique(),
-  tcgplayerMarket: real('tcgplayer_market'),
-  tcgplayerLow: real('tcgplayer_low'),
-  tcgplayerMid: real('tcgplayer_mid'),
-  tcgplayerHigh: real('tcgplayer_high'),
+  tcgplayerMarket: integer('tcgplayer_market'),
+  tcgplayerLow: integer('tcgplayer_low'),
+  tcgplayerMid: integer('tcgplayer_mid'),
+  tcgplayerHigh: integer('tcgplayer_high'),
+  cardmarketTrend: integer('cardmarket_trend'),
+  cardmarketLow: integer('cardmarket_low'),
+  cardmarketAvg: integer('cardmarket_avg'),
+  cardmarketSyncedAt: text('cardmarket_synced_at'),
   lastSyncedAt: text('last_synced_at').notNull().default(sql`(datetime('now'))`),
   isHighValue: integer('is_high_value', { mode: 'boolean' }).notNull().default(false),
 })
@@ -53,11 +67,11 @@ export const priceCache = sqliteTable('price_cache', {
 export const sales = sqliteTable('sales', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   staffId: integer('staff_id').references(() => staff.id),
-  subtotal: real('subtotal').notNull(),
-  discountAmount: real('discount_amount').notNull().default(0),
-  vatAmount: real('vat_amount').notNull().default(0),
+  subtotal: integer('subtotal').notNull(),
+  discountAmount: integer('discount_amount').notNull().default(0),
+  vatAmount: integer('vat_amount').notNull().default(0),
   vatScheme: text('vat_scheme').notNull().default('none'), // 'standard' | 'margin' | 'none'
-  total: real('total').notNull(),
+  total: integer('total').notNull(),
   paymentMethod: text('payment_method').notNull(), // 'cash' | 'card' | 'store_credit' | 'other'
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
@@ -67,7 +81,25 @@ export const saleItems = sqliteTable('sale_items', {
   saleId: integer('sale_id').notNull().references(() => sales.id),
   inventoryItemId: integer('inventory_item_id').references(() => inventoryItems.id),
   quantity: integer('quantity').notNull(),
-  priceAtSale: real('price_at_sale').notNull(),
+  priceAtSale: integer('price_at_sale').notNull(),
+  costAtSale: integer('cost_at_sale'), // cost_price snapshot; VAT-margin groundwork
+})
+
+export const refunds = sqliteTable('refunds', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  saleId: integer('sale_id').notNull().references(() => sales.id),
+  staffId: integer('staff_id').references(() => staff.id),
+  method: text('method').notNull(), // 'cash' | 'store_credit'
+  amount: integer('amount').notNull(), // total refunded, GBP, includes reversed VAT
+  reason: text('reason'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const refundItems = sqliteTable('refund_items', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  refundId: integer('refund_id').notNull().references(() => refunds.id),
+  saleItemId: integer('sale_item_id').notNull().references(() => saleItems.id),
+  quantity: integer('quantity').notNull(),
 })
 
 // Single-row shop settings (always id = 1)
@@ -76,9 +108,12 @@ export const settings = sqliteTable('settings', {
   shopName: text('shop_name').notNull().default('PokeDB'),
   usdToGbp: real('usd_to_gbp').notNull().default(0.79),
   marginMultiplier: real('margin_multiplier').notNull().default(0.85),
-  highValueThreshold: real('high_value_threshold').notNull().default(50),
+  highValueThreshold: integer('high_value_threshold').notNull().default(5000), // pence
+  eurToGbp: real('eur_to_gbp').notNull().default(0.86),
+  primaryPriceSource: text('primary_price_source').notNull().default('cardmarket'),
   buyCashPct: real('buy_cash_pct').notNull().default(0.5),
   buyCreditPct: real('buy_credit_pct').notNull().default(0.65),
+  vatScheme: text('vat_scheme').notNull().default('none'), // 'none' | 'standard'
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
 
@@ -94,7 +129,7 @@ export const customers = sqliteTable('customers', {
 export const creditLedger = sqliteTable('credit_ledger', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   customerId: integer('customer_id').notNull().references(() => customers.id),
-  delta: real('delta').notNull(), // +credit issued, -credit spent
+  delta: integer('delta').notNull(), // +credit issued, -credit spent
   reason: text('reason').notNull(), // 'buylist' | 'sale' | 'adjustment' | 'refund'
   refType: text('ref_type'), // 'buy' | 'sale' | null
   refId: integer('ref_id'),
@@ -107,7 +142,7 @@ export const buyTransactions = sqliteTable('buy_transactions', {
   staffId: integer('staff_id').references(() => staff.id),
   customerId: integer('customer_id').references(() => customers.id),
   method: text('method').notNull(), // 'cash' | 'store_credit'
-  total: real('total').notNull(),
+  total: integer('total').notNull(),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
@@ -118,7 +153,7 @@ export const buyItems = sqliteTable('buy_items', {
   inventoryItemId: integer('inventory_item_id').references(() => inventoryItems.id),
   condition: text('condition').notNull(),
   quantity: integer('quantity').notNull(),
-  payPrice: real('pay_price').notNull(), // per-item GBP paid
+  payPrice: integer('pay_price').notNull(), // per-item GBP paid
 })
 
 export const wantList = sqliteTable('want_list', {
@@ -143,3 +178,5 @@ export type CreditLedger = typeof creditLedger.$inferSelect
 export type BuyTransaction = typeof buyTransactions.$inferSelect
 export type BuyItem = typeof buyItems.$inferSelect
 export type WantListItem = typeof wantList.$inferSelect
+export type Refund = typeof refunds.$inferSelect
+export type RefundItem = typeof refundItems.$inferSelect

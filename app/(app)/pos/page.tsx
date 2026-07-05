@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { SearchBar } from '@/components/pos/SearchBar'
 import { CardResult, InventoryOption } from '@/components/pos/CardResult'
 import { Cart, CartItem } from '@/components/pos/Cart'
@@ -46,6 +46,16 @@ export default function POSPage() {
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [loading, setLoading] = useState(false)
 
+  // Arriving via a link like /pos?q=Pikachu (e.g. the want list's Sell button)
+  // runs the search immediately. Timer defers past the effect's sync phase.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('q')
+    if (!q) return
+    const t = setTimeout(() => handleSearch(q), 0)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
+  }, [])
+
   async function handleSearch(query: string) {
     setLoading(true)
     const res = await fetch(`/api/inventory?q=${encodeURIComponent(query)}`)
@@ -87,24 +97,36 @@ export default function POSPage() {
     // Keep the search results so several different cards can be rung up from one search.
   }
 
-  async function handleCheckoutConfirm(paymentMethod: string, discountAmount: number, customerId?: number) {
-    const res = await fetch('/api/sales', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        items: cart.map(i => ({ inventoryItemId: i.inventoryItemId, quantity: i.quantity, priceAtSale: i.price })),
-        paymentMethod,
-        discountAmount,
-        ...(customerId != null ? { customerId } : {}),
-      }),
-    })
+  async function handleCheckoutConfirm(paymentMethod: string, discountAmount: number, expectedTotal: number, customerId?: number) {
+    let res: Response
+    try {
+      res = await fetch('/api/sales', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: cart.map(i => ({ inventoryItemId: i.inventoryItemId, quantity: i.quantity })),
+          paymentMethod,
+          discountAmount,
+          expectedTotal,
+          ...(customerId != null ? { customerId } : {}),
+        }),
+      })
+    } catch {
+      toast.error('Network error — check Reports → Recent Sales before retrying, the sale may have gone through')
+      return
+    }
     if (res.ok) {
       const { total } = await res.json()
       setCart([])
       setCheckoutOpen(false)
       toast.success(`Sale complete — ${formatGBP(total)}`)
     } else {
-      toast.error('Sale failed — please try again')
+      const data = await res.json().catch(() => null)
+      toast.error(
+        data?.code === 'PRICE_CHANGED'
+          ? 'Prices changed since this search — re-search the cards and rebuild the cart'
+          : data?.error ?? 'Sale failed — please try again',
+      )
     }
   }
 

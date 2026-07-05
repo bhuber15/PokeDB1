@@ -13,6 +13,7 @@ export interface CardZoomData {
   imageUrl?: string | null
   condition?: string
   tcgplayerMarket?: number | null
+  cardmarketTrend?: number | null
   sellPrice?: number | null
 }
 
@@ -88,6 +89,11 @@ export function CardZoomModal({ card, onClose }: CardZoomModalProps) {
             {card.tcgplayerMarket != null && (
               <Badge variant="secondary" className="text-xs">
                 TCG {formatGBP(card.tcgplayerMarket)}
+              </Badge>
+            )}
+            {card.cardmarketTrend != null && (
+              <Badge variant="outline" className="text-xs">
+                CM {formatGBP(card.cardmarketTrend)}
               </Badge>
             )}
             {card.sellPrice != null && (
