@@ -22,11 +22,11 @@ function toGbpRow(p: PriceRow, rate: number): PriceRow {
 }
 
 const VARIANT_LABELS: Record<string, string> = {
-  normal: 'Normal',
-  holofoil: 'Holofoil',
-  reverseHolofoil: 'Reverse Holo',
-  '1stEditionHolofoil': '1st Ed. Holo',
-  '1stEditionNormal': '1st Ed. Normal',
+  normal: 'TCGplayer Normal',
+  holofoil: 'TCGplayer Holofoil',
+  reverseHolofoil: 'TCGplayer Reverse Holo',
+  '1stEditionHolofoil': 'TCGplayer 1st Ed. Holo',
+  '1stEditionNormal': 'TCGplayer 1st Ed. Normal',
 }
 
 function PriceBlock({ label, p }: { label: string; p: { market?: number; low?: number; mid?: number; high?: number } }) {
@@ -129,18 +129,18 @@ function CardPriceRow({ card, onZoom }: { card: PokemonTCGCard; onZoom: (c: Card
           {/* Price variants */}
           {(variants.length > 0 || cmPrices) && (
             <div className="flex gap-2 flex-wrap">
-              {variants.map(([variant, p]) => (
-                <PriceBlock key={variant} label={VARIANT_LABELS[variant] ?? variant} p={p} />
-              ))}
-              {/* Cardmarket (GBP) — lazy best-effort */}
+              {/* Cardmarket first — it's the shop's primary price source */}
               <div className="bg-muted/30 rounded-lg p-2.5 min-w-[100px]">
-                <div className="text-xs text-muted-foreground mb-1.5 font-medium">Cardmarket (GBP)</div>
+                <div className="text-xs text-muted-foreground mb-1.5 font-medium">Cardmarket</div>
                 <div className="space-y-0.5 text-xs">
                   <div className="flex justify-between gap-3"><span className="text-muted-foreground">Trend</span><span className="font-bold text-foreground">{cmPrices?.trend != null ? formatGBP(cmPrices.trend) : '—'}</span></div>
                   <div className="flex justify-between gap-3"><span className="text-muted-foreground">Low</span><span>{cmPrices?.low != null ? formatGBP(cmPrices.low) : '—'}</span></div>
                   <div className="flex justify-between gap-3"><span className="text-muted-foreground">Avg</span><span>{cmPrices?.avg != null ? formatGBP(cmPrices.avg) : '—'}</span></div>
                 </div>
               </div>
+              {variants.map(([variant, p]) => (
+                <PriceBlock key={variant} label={VARIANT_LABELS[variant] ?? `TCGplayer ${variant}`} p={p} />
+              ))}
             </div>
           )}
 

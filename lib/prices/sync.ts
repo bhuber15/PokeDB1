@@ -112,14 +112,18 @@ async function upsertPage(
   result.cardsSeen += withId.length
   const externalIds = withId.map(c => c.id)
 
-  // Map known externalIds to local card ids, insert the rest
-  const existing = await dbc.select({ id: cards.id, externalId: cards.externalId }).from(cards)
+  // Count which are new, then upsert every card on the page. The API is
+  // authoritative for card identity — on conflict we refresh name/set/number/
+  // images, which heals mislabelled hand-entered rows (e.g. a CSV row whose
+  // set number pointed at a different card).
+  const existing = await dbc.select({ externalId: cards.externalId }).from(cards)
     .where(inArray(cards.externalId, externalIds))
-  const idByExternal = new Map(existing.map(r => [r.externalId!, r.id]))
+  const known = new Set(existing.map(r => r.externalId))
+  result.newCards += withId.filter(c => !known.has(c.id)).length
 
-  const missing = withId.filter(c => !idByExternal.has(c.id))
-  for (const chunk of chunked(missing, CHUNK)) {
-    const inserted = await dbc.insert(cards).values(chunk.map(c => ({
+  const idByExternal = new Map<string, number>()
+  for (const chunk of chunked(withId, CHUNK)) {
+    const rows = await dbc.insert(cards).values(chunk.map(c => ({
       name: c.name,
       game: 'pokemon',
       setName: c.set?.name ?? '',
@@ -128,9 +132,18 @@ async function upsertPage(
       externalId: c.id,
       imageUrl: c.images?.small ?? null,
       imageUrlLarge: c.images?.large ?? null,
-    }))).onConflictDoNothing().returning({ id: cards.id, externalId: cards.externalId })
-    for (const r of inserted) idByExternal.set(r.externalId!, r.id)
-    result.newCards += inserted.length
+    }))).onConflictDoUpdate({
+      target: cards.externalId,
+      set: {
+        name: sql`excluded.name`,
+        setName: sql`excluded.set_name`,
+        setNumber: sql`excluded.set_number`,
+        variant: sql`excluded.variant`,
+        imageUrl: sql`excluded.image_url`,
+        imageUrlLarge: sql`excluded.image_url_large`,
+      },
+    }).returning({ id: cards.id, externalId: cards.externalId })
+    for (const r of rows) idByExternal.set(r.externalId!, r.id)
   }
 
   // Refresh TCGplayer prices for every card on the page

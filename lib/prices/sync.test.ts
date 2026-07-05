@@ -104,6 +104,16 @@ test('sweep inserts unknown cards and refreshes prices for known ones', async ()
   assert.equal(pikachuPrice.tcgplayerMarket, 400) // $5 × 0.8 × 100
 })
 
+test('sweep heals card identity fields from the API', async () => {
+  await db.update(schema.cards).set({ name: 'Blastoise (mislabelled)', imageUrl: 'bad.png' })
+    .where(eq(schema.cards.id, 1))
+  stubFetch({ pages: { 1: { data: [apiCard('base1-58', 'Pikachu', 2)], totalCount: 1 } } })
+  await sweepTcgplayerCatalogue(SETTINGS, {}, db)
+  const [c] = await db.select().from(schema.cards).where(eq(schema.cards.id, 1))
+  assert.equal(c.name, 'Pikachu')
+  assert.equal(c.imageUrl, 's.png')
+})
+
 test('sweep records history for high-value cards and skips cheap unstocked ones', async () => {
   stubFetch({
     pages: {

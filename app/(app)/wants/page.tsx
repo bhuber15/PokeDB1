@@ -113,7 +113,15 @@ export default function WantsPage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {w.inStock && w.cardName && (
+                      <Link
+                        href={`/pos?q=${encodeURIComponent(w.cardName)}`}
+                        className="inline-flex items-center text-xs font-semibold text-emerald-400 hover:underline mr-3"
+                      >
+                        Sell →
+                      </Link>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"

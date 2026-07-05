@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { SearchBar } from '@/components/pos/SearchBar'
 import { CardResult, InventoryOption } from '@/components/pos/CardResult'
 import { Cart, CartItem } from '@/components/pos/Cart'
@@ -45,6 +45,16 @@ export default function POSPage() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+
+  // Arriving via a link like /pos?q=Pikachu (e.g. the want list's Sell button)
+  // runs the search immediately. Timer defers past the effect's sync phase.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('q')
+    if (!q) return
+    const t = setTimeout(() => handleSearch(q), 0)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
+  }, [])
 
   async function handleSearch(query: string) {
     setLoading(true)

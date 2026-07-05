@@ -17,6 +17,7 @@ interface TodayStats {
 interface RecentSale {
   sale: { id: number; total: number; paymentMethod: string; discountAmount: number; createdAt: string }
   staffName: string | null
+  itemsSummary: string
 }
 
 interface RangeSummary {
@@ -125,14 +126,15 @@ export default function ReportsPage() {
           {recentSales.length === 0 && (
             <p className="p-4 text-sm text-muted-foreground">No sales yet</p>
           )}
-          {recentSales.map(({ sale, staffName }) => (
+          {recentSales.map(({ sale, staffName, itemsSummary }) => (
             <div key={sale.id} className="flex items-center justify-between p-3">
-              <div className="flex items-center gap-3">
-                <span className="font-semibold">{formatGBP(sale.total)}</span>
-                <Badge variant="outline">{sale.paymentMethod}</Badge>
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="font-semibold shrink-0">{formatGBP(sale.total)}</span>
+                <Badge variant="outline" className="shrink-0">{sale.paymentMethod}</Badge>
                 {sale.discountAmount > 0 && (
-                  <span className="text-xs text-muted-foreground">-{formatGBP(sale.discountAmount)} disc.</span>
+                  <span className="text-xs text-muted-foreground shrink-0">-{formatGBP(sale.discountAmount)} disc.</span>
                 )}
+                <span className="text-sm text-muted-foreground truncate">{itemsSummary}</span>
               </div>
               <div className="flex items-center gap-3">
                 <div className="text-right text-sm">
