@@ -314,6 +314,8 @@ Always editable by staff. Graded card buy prices are always manual — no auto-s
 
 ## 6. Offline Strategy
 
+> **Descoped 2026-07-02, implemented 2026-07-05:** the PWA/service-worker/IndexedDB design below was superseded by the minimal offline sale queue in `2026-07-02-risk-fixes-design.md` (Package D) — `sales.client_uuid` idempotency + a localStorage checkout queue with human-resolved conflicts. This section is kept for historical context only.
+
 The server (Vercel Fluid Compute) always communicates with Turso cloud. There is no server-side local replica.
 
 Offline support is entirely browser-side:

@@ -66,6 +66,9 @@ export const priceCache = sqliteTable('price_cache', {
 
 export const sales = sqliteTable('sales', {
   id: integer('id').primaryKey({ autoIncrement: true }),
+  // Idempotency key from the POS client; replaying a queued offline sale
+  // with the same uuid returns the original sale instead of double-charging
+  clientUuid: text('client_uuid').unique(),
   staffId: integer('staff_id').references(() => staff.id),
   subtotal: integer('subtotal').notNull(),
   discountAmount: integer('discount_amount').notNull().default(0),

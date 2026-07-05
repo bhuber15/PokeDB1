@@ -64,6 +64,13 @@
       "when": 1783181690593,
       "tag": "0008_catalogue-price-history",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1783271938214,
+      "tag": "0009_sale-client-uuid",
+      "breakpoints": true
     }
   ]
 }

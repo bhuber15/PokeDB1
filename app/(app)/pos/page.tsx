@@ -4,8 +4,12 @@ import { SearchBar } from '@/components/pos/SearchBar'
 import { CardResult, InventoryOption } from '@/components/pos/CardResult'
 import { Cart, CartItem } from '@/components/pos/Cart'
 import { CheckoutDialog } from '@/components/pos/CheckoutDialog'
+import { SaleQueue } from '@/components/pos/SaleQueue'
 import { toast } from 'sonner'
 import { formatGBP } from '@/lib/pricing'
+import {
+  readQueue, enqueueSale, removeSale, setConflict, clearConflict, type QueuedSale,
+} from '@/lib/sale-queue'
 import type { Card, PriceCache } from '@/lib/db/schema'
 
 interface SearchState {
@@ -45,6 +49,7 @@ export default function POSPage() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [queue, setQueue] = useState<QueuedSale[]>([])
 
   // Arriving via a link like /pos?q=Pikachu (e.g. the want list's Sell button)
   // runs the search immediately. Timer defers past the effect's sync phase.
@@ -54,6 +59,51 @@ export default function POSPage() {
     const t = setTimeout(() => handleSearch(q), 0)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
+  }, [])
+
+  // Replay queued offline sales: on load, when the browser comes back
+  // online, and every 30s while anything is still queued. Conflicts are
+  // left for a human (Retry/Discard in the SaleQueue panel).
+  useEffect(() => {
+    let cancelled = false
+    async function replay() {
+      for (const entry of readQueue().filter(e => !e.conflict)) {
+        if (cancelled) return
+        let res: Response
+        try {
+          res = await fetch('/api/sales', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(entry.body),
+          })
+        } catch {
+          break // still offline — try again on the next tick
+        }
+        if (res.ok) {
+          const { total } = await res.json()
+          removeSale(entry.clientUuid)
+          toast.success(`Queued sale sent — ${formatGBP(total)}`)
+        } else if (res.status === 401) {
+          break // logged out — leave queued, replays after sign-in
+        } else {
+          const data = await res.json().catch(() => null)
+          setConflict(entry.clientUuid, {
+            code: data?.code ?? `HTTP_${res.status}`,
+            error: data?.error ?? 'Sale was rejected',
+          })
+        }
+      }
+      if (!cancelled) setQueue(readQueue())
+    }
+    const t = setTimeout(replay, 0)
+    const interval = setInterval(() => { if (readQueue().some(e => !e.conflict)) replay() }, 30_000)
+    window.addEventListener('online', replay)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+      clearInterval(interval)
+      window.removeEventListener('online', replay)
+    }
   }, [])
 
   async function handleSearch(query: string) {
@@ -98,21 +148,29 @@ export default function POSPage() {
   }
 
   async function handleCheckoutConfirm(paymentMethod: string, discountAmount: number, expectedTotal: number, customerId?: number) {
+    const body = {
+      items: cart.map(i => ({ inventoryItemId: i.inventoryItemId, quantity: i.quantity })),
+      paymentMethod,
+      discountAmount,
+      expectedTotal,
+      ...(customerId != null ? { customerId } : {}),
+      clientUuid: crypto.randomUUID(),
+    }
     let res: Response
     try {
       res = await fetch('/api/sales', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          items: cart.map(i => ({ inventoryItemId: i.inventoryItemId, quantity: i.quantity })),
-          paymentMethod,
-          discountAmount,
-          expectedTotal,
-          ...(customerId != null ? { customerId } : {}),
-        }),
+        body: JSON.stringify(body),
       })
     } catch {
-      toast.error('Network error — check Reports → Recent Sales before retrying, the sale may have gone through')
+      // Network failure (not an HTTP error): queue for replay. The clientUuid
+      // makes the replay idempotent even if this request actually landed.
+      enqueueSale(body)
+      setQueue(readQueue())
+      setCart([])
+      setCheckoutOpen(false)
+      toast.info('Offline — sale queued, will send automatically when back online')
       return
     }
     if (res.ok) {
@@ -146,6 +204,15 @@ export default function POSPage() {
         ))}
       </div>
       <div>
+        <SaleQueue
+          queue={queue}
+          onRetry={uuid => {
+            clearConflict(uuid)
+            setQueue(readQueue())
+            window.dispatchEvent(new Event('online')) // kick the replay loop now
+          }}
+          onDiscard={uuid => { removeSale(uuid); setQueue(readQueue()) }}
+        />
         <Cart
           items={cart}
           onRemove={id => setCart(prev => prev.filter(i => i.inventoryItemId !== id))}

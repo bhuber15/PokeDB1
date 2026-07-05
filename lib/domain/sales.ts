@@ -12,6 +12,7 @@ export interface CreateSaleInput {
   discount: number
   customerId?: number
   expectedTotal: number
+  clientUuid?: string
 }
 
 const PAYMENT_METHODS = new Set(['cash', 'card', 'store_credit', 'other'])
@@ -29,6 +30,14 @@ export async function createSale(
   }
   if (input.paymentMethod === 'store_credit' && !input.customerId) {
     throw new DomainError('INVALID_INPUT', 'customerId required for store credit')
+  }
+
+  // Idempotent replay: a queued offline sale re-POSTed with the same uuid
+  // returns the original result instead of charging/decrementing again.
+  if (input.clientUuid) {
+    const [existing] = await dbc.select().from(sales)
+      .where(eq(sales.clientUuid, input.clientUuid)).limit(1)
+    if (existing) return { saleId: existing.id, total: existing.total }
   }
 
   const settings = await getSettings(dbc)
@@ -98,6 +107,7 @@ export async function createSale(
     }
 
     const [sale] = await tx.insert(sales).values({
+      clientUuid: input.clientUuid ?? null,
       staffId: input.staffId,
       subtotal,
       discountAmount: discount,
@@ -129,6 +139,15 @@ export async function createSale(
     }
 
     return sale.id
+  }).catch(async (e: unknown) => {
+    // Two replays of the same queued sale racing: the loser's insert hits the
+    // unique index — hand back the winner's sale instead of erroring.
+    if (input.clientUuid && e instanceof Error && e.message.includes('UNIQUE constraint failed: sales.client_uuid')) {
+      const [existing] = await dbc.select().from(sales)
+        .where(eq(sales.clientUuid, input.clientUuid)).limit(1)
+      if (existing) return existing.id
+    }
+    throw e
   })
 
   return { saleId, total }
