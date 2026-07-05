@@ -56,3 +56,18 @@ export function pickMarketPrice(
   const tcg = prices.tcgplayerMarket ?? null
   return source === 'cardmarket' ? (cm ?? tcg) : (tcg ?? cm)
 }
+
+// Single source of truth for sale arithmetic — used by createSale (canonical)
+// and the checkout UI (so the client's expectedTotal always agrees with the
+// server). Discount is clamped to [0, subtotal]; standard VAT is 20% on the
+// discounted amount, rounded to the nearest pence.
+export function computeSaleTotals(
+  subtotalPence: number,
+  discountPence: number,
+  vatScheme: 'none' | 'standard',
+): { discount: number; vatAmount: number; total: number } {
+  const discount = Math.min(Math.max(0, discountPence), subtotalPence)
+  const afterDiscount = subtotalPence - discount
+  const vatAmount = vatScheme === 'standard' ? Math.round(afterDiscount * 0.2) : 0
+  return { discount, vatAmount, total: afterDiscount + vatAmount }
+}

@@ -82,7 +82,8 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
   }
 
   function StockCell({ item }: { item: InventoryItem }) {
-    const isLow = item.quantity <= item.lowStockThreshold
+    const isOut = item.quantity === 0
+    const isLow = !isOut && item.quantity <= item.lowStockThreshold
     if (editId === item.id) {
       return (
         <div className="flex items-center gap-1">
@@ -105,11 +106,12 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
     }
     return (
       <button
-        className={`inline-flex items-center gap-1.5 h-7 px-2 rounded hover:bg-muted/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isLow ? 'text-destructive' : ''}`}
+        className={`inline-flex items-center gap-1.5 h-7 px-2 rounded hover:bg-muted/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isOut ? 'text-destructive font-semibold' : isLow ? 'text-amber-400' : ''}`}
         onClick={() => startEdit(item.id, item.quantity)}
-        aria-label={`Edit stock, currently ${item.quantity}${isLow ? ', low stock' : ''}`}
+        aria-label={`Edit stock, currently ${item.quantity}${isOut ? ', out of stock' : isLow ? ', low stock' : ''}`}
       >
         <span className="font-medium tabular-nums">{item.quantity}</span>
+        {isOut && <span className="text-xs uppercase">out</span>}
         {isLow && <span className="text-xs">low</span>}
         <span className="text-xs text-muted-foreground opacity-60" aria-hidden="true">✎</span>
       </button>

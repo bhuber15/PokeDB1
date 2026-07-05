@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { calculateSellPrice, calculateBuyPrice, usdToGbp, eurToGbp, formatGBP, parsePounds } from './pricing'
+import { calculateSellPrice, calculateBuyPrice, usdToGbp, eurToGbp, formatGBP, parsePounds, computeSaleTotals } from './pricing'
 
 test('calculateSellPrice: override wins over market price', () => {
   assert.equal(calculateSellPrice(10000, 4200, 0.85), 4200)
@@ -58,4 +58,21 @@ test('parsePounds: converts a pounds number to integer pence', () => {
 test('parsePounds: non-numeric input is 0', () => {
   assert.equal(parsePounds(''), 0)
   assert.equal(parsePounds('abc'), 0)
+})
+
+test('computeSaleTotals: no VAT scheme passes amounts through', () => {
+  assert.deepEqual(computeSaleTotals(1700, 0, 'none'), { discount: 0, vatAmount: 0, total: 1700 })
+  assert.deepEqual(computeSaleTotals(1700, 200, 'none'), { discount: 200, vatAmount: 0, total: 1500 })
+})
+
+test('computeSaleTotals: standard VAT is 20% of the discounted amount', () => {
+  assert.deepEqual(computeSaleTotals(1000, 0, 'standard'), { discount: 0, vatAmount: 200, total: 1200 })
+  assert.deepEqual(computeSaleTotals(1000, 100, 'standard'), { discount: 100, vatAmount: 180, total: 1080 })
+  // odd pence rounds to nearest
+  assert.deepEqual(computeSaleTotals(999, 0, 'standard'), { discount: 0, vatAmount: 200, total: 1199 })
+})
+
+test('computeSaleTotals: discount clamps to [0, subtotal]', () => {
+  assert.deepEqual(computeSaleTotals(500, 900, 'none'), { discount: 500, vatAmount: 0, total: 0 })
+  assert.deepEqual(computeSaleTotals(500, -100, 'none'), { discount: 0, vatAmount: 0, total: 500 })
 })
