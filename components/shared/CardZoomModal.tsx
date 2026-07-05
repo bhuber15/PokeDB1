@@ -1,5 +1,6 @@
 'use client'
 import { useEffect } from 'react'
+import Image from 'next/image'
 import { XIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { formatGBP } from '@/lib/pricing'
@@ -61,11 +62,11 @@ export function CardZoomModal({ card, onClose }: CardZoomModalProps) {
 
         {img && (
           <div className="flex justify-center sm:block shrink-0">
-            <img
+            <Image
               src={img}
               alt={card.name}
-              width={176}
-              height={246}
+              width={400}
+              height={557}
               className="w-44 rounded-xl shadow-lg"
             />
           </div>

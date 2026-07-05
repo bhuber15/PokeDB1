@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
@@ -72,7 +73,7 @@ export function AddItemForm() {
       <div className="max-w-lg space-y-4">
         <div className="flex items-center gap-3 p-3 border rounded-lg">
           {selected.imageUrl && (
-            <img src={selected.imageUrl} alt={selected.name} width={40} height={56} className="w-10 h-14 object-contain flex-shrink-0" />
+            <Image src={selected.imageUrl} alt={selected.name} width={40} height={56} className="w-10 h-14 object-contain flex-shrink-0" />
           )}
           <div className="flex-1">
             <div className="font-semibold">{selected.name}</div>
@@ -122,7 +123,7 @@ export function AddItemForm() {
               className="w-full flex items-center gap-3 p-3 hover:bg-muted/50 text-left transition-colors"
               onClick={() => setSelected(card)}
             >
-              {card.imageUrl && <img src={card.imageUrl} alt={card.name} width={40} height={56} className="w-10 h-14 object-contain flex-shrink-0" />}
+              {card.imageUrl && <Image src={card.imageUrl} alt={card.name} width={40} height={56} className="w-10 h-14 object-contain flex-shrink-0" />}
               <div>
                 <div className="font-medium">{card.name}</div>
                 <div className="text-sm text-muted-foreground">{card.setName} · #{card.setNumber}</div>

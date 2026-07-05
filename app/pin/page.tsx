@@ -25,7 +25,7 @@ export default function PinPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
+    <main className="min-h-screen flex items-center justify-center bg-background">
       <div className="w-full max-w-xs space-y-8">
         <div className="text-center space-y-2">
           <div className="mx-auto w-12 h-12 rounded-xl bg-primary flex items-center justify-center text-primary-foreground text-xl font-bold shadow-lg shadow-primary/30">
@@ -38,6 +38,6 @@ export default function PinPage() {
           <PinPad onSubmit={handlePin} error={error} loading={loading} />
         </div>
       </div>
-    </div>
+    </main>
   )
 }

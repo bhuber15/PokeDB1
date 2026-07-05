@@ -52,6 +52,7 @@ export function setConflict(clientUuid: string, conflict: { code: string; error:
 export function clearConflict(clientUuid: string, storage: Storage = localStorage): void {
   write(readQueue(storage).map(e => {
     if (e.clientUuid !== clientUuid) return e
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- intentionally destructuring out conflict
     const { conflict: _drop, ...rest } = e
     return rest
   }), storage)

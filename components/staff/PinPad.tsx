@@ -36,14 +36,17 @@ export function PinPad({ onSubmit, error, loading }: PinPadProps) {
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="grid grid-cols-3 gap-3">
-        {keys.map((key, i) => (
+        {keys.map((key, i) => key === '' ? (
+          // Empty grid slot — decorative, not a control
+          <div key={i} className="w-16 h-16" aria-hidden="true" />
+        ) : (
           <Button
             key={i}
             variant="outline"
             className="w-16 h-16 text-xl"
-            disabled={!key || loading}
-            onClick={() => key === '⌫' ? setPin(p => p.slice(0, -1)) : key && handleDigit(key)}
-            aria-label={key === '⌫' ? 'Delete digit' : key ? `Digit ${key}` : undefined}
+            disabled={loading}
+            onClick={() => key === '⌫' ? setPin(p => p.slice(0, -1)) : handleDigit(key)}
+            aria-label={key === '⌫' ? 'Delete digit' : `Digit ${key}`}
           >
             {key === '⌫' ? <DeleteIcon className="size-5" aria-hidden="true" /> : key}
           </Button>

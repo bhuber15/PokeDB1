@@ -43,6 +43,7 @@ export function QRLabel({ dataUrl, cardName, condition, sellPrice, onClose }: QR
 
   return (
     <div className="flex flex-col items-center gap-4 p-2">
+      {/* eslint-disable-next-line @next/next/no-img-element -- print label renders a data-URL QR; next/image can't optimize those */}
       <img src={dataUrl} alt="QR Code" width={160} height={160} className="w-40 h-40" />
       <div className="text-center">
         <div className="font-semibold">{cardName}</div>

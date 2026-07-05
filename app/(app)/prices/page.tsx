@@ -1,5 +1,6 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
+import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -80,7 +81,7 @@ function CardPriceRow({ card, onZoom }: { card: PokemonTCGCard; onZoom: (c: Card
             tcgplayerMarket: bestMarket,
           })}
         >
-          <img
+          <Image
             src={card.images.small}
             alt=""
             width={64}

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { Skeleton } from '@/components/ui/skeleton'
 import { InventoryTable, InventoryRow } from '@/components/inventory/InventoryTable'
 import { QRLabel } from '@/components/inventory/QRLabel'
 import { ImportDialog } from '@/components/inventory/ImportDialog'
@@ -10,13 +11,14 @@ import { calculateSellPrice, formatGBP } from '@/lib/pricing'
 
 export default function InventoryPage() {
   const [rows, setRows] = useState<InventoryRow[]>([])
+  const [loading, setLoading] = useState(true)
   const [qrModal, setQrModal] = useState<{
     dataUrl: string; cardName: string; condition: string; sellPrice: string
   } | null>(null)
   const [importOpen, setImportOpen] = useState(false)
 
   function refetch() {
-    fetch('/api/inventory').then(r => r.json()).then(setRows)
+    fetch('/api/inventory').then(r => r.json()).then(setRows).finally(() => setLoading(false))
   }
 
   useEffect(() => {
@@ -54,7 +56,21 @@ export default function InventoryPage() {
           <Link href="/inventory/add" className={buttonVariants()}>+ Add Item</Link>
         </div>
       </div>
-      <InventoryTable rows={rows} onStockChange={handleStockChange} onPrintQR={handlePrintQR} />
+      {loading ? (
+        <div className="space-y-2" role="status" aria-label="Loading inventory">
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="border border-dashed border-border rounded-xl p-12 text-center space-y-3">
+          <p className="text-lg font-semibold">No stock yet</p>
+          <p className="text-sm text-muted-foreground">
+            Add a card from the catalogue, buy from a customer via the buylist, or import a CSV.
+          </p>
+          <Link href="/inventory/add" className={buttonVariants()}>+ Add your first card</Link>
+        </div>
+      ) : (
+        <InventoryTable rows={rows} onStockChange={handleStockChange} onPrintQR={handlePrintQR} />
+      )}
       <Dialog open={!!qrModal} onOpenChange={() => setQrModal(null)}>
         <DialogContent className="max-w-xs">
           <DialogTitle>QR Label</DialogTitle>
