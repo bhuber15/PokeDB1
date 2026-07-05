@@ -1,3 +1,4 @@
+import './load-env'
 import { db } from '../lib/db'
 import { staff } from '../lib/db/schema'
 import bcrypt from 'bcryptjs'

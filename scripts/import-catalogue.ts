@@ -1,6 +1,7 @@
 // One-time full-catalogue import (and safe to re-run any time — it is the
 // same idempotent sweep the nightly cron uses).
 //   npx tsx scripts/import-catalogue.ts
+import './load-env'
 import { getSettings } from '../lib/settings'
 import { sweepTcgplayerCatalogue } from '../lib/prices/sync'
 

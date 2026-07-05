@@ -1,3 +1,4 @@
+import './load-env'
 import { db } from '../lib/db'
 import { inventoryItems } from '../lib/db/schema'
 import { eq } from 'drizzle-orm'

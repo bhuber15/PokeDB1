@@ -1,3 +1,4 @@
+import './load-env'
 import { db } from '../lib/db'
 import { cards } from '../lib/db/schema'
 import { getSettings } from '../lib/settings'
