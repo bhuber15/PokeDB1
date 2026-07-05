@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
-import { formatGBP, parsePounds } from '@/lib/pricing'
+import { formatGBP, parsePounds, computeSaleTotals } from '@/lib/pricing'
 import { CustomerPicker } from '@/components/shared/CustomerPicker'
+import { useSettings } from '@/components/shared/SettingsProvider'
 import type { CartItem } from './Cart'
 import type { Customer } from '@/lib/db/schema'
 
@@ -21,23 +22,33 @@ interface CheckoutDialogProps {
   open: boolean
   items: CartItem[]
   onClose: () => void
-  onConfirm: (paymentMethod: string, discountAmount: number, expectedTotal: number, customerId?: number) => Promise<void>
+  onConfirm: (paymentMethod: string, discountAmount: number, expectedTotal: number, customerId?: number, cashReceived?: number) => Promise<void>
 }
 
+const QUICK_TENDER = [500, 1000, 2000, 5000] // pence: £5 £10 £20 £50
+
 export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDialogProps) {
+  const { vatScheme } = useSettings()
   const [method, setMethod] = useState('cash')
   const [discount, setDiscount] = useState('')
+  const [received, setReceived] = useState('')
   const [loading, setLoading] = useState(false)
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [customerBalance, setCustomerBalance] = useState<number | null>(null)
 
   const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0)
-  const discountAmount = Math.min(parsePounds(discount), subtotal) // input is pounds, cart is pence
-  const total = subtotal - discountAmount
+  // Same arithmetic as createSale — keeps expectedTotal in agreement with the server
+  const { discount: discountAmount, vatAmount, total } = computeSaleTotals(subtotal, parsePounds(discount), vatScheme)
+
+  const isCash = method === 'cash'
+  // Blank tender = exact amount; otherwise change is due (or the tender is short)
+  const receivedPence = isCash && received ? parsePounds(received) : null
+  const changeDue = receivedPence != null ? receivedPence - total : null
+  const tenderShort = changeDue != null && changeDue < 0
 
   const isStoreCredit = method === 'store_credit'
   const insufficientBalance = isStoreCredit && customer !== null && customerBalance !== null && customerBalance < total
-  const confirmDisabled = loading || (isStoreCredit && !customer) || insufficientBalance
+  const confirmDisabled = loading || (isStoreCredit && !customer) || insufficientBalance || tenderShort
 
   // When CustomerPicker calls onSelect, also fetch the balance so we can
   // access it here for the balance guard. CustomerPicker shows the balance
@@ -56,11 +67,12 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
   async function confirm() {
     setLoading(true)
     try {
-      await onConfirm(method, discountAmount, total, isStoreCredit && customer ? customer.id : undefined)
+      await onConfirm(method, discountAmount, total, isStoreCredit && customer ? customer.id : undefined, receivedPence ?? undefined)
     } finally {
       setLoading(false)
     }
     setDiscount('')
+    setReceived('')
     setMethod('cash')
     setCustomer(null)
     setCustomerBalance(null)
@@ -115,6 +127,35 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
             </div>
           </div>
 
+          {isCash && (
+            <div>
+              <Label htmlFor="checkout-received">Cash received (£) <span className="text-muted-foreground font-normal">— blank for exact</span></Label>
+              <Input
+                id="checkout-received"
+                name="received"
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                min="0"
+                value={received}
+                onChange={e => setReceived(e.target.value)}
+                placeholder={(total / 100).toFixed(2)}
+              />
+              <div className="flex gap-1.5 mt-1.5">
+                {QUICK_TENDER.filter(t => t >= total).slice(0, 3).map(t => (
+                  <Button key={t} type="button" variant="outline" size="sm" className="h-7 text-xs flex-1"
+                    onClick={() => setReceived((t / 100).toFixed(2))}>
+                    {formatGBP(t)}
+                  </Button>
+                ))}
+                <Button type="button" variant="outline" size="sm" className="h-7 text-xs flex-1"
+                  onClick={() => setReceived((total / 100).toFixed(2))}>
+                  Exact
+                </Button>
+              </div>
+            </div>
+          )}
+
           {isStoreCredit && (
             <div className="space-y-2">
               <Label>Customer</Label>
@@ -136,9 +177,20 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
               <span>Discount</span><span>-{formatGBP(discountAmount)}</span>
             </div>
           )}
+          {vatAmount > 0 && (
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>VAT (20%)</span><span>{formatGBP(vatAmount)}</span>
+            </div>
+          )}
           <div className="flex justify-between text-xl font-bold">
             <span>Total</span><span>{formatGBP(total)}</span>
           </div>
+          {changeDue != null && (
+            <div className={`flex justify-between text-lg font-bold ${tenderShort ? 'text-destructive' : 'text-emerald-400'}`}>
+              <span>{tenderShort ? 'Short' : 'Change'}</span>
+              <span>{formatGBP(Math.abs(changeDue))}</span>
+            </div>
+          )}
         </div>
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={handleClose} disabled={loading}>Cancel</Button>

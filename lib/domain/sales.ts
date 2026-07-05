@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, sql } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
 import { sales, saleItems, inventoryItems, priceCache, creditLedger, customers } from '@/lib/db/schema'
-import { calculateSellPrice, pickMarketPrice } from '@/lib/pricing'
+import { calculateSellPrice, pickMarketPrice, computeSaleTotals } from '@/lib/pricing'
 import { getSettings } from '@/lib/settings'
 import { DomainError } from './errors'
 
@@ -67,10 +67,7 @@ export async function createSale(
   })
 
   const subtotal = lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
-  const discount = Math.min(Math.max(0, input.discount ?? 0), subtotal)
-  const afterDiscount = subtotal - discount
-  const vatAmount = settings.vatScheme === 'standard' ? Math.round(afterDiscount * 0.2) : 0
-  const total = afterDiscount + vatAmount
+  const { discount, vatAmount, total } = computeSaleTotals(subtotal, input.discount ?? 0, settings.vatScheme)
 
   if (total !== input.expectedTotal) {
     throw new DomainError('PRICE_CHANGED', `Prices changed: server total is ${total}`, { total, expectedTotal: input.expectedTotal })

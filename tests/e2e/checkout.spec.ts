@@ -25,13 +25,16 @@ test('staff can ring up a cash sale end to end', async ({ page }) => {
   await expect(page.getByText('£5.00').first()).toBeVisible()
   await page.getByRole('button', { name: 'Add to Cart' }).click()
 
-  // Cart totals and checkout (cash is the default, no discount)
+  // Cart totals and checkout (cash is the default, no discount).
+  // Customer pays with a tenner — the till must show £5.00 change.
   await expect(page.getByText('Subtotal')).toBeVisible()
   await page.getByRole('button', { name: 'Checkout' }).click()
+  await page.getByLabel(/cash received/i).fill('10.00')
+  await expect(page.getByText('Change')).toBeVisible()
   await page.getByRole('button', { name: 'Confirm £5.00' }).click()
 
-  // Success feedback and cart reset
-  await expect(page.getByText(/Sale complete/)).toBeVisible()
+  // Success feedback (with change) and cart reset
+  await expect(page.getByText(/Sale complete.*Change £5\.00/)).toBeVisible()
   await expect(page.getByText('Cart is empty')).toBeVisible()
 
   // The database agrees: one 500p cash sale, stock down from 3 to 2

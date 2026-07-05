@@ -1,5 +1,5 @@
 'use client'
-import { XIcon } from 'lucide-react'
+import { XIcon, MinusIcon, PlusIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { formatGBP } from '@/lib/pricing'
 
@@ -14,10 +14,11 @@ export interface CartItem {
 interface CartProps {
   items: CartItem[]
   onRemove: (inventoryItemId: number) => void
+  onQtyChange: (inventoryItemId: number, delta: number) => void
   onCheckout: () => void
 }
 
-export function Cart({ items, onRemove, onCheckout }: CartProps) {
+export function Cart({ items, onRemove, onQtyChange, onCheckout }: CartProps) {
   const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0)
 
   if (items.length === 0) {
@@ -35,7 +36,21 @@ export function Cart({ items, onRemove, onCheckout }: CartProps) {
           <div key={item.inventoryItemId} className="flex items-center gap-3 p-3">
             <div className="flex-1 min-w-0">
               <div className="font-medium truncate">{item.name}</div>
-              <div className="text-sm text-muted-foreground">{item.condition} × {item.quantity}</div>
+              <div className="flex items-center gap-1.5 mt-0.5 text-sm text-muted-foreground">
+                <span>{item.condition}</span>
+                <Button variant="outline" size="sm" className="h-5 w-5 p-0"
+                  aria-label={`Decrease quantity of ${item.name}`}
+                  disabled={item.quantity <= 1}
+                  onClick={() => onQtyChange(item.inventoryItemId, -1)}>
+                  <MinusIcon className="size-3" aria-hidden="true" />
+                </Button>
+                <span className="w-5 text-center tabular-nums text-foreground">{item.quantity}</span>
+                <Button variant="outline" size="sm" className="h-5 w-5 p-0"
+                  aria-label={`Increase quantity of ${item.name}`}
+                  onClick={() => onQtyChange(item.inventoryItemId, 1)}>
+                  <PlusIcon className="size-3" aria-hidden="true" />
+                </Button>
+              </div>
             </div>
             <div className="font-semibold shrink-0">{formatGBP(item.price * item.quantity)}</div>
             <Button

@@ -4,9 +4,11 @@ import { SearchBar } from '@/components/pos/SearchBar'
 import { CardResult, InventoryOption } from '@/components/pos/CardResult'
 import { Cart, CartItem } from '@/components/pos/Cart'
 import { CheckoutDialog } from '@/components/pos/CheckoutDialog'
+import { ReceiptDialog, type ReceiptData } from '@/components/pos/ReceiptDialog'
 import { SaleQueue } from '@/components/pos/SaleQueue'
+import { useSettings } from '@/components/shared/SettingsProvider'
 import { toast } from 'sonner'
-import { formatGBP } from '@/lib/pricing'
+import { formatGBP, computeSaleTotals } from '@/lib/pricing'
 import {
   readQueue, enqueueSale, removeSale, setConflict, clearConflict, type QueuedSale,
 } from '@/lib/sale-queue'
@@ -45,11 +47,13 @@ function groupByCard(rows: InvRow[]): SearchState[] {
 }
 
 export default function POSPage() {
+  const { shopName, vatScheme } = useSettings()
   const [results, setResults] = useState<SearchState[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [queue, setQueue] = useState<QueuedSale[]>([])
+  const [receipt, setReceipt] = useState<ReceiptData | null>(null)
 
   // Arriving via a link like /pos?q=Pikachu (e.g. the want list's Sell button)
   // runs the search immediately. Timer defers past the effect's sync phase.
@@ -146,7 +150,7 @@ export default function POSPage() {
     // Keep the search results so several different cards can be rung up from one search.
   }
 
-  async function handleCheckoutConfirm(paymentMethod: string, discountAmount: number, expectedTotal: number, customerId?: number) {
+  async function handleCheckoutConfirm(paymentMethod: string, discountAmount: number, expectedTotal: number, customerId?: number, cashReceived?: number) {
     const body = {
       items: cart.map(i => ({ inventoryItemId: i.inventoryItemId, quantity: i.quantity })),
       paymentMethod,
@@ -155,6 +159,9 @@ export default function POSPage() {
       ...(customerId != null ? { customerId } : {}),
       clientUuid: crypto.randomUUID(),
     }
+    // Snapshot for the receipt before the cart clears
+    const lines = cart.map(i => ({ name: i.name, condition: i.condition, quantity: i.quantity, price: i.price }))
+    const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0)
     let res: Response
     try {
       res = await fetch('/api/sales', {
@@ -173,10 +180,29 @@ export default function POSPage() {
       return
     }
     if (res.ok) {
-      const { total } = await res.json()
+      const { saleId, total } = await res.json()
+      const changeDue = cashReceived != null ? cashReceived - total : undefined
+      const data: ReceiptData = {
+        saleId,
+        at: new Date().toISOString(),
+        shopName,
+        lines,
+        subtotal,
+        discount: discountAmount,
+        vatAmount: computeSaleTotals(subtotal, discountAmount, vatScheme).vatAmount,
+        total,
+        paymentMethod,
+        cashReceived,
+        changeDue,
+      }
       setCart([])
       setCheckoutOpen(false)
-      toast.success(`Sale complete — ${formatGBP(total)}`)
+      toast.success(
+        changeDue != null && changeDue > 0
+          ? `Sale complete — ${formatGBP(total)} · Change ${formatGBP(changeDue)}`
+          : `Sale complete — ${formatGBP(total)}`,
+        { action: { label: 'Receipt', onClick: () => setReceipt(data) } },
+      )
     } else {
       const data = await res.json().catch(() => null)
       toast.error(
@@ -224,6 +250,9 @@ export default function POSPage() {
         <Cart
           items={cart}
           onRemove={id => setCart(prev => prev.filter(i => i.inventoryItemId !== id))}
+          onQtyChange={(id, delta) => setCart(prev => prev.map(i =>
+            i.inventoryItemId === id ? { ...i, quantity: Math.max(1, i.quantity + delta) } : i
+          ))}
           onCheckout={() => setCheckoutOpen(true)}
         />
       </div>
@@ -233,6 +262,7 @@ export default function POSPage() {
         onClose={() => setCheckoutOpen(false)}
         onConfirm={handleCheckoutConfirm}
       />
+      <ReceiptDialog receipt={receipt} onClose={() => setReceipt(null)} />
     </div>
   )
 }
