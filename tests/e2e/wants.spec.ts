@@ -26,7 +26,7 @@ test('want list lives under Customers: add a want, see it cross-customer, Sell l
   await page.getByRole('button', { name: '+ New customer' }).click()
   await page.getByPlaceholder('Full name').fill('Ash Ketchum')
   await page.getByRole('button', { name: 'Create customer' }).click()
-  await expect(page.getByText('Ash Ketchum')).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Ash Ketchum' })).toBeVisible()
 
   // Add a want for the seeded, in-stock Pikachu card
   await page.getByRole('link', { name: 'View' }).click()
