@@ -45,7 +45,15 @@ function headers(): Record<string, string> {
   return key ? { 'X-Api-Key': key } : {}
 }
 
-export async function searchPokemonCards(query: string, pageSize = 30): Promise<PokemonTCGCard[]> {
+// The API regularly hangs under load; an interactive search must fail fast so
+// the UI can show "no results" instead of a spinner that never resolves.
+export const SEARCH_TIMEOUT_MS = 4000
+
+export async function searchPokemonCards(
+  query: string,
+  pageSize = 30,
+  timeoutMs = SEARCH_TIMEOUT_MS,
+): Promise<PokemonTCGCard[]> {
   // Strip Lucene-special chars so a stray quote can't break the query syntax
   const safe = query.replace(/["\\:()*?~^]/g, ' ').trim()
   if (!safe) return []
@@ -55,6 +63,7 @@ export async function searchPokemonCards(query: string, pageSize = 30): Promise<
   const res = await fetch(`${BASE_URL}/cards?${params}`, {
     headers: headers(),
     cache: 'no-store',
+    signal: AbortSignal.timeout(timeoutMs),
   })
   if (!res.ok) throw new Error(`Pokemon TCG API ${res.status}: ${await res.text()}`)
   return (await res.json()).data as PokemonTCGCard[]
