@@ -1,7 +1,7 @@
 export type DomainErrorCode =
   | 'INSUFFICIENT_STOCK' | 'PRICE_CHANGED' | 'INSUFFICIENT_CREDIT'
   | 'NO_PRICE' | 'BAD_LINE' | 'NOT_FOUND' | 'INVALID_INPUT'
-  | 'UNAUTHORIZED' | 'FORBIDDEN'
+  | 'UNAUTHORIZED' | 'FORBIDDEN' | 'RATE_LIMITED'
 
 export class DomainError extends Error {
   constructor(
@@ -19,6 +19,7 @@ const STATUS: Record<DomainErrorCode, number> = {
   UNAUTHORIZED: 401,
   FORBIDDEN: 403,
   NOT_FOUND: 404,
+  RATE_LIMITED: 429,
   INSUFFICIENT_STOCK: 409,
   PRICE_CHANGED: 409,
   INSUFFICIENT_CREDIT: 409,

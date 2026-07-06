@@ -7,9 +7,10 @@ interface PinPadProps {
   onSubmit: (pin: string) => void
   error?: string
   loading?: boolean
+  disabled?: boolean
 }
 
-export function PinPad({ onSubmit, error, loading }: PinPadProps) {
+export function PinPad({ onSubmit, error, loading, disabled }: PinPadProps) {
   const [pin, setPin] = useState('')
 
   function handleDigit(digit: string) {
@@ -44,7 +45,7 @@ export function PinPad({ onSubmit, error, loading }: PinPadProps) {
             key={i}
             variant="outline"
             className="w-16 h-16 text-xl"
-            disabled={loading}
+            disabled={loading || disabled}
             onClick={() => key === '⌫' ? setPin(p => p.slice(0, -1)) : handleDigit(key)}
             aria-label={key === '⌫' ? 'Delete digit' : `Digit ${key}`}
           >

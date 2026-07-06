@@ -13,6 +13,7 @@ test('toHttpError maps codes to statuses', () => {
   assert.equal(toHttpError(new DomainError('UNAUTHORIZED', 'no'))!.status, 401)
   assert.equal(toHttpError(new DomainError('FORBIDDEN', 'no'))!.status, 403)
   assert.equal(toHttpError(new DomainError('NOT_FOUND', 'gone'))!.status, 404)
+  assert.equal(toHttpError(new DomainError('RATE_LIMITED', 'locked'))!.status, 429)
   for (const code of ['INSUFFICIENT_STOCK', 'PRICE_CHANGED', 'INSUFFICIENT_CREDIT', 'NO_PRICE', 'BAD_LINE'] as const) {
     assert.equal(toHttpError(new DomainError(code, 'conflict'))!.status, 409)
   }
