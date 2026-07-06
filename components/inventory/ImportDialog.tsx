@@ -3,6 +3,7 @@ import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { printLabelSheet, type LabelData } from '@/components/shared/printLabelSheet'
 
 const TEMPLATE_HEADER = 'external_id,name,set_name,set_number,condition,quantity,cost_price,sell_price_override,location,defect_notes'
 const TEMPLATE_EXAMPLE = 'base1-4,Charizard,Base Set,4/102,NM,1,150.00,,Binder A,'
@@ -24,13 +25,35 @@ export function ImportDialog({ open, onClose, onDone }: ImportDialogProps) {
   const [file, setFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<ImportError[]>([])
+  const [createdIds, setCreatedIds] = useState<number[]>([])
+  const [labelsLoading, setLabelsLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   function reset() {
     setFile(null)
     setErrors([])
+    setCreatedIds([])
     setLoading(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  async function handlePrintLabels() {
+    setLabelsLoading(true)
+    try {
+      const res = await fetch('/api/labels/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inventoryItemIds: createdIds }),
+      })
+      if (!res.ok) {
+        toast.error('Could not build labels')
+        return
+      }
+      const { labels } = await res.json() as { labels: LabelData[] }
+      if (!printLabelSheet(labels)) toast.error('Allow pop-ups for this site to print labels')
+    } finally {
+      setLabelsLoading(false)
+    }
   }
 
   function handleClose() {
@@ -55,9 +78,11 @@ export function ImportDialog({ open, onClose, onDone }: ImportDialogProps) {
         setLoading(false)
         return
       }
-      const { created, errors: rowErrors } = data as { created: number; errors: ImportError[] }
+      const { created, createdIds: ids, errors: rowErrors } =
+        data as { created: number; createdIds?: number[]; errors: ImportError[] }
       toast.success(`Imported ${created} items`)
       setErrors(rowErrors ?? [])
+      setCreatedIds(ids ?? [])
       setFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
       onDone()
@@ -101,7 +126,14 @@ export function ImportDialog({ open, onClose, onDone }: ImportDialogProps) {
           )}
         </div>
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={handleClose} disabled={loading}>Cancel</Button>
+          <Button variant="outline" onClick={handleClose} disabled={loading}>
+            {createdIds.length > 0 ? 'Done' : 'Cancel'}
+          </Button>
+          {createdIds.length > 0 && (
+            <Button variant="outline" onClick={handlePrintLabels} disabled={labelsLoading}>
+              {labelsLoading ? 'Building…' : `Print ${createdIds.length} QR label${createdIds.length !== 1 ? 's' : ''}`}
+            </Button>
+          )}
           <Button onClick={handleImport} disabled={!file || loading} className="flex-1">
             {loading ? 'Importing…' : 'Import'}
           </Button>
