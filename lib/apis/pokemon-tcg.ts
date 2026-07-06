@@ -40,6 +40,11 @@ export interface AllPrices {
   '1stEditionNormal'?: PriceRow
 }
 
+export interface PokemonTCGSet {
+  name: string
+  series: string
+}
+
 function headers(): Record<string, string> {
   const key = process.env.POKEMON_TCG_API_KEY
   return key ? { 'X-Api-Key': key } : {}
@@ -89,6 +94,19 @@ export async function fetchCardPage(
   if (!res.ok) throw new Error(`Pokemon TCG API ${res.status}: ${await res.text()}`)
   const body = await res.json()
   return { cards: body.data as PokemonTCGCard[], totalCount: body.totalCount as number }
+}
+
+// Full set list in one call (174 sets as of 2026-07, well under one page) —
+// used once by the series backfill script. The per-card sweep doesn't need
+// this: it already gets set.series inline via each card's `set` field.
+export async function fetchSets(): Promise<PokemonTCGSet[]> {
+  const params = new URLSearchParams({ pageSize: '250', select: 'name,series' })
+  const res = await fetch(`${BASE_URL}/sets?${params}`, {
+    headers: headers(),
+    cache: 'no-store',
+  })
+  if (!res.ok) throw new Error(`Pokemon TCG API ${res.status}: ${await res.text()}`)
+  return (await res.json()).data as PokemonTCGSet[]
 }
 
 export function extractBestPrice(card: PokemonTCGCard): PriceResult {

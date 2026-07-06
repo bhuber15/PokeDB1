@@ -17,6 +17,7 @@ export const cards = sqliteTable('cards', {
   setName: text('set_name').notNull(),
   setNumber: text('set_number').notNull(),
   variant: text('variant'),
+  series: text('series'), // era/series, e.g. "Sword & Shield" — nullable, backfilled by scripts/backfill-series.ts
   language: text('language').notNull().default('EN'),
   externalId: text('external_id').unique(), // Pokemon TCG API card id e.g. "xy7-54"
   tcgplayerId: text('tcgplayer_id'),

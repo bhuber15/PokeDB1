@@ -100,6 +100,7 @@ test('sweep inserts unknown cards and refreshes prices for known ones', async ()
 
   const allCards = await db.select().from(schema.cards)
   assert.equal(allCards.length, 2)
+  assert.ok(allCards.every(c => c.series === 'T'), 'series captured from the API for every card')
   const [pikachuPrice] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, 1))
   assert.equal(pikachuPrice.tcgplayerMarket, 400) // $5 × 0.8 × 100
 })

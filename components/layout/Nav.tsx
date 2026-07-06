@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { ShoppingCartIcon, BanknoteIcon, UserIcon, StarIcon, PackageIcon, SearchIcon, BarChart3Icon, SettingsIcon, LockIcon } from 'lucide-react'
+import { ShoppingCartIcon, BanknoteIcon, LibraryIcon, UserIcon, StarIcon, PackageIcon, SearchIcon, BarChart3Icon, SettingsIcon, LockIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
@@ -23,6 +23,7 @@ export function Nav({ shopName = 'PokeDB', staffName, staffRole }: NavProps) {
   const links = [
     { href: '/pos', label: 'Sales', icon: ShoppingCartIcon },
     { href: '/buylist', label: 'Purchasing', icon: BanknoteIcon },
+    { href: '/catalogue', label: 'Catalogue', icon: LibraryIcon },
     { href: '/prices', label: 'Price Check', icon: SearchIcon },
     { href: '/inventory', label: 'Inventory', icon: PackageIcon },
     { href: '/customers', label: 'Customers', icon: UserIcon },
