@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { eq } from 'drizzle-orm'
 import { createTestDb, seedBase } from '../db/test-helpers'
 import * as schema from '../db/schema'
-import { getSets, getCardsInSet } from './catalogue'
+import { getSets, getCardsInSet, getNames, getPrintingsByName } from './catalogue'
 import type { Db } from '../db'
 
 let dbc: Db
@@ -43,4 +43,28 @@ test('getCardsInSet returns all cards in a set ordered by set number, joined to 
 test('getCardsInSet returns nothing for an unknown set name', async () => {
   const rows = await getCardsInSet('Nonexistent Set', dbc)
   assert.deepEqual(rows, [])
+})
+
+test('getNames returns distinct names, prefix-filtered and capped, alphabetised', async () => {
+  await dbc.insert(schema.cards).values([
+    { name: 'Pikachu VMAX', setName: 'Base Set', setNumber: '2' },
+    { name: 'Raichu', setName: 'Base Set', setNumber: '3' },
+  ])
+  const all = await getNames(undefined, dbc)
+  assert.deepEqual([...all].sort(), ['Pikachu', 'Pikachu VMAX', 'Raichu'])
+
+  const filtered = await getNames('Pika', dbc)
+  assert.deepEqual(filtered, ['Pikachu', 'Pikachu VMAX'])
+})
+
+test('getPrintingsByName returns every printing of an exact name, ordered by era then set number', async () => {
+  // seeded card: id 1, 'Pikachu', 'Base Set', setNumber '58/102', series null
+  await dbc.insert(schema.cards).values({
+    name: 'Pikachu', setName: 'Sword & Shield Base', setNumber: '4', series: 'Sword & Shield',
+  })
+  await dbc.insert(schema.cards).values({ name: 'Pikachu VMAX', setName: 'Base Set', setNumber: '1' }) // different name, excluded
+
+  const rows = await getPrintingsByName('Pikachu', dbc)
+  assert.equal(rows.length, 2)
+  assert.deepEqual(rows.map(r => r.card.setName), ['Sword & Shield Base', 'Base Set']) // ranked era before null-series seed row
 })
