@@ -18,7 +18,8 @@ interface Want {
   inStock: boolean
 }
 
-export default function WantsPage() {
+// All outstanding wants across every customer — "what should I pull from new stock".
+export function WantsPanel() {
   const [wants, setWants] = useState<Want[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -61,12 +62,9 @@ export default function WantsPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Want List</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Open customer wants — green = in stock now</p>
-        </div>
+        <p className="text-sm text-muted-foreground">Open customer wants — green = in stock now</p>
         <Button variant="outline" size="sm" onClick={load}>Refresh</Button>
       </div>
 

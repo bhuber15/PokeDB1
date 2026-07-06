@@ -7,6 +7,15 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "assets.tcgdex.net" },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: "/wants",
+        destination: "/customers?view=wants",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;
