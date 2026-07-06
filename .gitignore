@@ -48,3 +48,7 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 /.e2e/
+
+# Claude Code local state (skills are tracked; settings + worktrees are not)
+.claude/*
+!.claude/skills/
