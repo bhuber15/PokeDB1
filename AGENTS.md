@@ -39,6 +39,7 @@ PokeDB is a point-of-sale and inventory system for a UK Pokémon card shop: sell
 - **Refunds are capped** at the cumulative amount charged for a sale.
 - **Store credit** lives in `credit_ledger` (append-only); store-credit payments require a `customerId`.
 - Currency conversion for market prices uses the `PRICE_USD_TO_GBP` / `PRICE_EUR_TO_GBP` env rates.
+- **Client components never value-import from `lib/domain/` or anything that touches `lib/db`.** That drags the libsql client into the browser bundle, which breaks the dev server in misleading ways (CI smoke saw unrelated API routes 404). `import type` is fine (erased at compile). Constants shared between domain and UI go in dependency-free modules — pattern: `lib/adjustment-reasons.ts`.
 
 ## How to work in this repo
 
