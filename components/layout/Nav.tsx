@@ -21,12 +21,13 @@ export function Nav({ shopName = 'PokeDB', staffName, staffRole }: NavProps) {
   }
 
   const links = [
-    { href: '/pos', label: 'POS', icon: ShoppingCartIcon },
-    { href: '/buylist', label: 'Buy', icon: BanknoteIcon },
-    { href: '/customers', label: 'Customers', icon: UserIcon },
-    { href: '/wants', label: 'Wants', icon: StarIcon },
+    { href: '/pos', label: 'Sales', icon: ShoppingCartIcon },
+    { href: '/buylist', label: 'Purchasing', icon: BanknoteIcon },
+    { href: '/prices', label: 'Price Check', icon: SearchIcon },
     { href: '/inventory', label: 'Inventory', icon: PackageIcon },
-    { href: '/prices', label: 'Prices', icon: SearchIcon },
+    { href: '/customers', label: 'Customers', icon: UserIcon },
+    // Wants stays until it merges into the Customers page (docs/testing/smoke-2026-07-06.md)
+    { href: '/wants', label: 'Wants', icon: StarIcon },
     ...(staffRole === 'admin' ? [
       { href: '/reports', label: 'Reports', icon: BarChart3Icon },
       { href: '/settings', label: 'Settings', icon: SettingsIcon },
