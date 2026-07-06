@@ -44,20 +44,28 @@ export function CatalogueBrowser({ onSelectCard }: CatalogueBrowserProps) {
     return () => clearTimeout(t)
   }, [mode, nameQuery])
 
+  // Timer defers the fetch past the effect's sync phase (set-state-in-effect)
   useEffect(() => {
     if (!activeSet) return
-    setLoading(true)
-    fetch(`/api/cards/browse?setName=${encodeURIComponent(activeSet)}`)
-      .then(r => r.json()).then(d => setRows(d.cards ?? []))
-      .finally(() => setLoading(false))
+    const t = setTimeout(() => {
+      setLoading(true)
+      fetch(`/api/cards/browse?setName=${encodeURIComponent(activeSet)}`)
+        .then(r => r.json()).then(d => setRows(d.cards ?? []))
+        .finally(() => setLoading(false))
+    }, 0)
+    return () => clearTimeout(t)
   }, [activeSet])
 
+  // Timer defers the fetch past the effect's sync phase (set-state-in-effect)
   useEffect(() => {
     if (!activeName) return
-    setLoading(true)
-    fetch(`/api/cards/browse-by-name?name=${encodeURIComponent(activeName)}`)
-      .then(r => r.json()).then(d => setRows(d.cards ?? []))
-      .finally(() => setLoading(false))
+    const t = setTimeout(() => {
+      setLoading(true)
+      fetch(`/api/cards/browse-by-name?name=${encodeURIComponent(activeName)}`)
+        .then(r => r.json()).then(d => setRows(d.cards ?? []))
+        .finally(() => setLoading(false))
+    }, 0)
+    return () => clearTimeout(t)
   }, [activeName])
 
   const filteredSets = sets.filter(s => s.setName.toLowerCase().includes(setFilter.toLowerCase()))
