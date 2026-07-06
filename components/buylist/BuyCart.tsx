@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CustomerPicker } from '@/components/shared/CustomerPicker'
+import { BuySlipDialog, type BuySlipData } from './BuySlipDialog'
 import { formatGBP } from '@/lib/pricing'
 import { toast } from 'sonner'
 import type { Customer } from '@/lib/db/schema'
@@ -24,6 +25,7 @@ export function BuyCart({ lines, onRemove, onClear }: BuyCartProps) {
   const [method, setMethod] = useState<PayMethod>('cash')
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const [slip, setSlip] = useState<BuySlipData | null>(null)
 
   const total = lines.reduce((sum, l) => {
     const price = method === 'cash' ? l.payPriceCash : l.payPriceCredit
@@ -55,9 +57,23 @@ export function BuyCart({ lines, onRemove, onClear }: BuyCartProps) {
         toast.error(err.error ?? 'Buy failed — please try again')
         return
       }
-      const { total: confirmedTotal } = await res.json()
+      const { buyId, total: confirmedTotal } = await res.json()
       const cardCount = lines.reduce((n, l) => n + l.quantity, 0)
       toast.success(`Bought ${cardCount} card${cardCount !== 1 ? 's' : ''} for ${formatGBP(confirmedTotal)}`)
+      // Snapshot the slip before the cart resets
+      setSlip({
+        buyId,
+        at: new Date().toISOString(),
+        method,
+        total: confirmedTotal,
+        customerName: customer?.name ?? null,
+        lines: lines.map(l => ({
+          cardName: l.cardName,
+          condition: l.condition,
+          quantity: l.quantity,
+          payPrice: (method === 'cash' ? l.payPriceCash : l.payPriceCredit) ?? 0,
+        })),
+      })
       onClear()
       setCustomer(null)
     } finally {
@@ -67,15 +83,19 @@ export function BuyCart({ lines, onRemove, onClear }: BuyCartProps) {
 
   if (lines.length === 0) {
     return (
-      <div className="border rounded-xl p-8 text-center text-muted-foreground text-sm space-y-1">
-        <div>Buy cart is empty</div>
-        <div className="text-xs">Search a card and add it to start buying</div>
-      </div>
+      <>
+        <BuySlipDialog slip={slip} onClose={() => setSlip(null)} />
+        <div className="border rounded-xl p-8 text-center text-muted-foreground text-sm space-y-1">
+          <div>Buy cart is empty</div>
+          <div className="text-xs">Search a card and add it to start buying</div>
+        </div>
+      </>
     )
   }
 
   return (
     <div className="border rounded-xl overflow-hidden flex flex-col">
+      <BuySlipDialog slip={slip} onClose={() => setSlip(null)} />
       {/* Method toggle */}
       <div className="flex border-b">
         {(['cash', 'store_credit'] as const).map(m => (

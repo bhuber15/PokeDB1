@@ -23,6 +23,7 @@ export const POST = guarded(async (req: NextRequest) => {
 
   const errors: { row: number; message: string }[] = []
   let created = 0
+  const createdIds: number[] = [] // for batch label printing after import
 
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i]
@@ -68,18 +69,19 @@ export const POST = guarded(async (req: NextRequest) => {
           await tx.insert(priceCache).values({ cardId }).onConflictDoNothing()
         }
 
-        await tx.insert(inventoryItems).values({
+        const [item] = await tx.insert(inventoryItems).values({
           cardId, condition, quantity, costPrice: parsePounds(costPrice), // CSV column is pounds
           sellPriceOverride,
           qrCode: generateQRId(),
           location: col(r, 'location') || null,
           defectNotes: col(r, 'defect_notes') || null,
-        })
+        }).returning()
+        createdIds.push(item.id)
       })
       created++
     } catch (e) {
       errors.push({ row: rowNo, message: e instanceof Error ? e.message : 'error' })
     }
   }
-  return NextResponse.json({ created, errors })
+  return NextResponse.json({ created, createdIds, errors })
 })
