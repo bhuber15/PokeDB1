@@ -159,6 +159,17 @@ export const buyItems = sqliteTable('buy_items', {
   payPrice: integer('pay_price').notNull(), // per-item GBP paid
 })
 
+// Endpoint-scoped login throttling. DB-backed because serverless instances
+// share no memory. One row per scope ('staff-pin' | 'owner'); timestamps are
+// unix epoch seconds so lockout arithmetic stays integer-only.
+export const authLockouts = sqliteTable('auth_lockouts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  scope: text('scope').notNull().unique(),
+  failCount: integer('fail_count').notNull().default(0),
+  windowStart: integer('window_start').notNull(),
+  lockedUntil: integer('locked_until'),
+})
+
 export const wantList = sqliteTable('want_list', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   customerId: integer('customer_id').notNull().references(() => customers.id),
@@ -181,5 +192,6 @@ export type CreditLedger = typeof creditLedger.$inferSelect
 export type BuyTransaction = typeof buyTransactions.$inferSelect
 export type BuyItem = typeof buyItems.$inferSelect
 export type WantListItem = typeof wantList.$inferSelect
+export type AuthLockout = typeof authLockouts.$inferSelect
 export type Refund = typeof refunds.$inferSelect
 export type RefundItem = typeof refundItems.$inferSelect

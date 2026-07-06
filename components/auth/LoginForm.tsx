@@ -22,6 +22,10 @@ export function LoginForm({ shopName }: { shopName: string }) {
     })
     if (res.ok) {
       router.push('/pin')
+    } else if (res.status === 429) {
+      const body = await res.json().catch(() => null)
+      setError(body?.error ?? 'Too many failed attempts. Try again later.')
+      setLoading(false)
     } else {
       setError('Incorrect password')
       setLoading(false)

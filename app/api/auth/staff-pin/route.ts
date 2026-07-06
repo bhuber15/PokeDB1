@@ -7,14 +7,17 @@ import bcrypt from 'bcryptjs'
 import { getSession } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
+import { assertNotLocked, recordFailedAttempt, clearLockout } from '@/lib/domain/auth-lockout'
 
 const pinLoginBody = z.object({ pin: z.string().regex(/^\d{4}$/, 'Invalid PIN format') })
 
 export const POST = guarded(async (req: NextRequest) => {
+  await assertNotLocked('staff-pin')
   const { pin } = await parseBody(req, pinLoginBody)
   const activeStaff = await db.select().from(staff).where(eq(staff.isActive, true))
   for (const member of activeStaff) {
     if (await bcrypt.compare(pin, member.pinHash)) {
+      await clearLockout('staff-pin')
       const session = await getSession()
       session.staffId = member.id
       session.staffRole = member.role as 'admin' | 'staff'
@@ -23,6 +26,7 @@ export const POST = guarded(async (req: NextRequest) => {
       return NextResponse.json({ id: member.id, name: member.name, role: member.role })
     }
   }
+  await recordFailedAttempt('staff-pin') // throws 429 on the locking failure
   return NextResponse.json({ error: 'PIN not recognised' }, { status: 401 })
 })
 
