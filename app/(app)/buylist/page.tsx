@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { BuyCard } from '@/components/buylist/BuyCard'
 import { BuyCart, BuyCartLine } from '@/components/buylist/BuyCart'
+import { CatalogueBrowser, type CatalogueSelection } from '@/components/catalogue/CatalogueBrowser'
 import { toast } from 'sonner'
 import type { Card, PriceCache } from '@/lib/db/schema'
 
@@ -12,7 +13,10 @@ interface SearchResult {
   prices: PriceCache | null
 }
 
+type PageMode = 'search' | 'browse'
+
 export default function BuylistPage() {
+  const [pageMode, setPageMode] = useState<PageMode>('search')
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<SearchResult[]>([])
@@ -57,24 +61,45 @@ export default function BuylistPage() {
     setCart(prev => [...prev, line])
   }
 
+  function handleBrowseSelect({ card, prices }: CatalogueSelection) {
+    setResults(prev => prev.some(r => r.card.id === card.id) ? prev : [{ card, prices }, ...prev])
+  }
+
   return (
     <div className="grid grid-cols-[1fr_360px] gap-6" style={{ height: 'calc(100vh - 120px)' }}>
-      {/* Left: search + results */}
-      <div className="flex flex-col gap-4 overflow-y-auto">
-        <div className="flex gap-2">
-          <Input
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSearch()}
-            placeholder="Search card name to buy…"
-            className="h-12 text-base"
-            disabled={loading}
-            autoFocus
-          />
-          <Button className="h-12 px-6" onClick={handleSearch} disabled={loading || !query.trim()}>
+      {/* Left: search/browse + results */}
+      <div className="flex flex-col gap-4 overflow-y-auto min-h-0">
+        <div className="flex gap-2 shrink-0">
+          <Button variant={pageMode === 'search' ? 'default' : 'outline'} onClick={() => setPageMode('search')}>
             Search
           </Button>
+          <Button variant={pageMode === 'browse' ? 'default' : 'outline'} onClick={() => setPageMode('browse')}>
+            Browse
+          </Button>
         </div>
+
+        {pageMode === 'search' && (
+          <div className="flex gap-2 shrink-0">
+            <Input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              placeholder="Search card name to buy…"
+              className="h-12 text-base"
+              disabled={loading}
+              autoFocus
+            />
+            <Button className="h-12 px-6" onClick={handleSearch} disabled={loading || !query.trim()}>
+              Search
+            </Button>
+          </div>
+        )}
+
+        {pageMode === 'browse' && (
+          <div className="shrink-0" style={{ height: '360px' }}>
+            <CatalogueBrowser onSelectCard={handleBrowseSelect} />
+          </div>
+        )}
 
         {results.map(({ card, prices }) => (
           <BuyCard
