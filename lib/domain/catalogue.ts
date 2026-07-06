@@ -5,7 +5,7 @@
 // Catalogue tab and the Buy page's Browse mode. No writes — unlike
 // sales/refunds/buys, this module has no domain invariants to enforce.
 
-import { and, asc, eq, like, sql } from 'drizzle-orm'
+import { asc, eq, like, sql } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
 import { cards, priceCache } from '@/lib/db/schema'
 import type { Card, PriceCache } from '@/lib/db/schema'
