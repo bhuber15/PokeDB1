@@ -20,34 +20,32 @@ export default function BuylistPage() {
 
   async function handleSearch() {
     const q = query.trim()
-    if (!q) return
+    if (!q || loading) return
     setLoading(true)
     try {
-      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}`)
+      // Server bounds the live-API fallback at ~4s; this client timeout is a
+      // backstop so the search UI can never get stuck waiting.
+      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}`, {
+        signal: AbortSignal.timeout(15_000),
+      })
       const data = await res.json()
       const cards: Card[] = data.cards ?? []
+      const prices: Record<number, PriceCache | undefined> = data.prices ?? {}
       if (!cards.length) {
-        toast.error(`No cards found for "${q}"`)
+        if (data.unavailable) {
+          toast.error('Card search is busy right now — try that search again in a moment')
+        } else {
+          toast.error(`No cards found for "${q}"`)
+        }
         setResults([])
         return
       }
-      // Fetch prices for each card (up to 10 results)
-      const slice = cards.slice(0, 10)
-      const withPrices = await Promise.all(
-        slice.map(async (card) => {
-          try {
-            const pr = await fetch(`/api/cards/${card.id}`)
-            if (!pr.ok) return { card, prices: null }
-            const d = await pr.json()
-            return { card, prices: (d.priceCache ?? null) as PriceCache | null }
-          } catch {
-            return { card, prices: null }
-          }
-        })
-      )
-      setResults(withPrices)
-    } catch {
-      toast.error('Search failed — please try again')
+      if (data.fuzzy) toast(`No exact match for "${q}" — showing close matches`)
+      setResults(cards.map(card => ({ card, prices: prices[card.id] ?? null })))
+    } catch (e) {
+      toast.error(e instanceof Error && e.name === 'TimeoutError'
+        ? 'Search timed out — please try again'
+        : 'Search failed — please try again')
     } finally {
       setLoading(false)
     }
@@ -68,7 +66,6 @@ export default function BuylistPage() {
             onKeyDown={e => e.key === 'Enter' && handleSearch()}
             placeholder="Search card name to buy…"
             className="h-12 text-base"
-            disabled={loading}
             autoFocus
           />
           <Button className="h-12 px-6" onClick={handleSearch} disabled={loading || !query.trim()}>
