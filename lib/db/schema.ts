@@ -157,6 +157,21 @@ export const buyItems = sqliteTable('buy_items', {
   condition: text('condition').notNull(),
   quantity: integer('quantity').notNull(),
   payPrice: integer('pay_price').notNull(), // per-item GBP paid
+  // Market price (pence) snapshotted from price_cache at buy time, for
+  // overpayment auditing. Null when the card had no cached market price.
+  marketAtBuy: integer('market_at_buy'),
+})
+
+// Append-only audit trail for manual stock quantity edits (recounts, damage,
+// shrinkage). Sales/refunds/buys move stock through their own tables; this
+// covers everything else.
+export const stockAdjustments = sqliteTable('stock_adjustments', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  inventoryItemId: integer('inventory_item_id').notNull().references(() => inventoryItems.id),
+  staffId: integer('staff_id').notNull().references(() => staff.id),
+  delta: integer('delta').notNull(),
+  reason: text('reason').notNull(), // 'recount' | 'damage' | 'lost' | 'other'
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
 // Endpoint-scoped login throttling. DB-backed because serverless instances
@@ -193,5 +208,6 @@ export type BuyTransaction = typeof buyTransactions.$inferSelect
 export type BuyItem = typeof buyItems.$inferSelect
 export type WantListItem = typeof wantList.$inferSelect
 export type AuthLockout = typeof authLockouts.$inferSelect
+export type StockAdjustment = typeof stockAdjustments.$inferSelect
 export type Refund = typeof refunds.$inferSelect
 export type RefundItem = typeof refundItems.$inferSelect

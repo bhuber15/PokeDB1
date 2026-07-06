@@ -8,6 +8,7 @@ import { InventoryTable, InventoryRow } from '@/components/inventory/InventoryTa
 import { QRLabel } from '@/components/inventory/QRLabel'
 import { ImportDialog } from '@/components/inventory/ImportDialog'
 import { calculateSellPrice, formatGBP } from '@/lib/pricing'
+import type { AdjustmentReason } from '@/lib/domain/inventory'
 
 export default function InventoryPage() {
   const [rows, setRows] = useState<InventoryRow[]>([])
@@ -25,11 +26,11 @@ export default function InventoryPage() {
     refetch()
   }, [])
 
-  async function handleStockChange(id: number, quantity: number) {
+  async function handleStockChange(id: number, quantity: number, reason: AdjustmentReason) {
     await fetch(`/api/inventory/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ quantity }),
+      body: JSON.stringify({ quantity, reason }),
     })
     setRows(prev => prev.map(r => r.item.id === id ? { ...r, item: { ...r.item, quantity } } : r))
   }

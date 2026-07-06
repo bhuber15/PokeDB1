@@ -6,9 +6,11 @@ import { eq } from 'drizzle-orm'
 import { getSession, requireStaff, requireAdmin } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
+import { applyInventoryPatch, ADJUSTMENT_REASONS } from '@/lib/domain/inventory'
 
 const patchInventoryBody = z.object({
-  quantity: z.number().int().optional(),
+  quantity: z.number().int().nonnegative().optional(),
+  reason: z.enum(ADJUSTMENT_REASONS).optional(), // required when quantity changes
   condition: z.enum(['NM', 'LP', 'MP', 'HP', 'DMG']).optional(),
   costPrice: z.number().int().nonnegative().optional(), // pence
   sellPriceOverride: z.number().int().nonnegative().nullable().optional(), // pence
@@ -21,24 +23,11 @@ export const PATCH = guarded(async (
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) => {
-  requireStaff(await getSession())
+  const session = requireStaff(await getSession())
 
   const { id } = await params
-  const body = await parseBody(req, patchInventoryBody)
-  const updates = Object.fromEntries(
-    Object.entries(body).filter(([, v]) => v !== undefined)
-  )
-
-  if (Object.keys(updates).length === 0) {
-    return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
-  }
-
-  const [updated] = await db.update(inventoryItems)
-    .set(updates)
-    .where(eq(inventoryItems.id, parseInt(id)))
-    .returning()
-
-  if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const { reason, ...patch } = await parseBody(req, patchInventoryBody)
+  const updated = await applyInventoryPatch(parseInt(id), session.staffId, patch, reason)
   return NextResponse.json(updated)
 })
 
