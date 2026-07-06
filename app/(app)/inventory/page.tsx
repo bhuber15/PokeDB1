@@ -8,7 +8,7 @@ import { InventoryTable, InventoryRow } from '@/components/inventory/InventoryTa
 import { QRLabel } from '@/components/inventory/QRLabel'
 import { ImportDialog } from '@/components/inventory/ImportDialog'
 import { calculateSellPrice, formatGBP } from '@/lib/pricing'
-import type { AdjustmentReason } from '@/lib/domain/inventory'
+import type { AdjustmentReason } from '@/lib/adjustment-reasons'
 
 export default function InventoryPage() {
   const [rows, setRows] = useState<InventoryRow[]>([])

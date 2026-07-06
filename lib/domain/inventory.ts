@@ -2,9 +2,9 @@ import { eq } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
 import { inventoryItems, stockAdjustments } from '@/lib/db/schema'
 import { DomainError } from './errors'
+import type { AdjustmentReason } from '@/lib/adjustment-reasons'
 
-export const ADJUSTMENT_REASONS = ['recount', 'damage', 'lost', 'other'] as const
-export type AdjustmentReason = (typeof ADJUSTMENT_REASONS)[number]
+export { ADJUSTMENT_REASONS, type AdjustmentReason } from '@/lib/adjustment-reasons'
 
 export interface InventoryPatch {
   quantity?: number
