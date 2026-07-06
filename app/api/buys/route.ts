@@ -24,6 +24,7 @@ export const POST = guarded(async (req: NextRequest) => {
   const body = await parseBody(req, createBuyBody)
   const result = await createBuy({
     staffId: session.staffId,
+    staffRole: session.staffRole,
     items: body.items,
     method: body.method,
     customerId: body.customerId,

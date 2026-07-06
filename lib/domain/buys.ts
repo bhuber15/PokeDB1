@@ -1,15 +1,24 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
-import { buyTransactions, buyItems, inventoryItems, creditLedger, customers } from '@/lib/db/schema'
+import { buyTransactions, buyItems, inventoryItems, creditLedger, customers, priceCache } from '@/lib/db/schema'
 import { generateQRId } from '@/lib/qr'
+import { pickMarketPrice } from '@/lib/pricing'
+import { getSettings } from '@/lib/settings'
 import { DomainError } from './errors'
 
 export interface CreateBuyInput {
   staffId: number
+  staffRole?: 'admin' | 'staff'
   items: { cardId: number; condition: string; quantity: number; payPrice: number }[]
   method: 'cash' | 'store_credit'
   customerId?: number
 }
+
+// Staff can haggle, but not past 110% of market — that gap is where buylist
+// fraud lives. Admins are exempt; cards with no cached market price can't be
+// capped and pass through with marketAtBuy = null.
+export const BUY_CAP_NUMERATOR = 11
+export const BUY_CAP_DENOMINATOR = 10
 
 const CONDITIONS = new Set(['NM', 'LP', 'MP', 'HP', 'DMG'])
 
@@ -29,6 +38,29 @@ export async function createBuy(
     if (!Number.isInteger(it.cardId) || it.cardId < 1) throw new DomainError('INVALID_INPUT', 'Invalid cardId')
   }
   const total = input.items.reduce((s, i) => s + i.payPrice * i.quantity, 0)
+
+  // Snapshot market prices for every line; enforce the overpayment cap for
+  // non-admin staff. Integer comparison (pay×10 > market×11) avoids floats.
+  const cardIds = [...new Set(input.items.map(i => i.cardId))]
+  const cacheRows = await dbc.select().from(priceCache).where(inArray(priceCache.cardId, cardIds))
+  const { primaryPriceSource } = await getSettings(dbc)
+  const marketByCard = new Map<number, number | null>(
+    cardIds.map(id => [id, pickMarketPrice(cacheRows.find(r => r.cardId === id), primaryPriceSource)]),
+  )
+  for (const it of input.items) {
+    const market = marketByCard.get(it.cardId) ?? null
+    if (
+      input.staffRole !== 'admin' && market !== null
+      && it.payPrice * BUY_CAP_DENOMINATOR > market * BUY_CAP_NUMERATOR
+    ) {
+      const maxPay = Math.floor(market * BUY_CAP_NUMERATOR / BUY_CAP_DENOMINATOR)
+      throw new DomainError(
+        'BUY_CAP_EXCEEDED',
+        `Pay price is above 110% of market — max £${(maxPay / 100).toFixed(2)} for this card. An admin can override.`,
+        { cardId: it.cardId, payPrice: it.payPrice, market, maxPay },
+      )
+    }
+  }
 
   if (input.method === 'store_credit') {
     const [customer] = await dbc.select().from(customers).where(eq(customers.id, input.customerId!)).limit(1)
@@ -79,6 +111,7 @@ export async function createBuy(
         condition: it.condition,
         quantity: it.quantity,
         payPrice: it.payPrice,
+        marketAtBuy: marketByCard.get(it.cardId) ?? null,
       })
     }
 

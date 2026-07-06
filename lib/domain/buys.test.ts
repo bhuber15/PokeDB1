@@ -96,3 +96,78 @@ test('validation and not-found errors', async () => {
     domainCode('NOT_FOUND'),
   )
 })
+
+// --- Overpayment cap + marketAtBuy snapshot ---
+// seedBase settings default primaryPriceSource = 'cardmarket'.
+
+async function seedMarket(trendPence: number) {
+  await dbc.insert(schema.priceCache).values({ cardId: 1, cardmarketTrend: trendPence })
+}
+
+test('staff buy at exactly 110% of market is allowed and snapshots marketAtBuy', async () => {
+  await seedMarket(1000)
+  const { buyId } = await createBuy({
+    staffId: 1, staffRole: 'staff',
+    items: [{ cardId: 1, condition: 'NM', quantity: 1, payPrice: 1100 }],
+    method: 'cash',
+  }, dbc)
+  const [item] = await dbc.select().from(schema.buyItems).where(eq(schema.buyItems.buyId, buyId))
+  assert.equal(item.marketAtBuy, 1000)
+  assert.equal(item.payPrice, 1100)
+})
+
+test('staff buy above 110% of market is rejected with BUY_CAP_EXCEEDED', async () => {
+  await seedMarket(1000)
+  await assert.rejects(
+    createBuy({
+      staffId: 1, staffRole: 'staff',
+      items: [{ cardId: 1, condition: 'NM', quantity: 1, payPrice: 1101 }],
+      method: 'cash',
+    }, dbc),
+    (e: unknown) => {
+      assert.ok(e instanceof DomainError)
+      assert.equal(e.code, 'BUY_CAP_EXCEEDED')
+      assert.equal(e.meta?.maxPay, 1100)
+      assert.equal(e.meta?.market, 1000)
+      return true
+    },
+  )
+  // Nothing written — the buy failed before the transaction.
+  const buys = await dbc.select().from(schema.buyTransactions)
+  assert.equal(buys.length, 0)
+})
+
+test('admin bypasses the cap; marketAtBuy still recorded', async () => {
+  await seedMarket(1000)
+  const { buyId } = await createBuy({
+    staffId: 1, staffRole: 'admin',
+    items: [{ cardId: 1, condition: 'NM', quantity: 1, payPrice: 5000 }],
+    method: 'cash',
+  }, dbc)
+  const [item] = await dbc.select().from(schema.buyItems).where(eq(schema.buyItems.buyId, buyId))
+  assert.equal(item.marketAtBuy, 1000)
+  assert.equal(item.payPrice, 5000)
+})
+
+test('no cached market price: cap cannot apply, marketAtBuy is null', async () => {
+  const { buyId } = await createBuy({
+    staffId: 1, staffRole: 'staff',
+    items: [{ cardId: 1, condition: 'NM', quantity: 1, payPrice: 99999 }],
+    method: 'cash',
+  }, dbc)
+  const [item] = await dbc.select().from(schema.buyItems).where(eq(schema.buyItems.buyId, buyId))
+  assert.equal(item.marketAtBuy, null)
+})
+
+test('cap falls back to the other price source when the primary is missing', async () => {
+  // primary is cardmarket; only tcgplayer has a price
+  await dbc.insert(schema.priceCache).values({ cardId: 1, tcgplayerMarket: 2000 })
+  await assert.rejects(
+    createBuy({
+      staffId: 1, staffRole: 'staff',
+      items: [{ cardId: 1, condition: 'NM', quantity: 1, payPrice: 2201 }],
+      method: 'cash',
+    }, dbc),
+    domainCode('BUY_CAP_EXCEEDED'),
+  )
+})

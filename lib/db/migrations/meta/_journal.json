@@ -78,6 +78,13 @@
       "when": 1783325509125,
       "tag": "0010_auth-lockouts",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1783325957439,
+      "tag": "0011_money-guardrails",
+      "breakpoints": true
     }
   ]
 }

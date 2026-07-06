@@ -3,6 +3,8 @@ import { Fragment, useState } from 'react'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { ADJUSTMENT_REASONS, type AdjustmentReason } from '@/lib/adjustment-reasons'
 import { calculateSellPrice, formatGBP, pickMarketPrice } from '@/lib/pricing'
 import { CardZoomModal, type CardZoomData } from '@/components/shared/CardZoomModal'
 import { useSettings } from '@/components/shared/SettingsProvider'
@@ -16,8 +18,15 @@ export interface InventoryRow {
 
 interface InventoryTableProps {
   rows: InventoryRow[]
-  onStockChange: (id: number, quantity: number) => void
+  onStockChange: (id: number, quantity: number, reason: AdjustmentReason) => void
   onPrintQR: (id: number) => void
+}
+
+const REASON_LABEL: Record<AdjustmentReason, string> = {
+  recount: 'Recount',
+  damage: 'Damage',
+  lost: 'Lost',
+  other: 'Other',
 }
 
 const CONDITION_BADGE: Record<string, string> = {
@@ -57,6 +66,8 @@ function groupRows(rows: InventoryRow[]): Group[] {
 export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTableProps) {
   const [editId, setEditId] = useState<number | null>(null)
   const [draft, setDraft] = useState('')
+  // Manual stock changes are audited — a pending edit waits here for a reason.
+  const [pendingChange, setPendingChange] = useState<{ id: number; quantity: number; from: number } | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [zoomCard, setZoomCard] = useState<CardZoomData | null>(null)
   const { marginMultiplier, primaryPriceSource } = useSettings()
@@ -69,8 +80,12 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
   }
   function saveEdit(id: number, current: number) {
     const val = parseInt(draft)
-    if (!isNaN(val) && val >= 0 && val !== current) onStockChange(id, val)
+    if (!isNaN(val) && val >= 0 && val !== current) setPendingChange({ id, quantity: val, from: current })
     setEditId(null)
+  }
+  function confirmChange(reason: AdjustmentReason) {
+    if (pendingChange) onStockChange(pendingChange.id, pendingChange.quantity, reason)
+    setPendingChange(null)
   }
   function toggleExpand(key: string) {
     setExpanded(prev => {
@@ -121,6 +136,24 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
   return (
     <>
       <CardZoomModal card={zoomCard} onClose={() => setZoomCard(null)} />
+      <Dialog open={!!pendingChange} onOpenChange={open => !open && setPendingChange(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogTitle>Why is stock changing?</DialogTitle>
+          {pendingChange && (
+            <p className="text-sm text-muted-foreground">
+              Quantity {pendingChange.from} → {pendingChange.quantity}{' '}
+              ({pendingChange.quantity - pendingChange.from > 0 ? '+' : ''}{pendingChange.quantity - pendingChange.from})
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            {ADJUSTMENT_REASONS.map((r, i) => (
+              <Button key={r} variant="outline" autoFocus={i === 0} onClick={() => confirmChange(r)}>
+                {REASON_LABEL[r]}
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
       <div className="rounded-xl border border-border overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="border-b border-border bg-muted/30">

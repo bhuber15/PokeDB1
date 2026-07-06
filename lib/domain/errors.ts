@@ -1,7 +1,7 @@
 export type DomainErrorCode =
   | 'INSUFFICIENT_STOCK' | 'PRICE_CHANGED' | 'INSUFFICIENT_CREDIT'
   | 'NO_PRICE' | 'BAD_LINE' | 'NOT_FOUND' | 'INVALID_INPUT'
-  | 'UNAUTHORIZED' | 'FORBIDDEN' | 'RATE_LIMITED'
+  | 'UNAUTHORIZED' | 'FORBIDDEN' | 'RATE_LIMITED' | 'BUY_CAP_EXCEEDED'
 
 export class DomainError extends Error {
   constructor(
@@ -25,6 +25,7 @@ const STATUS: Record<DomainErrorCode, number> = {
   INSUFFICIENT_CREDIT: 409,
   NO_PRICE: 409,
   BAD_LINE: 409,
+  BUY_CAP_EXCEEDED: 409,
 }
 
 // Framework-free mapping so domain tests never import next/server.
