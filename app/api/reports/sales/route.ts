@@ -39,14 +39,17 @@ export const GET = guarded(async (req: NextRequest) => {
     total: sql<number>`COALESCE(SUM(total), 0)`,
   }).from(sales).where(rangeWhere).groupBy(sales.paymentMethod)
 
+  // Gross margin uses the cost snapshot taken at sale time (sale_items.cost_at_sale),
+  // NOT the live inventory_items.cost_price — otherwise re-buying a card at a new
+  // price (which blends the cost basis) would retroactively change past margins.
+  // Lines with no captured cost are excluded from both revenue and cost.
   const [marginRow] = await db.select({
     revenue: sql<number>`COALESCE(SUM(${saleItems.priceAtSale} * ${saleItems.quantity}), 0)`,
-    cost: sql<number>`COALESCE(SUM(${inventoryItems.costPrice} * ${saleItems.quantity}), 0)`,
+    cost: sql<number>`COALESCE(SUM(${saleItems.costAtSale} * ${saleItems.quantity}), 0)`,
   })
     .from(saleItems)
     .innerJoin(sales, eq(saleItems.saleId, sales.id))
-    .leftJoin(inventoryItems, eq(saleItems.inventoryItemId, inventoryItems.id))
-    .where(and(rangeWhere, isNotNull(inventoryItems.costPrice)))
+    .where(and(rangeWhere, isNotNull(saleItems.costAtSale)))
 
   const topCardsRaw = await db.select({
     cardId: inventoryItems.cardId,
