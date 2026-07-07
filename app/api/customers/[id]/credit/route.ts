@@ -5,7 +5,7 @@ import { db } from '@/lib/db'
 import { creditLedger, customers } from '@/lib/db/schema'
 import { getSession, requireAdmin } from '@/lib/auth'
 import { guarded } from '@/lib/api'
-import { parseBody } from '@/lib/validation'
+import { parseBody, parseIdParam } from '@/lib/validation'
 import { getCustomerBalance } from '@/lib/credit'
 
 const creditAdjustmentBody = z.object({
@@ -14,7 +14,7 @@ const creditAdjustmentBody = z.object({
 
 export const POST = guarded(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   const session = requireAdmin(await getSession())
-  const customerId = parseInt((await params).id)
+  const customerId = parseIdParam((await params).id)
   const { delta: n } = await parseBody(req, creditAdjustmentBody)
   const [customer] = await db.select().from(customers).where(eq(customers.id, customerId)).limit(1)
   if (!customer) return NextResponse.json({ error: 'Not found' }, { status: 404 })

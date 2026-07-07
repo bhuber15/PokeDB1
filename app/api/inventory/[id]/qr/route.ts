@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import { generateQRDataURL } from '@/lib/qr'
 import { getSession, requireStaff } from '@/lib/auth'
 import { guarded } from '@/lib/api'
+import { parseIdParam } from '@/lib/validation'
 
 export const GET = guarded(async (
   _req: NextRequest,
@@ -12,8 +13,8 @@ export const GET = guarded(async (
 ) => {
   requireStaff(await getSession())
 
-  const { id } = await params
-  const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, parseInt(id)))
+  const id = parseIdParam((await params).id)
+  const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, id))
   if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const dataUrl = await generateQRDataURL(item.qrCode)

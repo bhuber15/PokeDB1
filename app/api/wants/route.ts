@@ -76,7 +76,7 @@ export const DELETE = guarded(async (req: NextRequest) => {
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
   const n = Number(id)
-  if (!Number.isInteger(n)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 })
+  if (!Number.isInteger(n) || n < 1) return NextResponse.json({ error: 'Invalid id' }, { status: 400 })
 
   await db
     .update(wantList)

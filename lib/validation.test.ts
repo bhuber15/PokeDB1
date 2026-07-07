@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { z } from 'zod'
-import { parseBody } from './validation'
+import { parseBody, parseIdParam } from './validation'
 import { DomainError } from './domain/errors'
 
 const schema = z.object({
@@ -54,4 +54,26 @@ test('parseBody applies schema defaults', async () => {
   })
   const data = await parseBody(jsonRequest('{}'), withDefault)
   assert.deepEqual(data, { role: 'staff' })
+})
+
+test('parseIdParam accepts positive integer strings', () => {
+  assert.equal(parseIdParam('1'), 1)
+  assert.equal(parseIdParam('42'), 42)
+})
+
+test('parseIdParam rejects non-numeric, empty, zero, negative and fractional ids', () => {
+  for (const bad of ['abc', '', '0', '-1', '1.5', '12abc', null, undefined]) {
+    assert.throws(
+      () => parseIdParam(bad),
+      (e: unknown) => e instanceof DomainError && e.code === 'INVALID_INPUT',
+      `expected ${String(bad)} to be rejected`,
+    )
+  }
+})
+
+test('parseIdParam uses the field name in the error message', () => {
+  assert.throws(
+    () => parseIdParam('nope', 'cardId'),
+    (e: unknown) => e instanceof DomainError && e.message === 'Invalid cardId',
+  )
 })
