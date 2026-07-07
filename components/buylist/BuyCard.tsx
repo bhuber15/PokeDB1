@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CardZoomModal } from '@/components/shared/CardZoomModal'
 import { useSettings } from '@/components/shared/SettingsProvider'
-import { calculateBuyPrice, formatGBP } from '@/lib/pricing'
+import { calculateBuyPrice, formatGBP, pickMarketPrice } from '@/lib/pricing'
 import type { Card, PriceCache } from '@/lib/db/schema'
 
 const CONDITIONS = ['NM', 'LP', 'MP', 'HP', 'DMG'] as const
@@ -29,9 +29,11 @@ export function BuyCard({ card, prices, onAdd }: BuyCardProps) {
   const [condition, setCondition] = useState<Condition>('NM')
   const [qty, setQty] = useState(1)
   const [zoomed, setZoomed] = useState(false)
-  const { buyCashPct, buyCreditPct } = useSettings()
+  const { buyCashPct, buyCreditPct, primaryPriceSource } = useSettings()
 
-  const market = prices?.tcgplayerMarket
+  // Use the shop's primary price source so the offer shown matches the
+  // reference price the server enforces its overpayment cap against.
+  const market = pickMarketPrice(prices, primaryPriceSource)
   const cashOffer = calculateBuyPrice(market, buyCashPct)
   const creditOffer = calculateBuyPrice(market, buyCreditPct)
 

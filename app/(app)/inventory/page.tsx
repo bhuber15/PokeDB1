@@ -7,10 +7,13 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { InventoryTable, InventoryRow } from '@/components/inventory/InventoryTable'
 import { QRLabel } from '@/components/inventory/QRLabel'
 import { ImportDialog } from '@/components/inventory/ImportDialog'
-import { calculateSellPrice, formatGBP } from '@/lib/pricing'
+import { calculateSellPrice, formatGBP, pickMarketPrice } from '@/lib/pricing'
+import { useSettings } from '@/components/shared/SettingsProvider'
+import { toast } from 'sonner'
 import type { AdjustmentReason } from '@/lib/adjustment-reasons'
 
 export default function InventoryPage() {
+  const { primaryPriceSource, marginMultiplier } = useSettings()
   const [rows, setRows] = useState<InventoryRow[]>([])
   const [loading, setLoading] = useState(true)
   const [qrModal, setQrModal] = useState<{
@@ -19,7 +22,11 @@ export default function InventoryPage() {
   const [importOpen, setImportOpen] = useState(false)
 
   function refetch() {
-    fetch('/api/inventory').then(r => r.json()).then(setRows).finally(() => setLoading(false))
+    fetch('/api/inventory')
+      .then(r => r.json())
+      .then(setRows)
+      .catch(() => toast.error('Could not load inventory'))
+      .finally(() => setLoading(false))
   }
 
   useEffect(() => {
@@ -37,13 +44,24 @@ export default function InventoryPage() {
 
   async function handlePrintQR(id: number) {
     const row = rows.find(r => r.item.id === id)!
-    const { dataUrl } = await fetch(`/api/inventory/${id}/qr`).then(r => r.json())
-    setQrModal({
-      dataUrl,
-      cardName: row.card?.name ?? 'Unknown',
-      condition: row.item.condition,
-      sellPrice: formatGBP(calculateSellPrice(row.prices?.tcgplayerMarket, row.item.sellPriceOverride)),
-    })
+    try {
+      const res = await fetch(`/api/inventory/${id}/qr`)
+      if (!res.ok) throw new Error('QR request failed')
+      const { dataUrl } = await res.json()
+      setQrModal({
+        dataUrl,
+        cardName: row.card?.name ?? 'Unknown',
+        condition: row.item.condition,
+        // Match the sell price shown in the table: primary price source × margin.
+        sellPrice: formatGBP(calculateSellPrice(
+          pickMarketPrice(row.prices, primaryPriceSource),
+          row.item.sellPriceOverride,
+          marginMultiplier,
+        )),
+      })
+    } catch {
+      toast.error('Could not generate QR code')
+    }
   }
 
   return (

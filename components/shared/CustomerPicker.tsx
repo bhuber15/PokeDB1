@@ -16,6 +16,7 @@ export function CustomerPicker({ onSelect, selected }: CustomerPickerProps) {
   const [results, setResults] = useState<Customer[]>([])
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [newName, setNewName] = useState('')
   const [balanceInfo, setBalanceInfo] = useState<{ customerId: number; balance: number | null } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -71,20 +72,27 @@ export function CustomerPicker({ onSelect, selected }: CustomerPickerProps) {
 
   async function createCustomer() {
     const name = newName.trim()
-    if (!name) return
-    const res = await fetch('/api/customers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    })
-    if (!res.ok) {
-      toast.error('Failed to create customer')
-      return
+    if (!name || submitting) return
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      if (!res.ok) {
+        toast.error('Failed to create customer')
+        return
+      }
+      const c: Customer = await res.json()
+      toast.success(`Customer "${c.name}" created`)
+      pick(c)
+      setNewName('')
+    } catch {
+      toast.error('Failed to create customer — check your connection')
+    } finally {
+      setSubmitting(false)
     }
-    const c: Customer = await res.json()
-    toast.success(`Customer "${c.name}" created`)
-    pick(c)
-    setNewName('')
   }
 
   return (
@@ -138,7 +146,7 @@ export function CustomerPicker({ onSelect, selected }: CustomerPickerProps) {
                       className="h-8 text-sm"
                       autoFocus
                     />
-                    <Button size="sm" className="h-8" onClick={createCustomer} disabled={!newName.trim()}>
+                    <Button size="sm" className="h-8" onClick={createCustomer} disabled={!newName.trim() || submitting}>
                       Create
                     </Button>
                     <Button size="sm" variant="ghost" className="h-8" onClick={() => setCreating(false)}>
