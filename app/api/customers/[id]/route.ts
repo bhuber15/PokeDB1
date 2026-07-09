@@ -5,7 +5,7 @@ import { customers, creditLedger, wantList, cards } from '@/lib/db/schema'
 import { eq, desc } from 'drizzle-orm'
 import { getSession, requireStaff } from '@/lib/auth'
 import { guarded } from '@/lib/api'
-import { parseBody } from '@/lib/validation'
+import { parseBody, parseIdParam } from '@/lib/validation'
 import { getCustomerBalance } from '@/lib/credit'
 
 const patchCustomerBody = z.object({
@@ -17,7 +17,7 @@ const patchCustomerBody = z.object({
 
 export const GET = guarded(async (_req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   requireStaff(await getSession())
-  const id = parseInt((await params).id)
+  const id = parseIdParam((await params).id)
   const [customer] = await db.select().from(customers).where(eq(customers.id, id))
   if (!customer) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   const [balance, ledger, wants] = await Promise.all([
@@ -41,7 +41,7 @@ export const GET = guarded(async (_req: NextRequest, { params }: { params: Promi
 
 export const PATCH = guarded(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   requireStaff(await getSession())
-  const id = parseInt((await params).id)
+  const id = parseIdParam((await params).id)
   const body = await parseBody(req, patchCustomerBody)
   const updates = Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined))
   if (Object.keys(updates).length === 0) return NextResponse.json({ error: 'No valid fields' }, { status: 400 })

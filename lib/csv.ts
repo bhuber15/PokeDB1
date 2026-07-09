@@ -1,6 +1,18 @@
+// A leading =, +, -, @ (or a leading TAB/CR) makes Excel, Google Sheets and
+// LibreOffice evaluate the cell as a formula — so an inventory note like
+// "=HYPERLINK(...)" or "@SUM(...)" would execute when the owner opens an
+// exported CSV. Prefixing with an apostrophe forces the value to be shown
+// verbatim as text. Numbers can never be formulas, so they pass through
+// untouched (guarding them would mangle numeric columns like -5.00).
+const FORMULA_TRIGGER = /^[=+\-@\t\r]/
+
 function escapeField(v: string | number | null | undefined): string {
   if (v == null) return ''
-  const s = String(v)
+  if (typeof v === 'number') {
+    const s = String(v)
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const s = FORMULA_TRIGGER.test(v) ? `'${v}` : v
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 

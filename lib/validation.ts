@@ -19,3 +19,14 @@ export async function parseBody<T>(req: Request, schema: z.ZodType<T>): Promise<
   }
   return result.data
 }
+
+// Parses a route or query-string id into a positive integer. Throws
+// INVALID_INPUT (mapped to 400 by guarded) so a malformed id like "abc", ""
+// or "1.5" fails fast instead of binding NaN and masquerading as a 404.
+export function parseIdParam(raw: string | null | undefined, field = 'id'): number {
+  const n = Number(raw)
+  if (!raw || !Number.isInteger(n) || n < 1) {
+    throw new DomainError('INVALID_INPUT', `Invalid ${field}`)
+  }
+  return n
+}

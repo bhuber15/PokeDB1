@@ -63,6 +63,57 @@ function groupRows(rows: InventoryRow[]): Group[] {
   return [...map.values()]
 }
 
+interface StockCellProps {
+  item: InventoryItem
+  editId: number | null
+  draft: string
+  setDraft: (v: string) => void
+  startEdit: (id: number, current: number) => void
+  saveEdit: (id: number, current: number) => void
+  cancelEdit: () => void
+}
+
+// Module-scope (not nested in InventoryTable) so its component identity is
+// stable across parent re-renders. Defined inline it would get a fresh type on
+// every keystroke, remounting the edit input — resetting the caret and re-firing
+// autoFocus.
+function StockCell({ item, editId, draft, setDraft, startEdit, saveEdit, cancelEdit }: StockCellProps) {
+  const isOut = item.quantity === 0
+  const isLow = !isOut && item.quantity <= item.lowStockThreshold
+  if (editId === item.id) {
+    return (
+      <div className="flex items-center gap-1">
+        <Input
+          className="w-16 h-7 text-center text-sm"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') saveEdit(item.id, item.quantity)
+            if (e.key === 'Escape') cancelEdit()
+          }}
+          type="number"
+          min={0}
+          autoFocus
+        />
+        <Button variant="ghost" size="sm" className="h-7 px-1.5 text-emerald-400" onClick={() => saveEdit(item.id, item.quantity)} aria-label="Save stock">✓</Button>
+        <Button variant="ghost" size="sm" className="h-7 px-1.5 text-muted-foreground" onClick={cancelEdit} aria-label="Cancel">✕</Button>
+      </div>
+    )
+  }
+  return (
+    <button
+      className={`inline-flex items-center gap-1.5 h-7 px-2 rounded hover:bg-muted/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isOut ? 'text-destructive font-semibold' : isLow ? 'text-amber-400' : ''}`}
+      onClick={() => startEdit(item.id, item.quantity)}
+      aria-label={`Edit stock, currently ${item.quantity}${isOut ? ', out of stock' : isLow ? ', low stock' : ''}`}
+    >
+      <span className="font-medium tabular-nums">{item.quantity}</span>
+      {isOut && <span className="text-xs uppercase">out</span>}
+      {isLow && <span className="text-xs">low</span>}
+      <span className="text-xs text-muted-foreground opacity-60" aria-hidden="true">✎</span>
+    </button>
+  )
+}
+
 export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTableProps) {
   const [editId, setEditId] = useState<number | null>(null)
   const [draft, setDraft] = useState('')
@@ -96,42 +147,7 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
     })
   }
 
-  function StockCell({ item }: { item: InventoryItem }) {
-    const isOut = item.quantity === 0
-    const isLow = !isOut && item.quantity <= item.lowStockThreshold
-    if (editId === item.id) {
-      return (
-        <div className="flex items-center gap-1">
-          <Input
-            className="w-16 h-7 text-center text-sm"
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') saveEdit(item.id, item.quantity)
-              if (e.key === 'Escape') setEditId(null)
-            }}
-            type="number"
-            min={0}
-            autoFocus
-          />
-          <Button variant="ghost" size="sm" className="h-7 px-1.5 text-emerald-400" onClick={() => saveEdit(item.id, item.quantity)} aria-label="Save stock">✓</Button>
-          <Button variant="ghost" size="sm" className="h-7 px-1.5 text-muted-foreground" onClick={() => setEditId(null)} aria-label="Cancel">✕</Button>
-        </div>
-      )
-    }
-    return (
-      <button
-        className={`inline-flex items-center gap-1.5 h-7 px-2 rounded hover:bg-muted/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isOut ? 'text-destructive font-semibold' : isLow ? 'text-amber-400' : ''}`}
-        onClick={() => startEdit(item.id, item.quantity)}
-        aria-label={`Edit stock, currently ${item.quantity}${isOut ? ', out of stock' : isLow ? ', low stock' : ''}`}
-      >
-        <span className="font-medium tabular-nums">{item.quantity}</span>
-        {isOut && <span className="text-xs uppercase">out</span>}
-        {isLow && <span className="text-xs">low</span>}
-        <span className="text-xs text-muted-foreground opacity-60" aria-hidden="true">✎</span>
-      </button>
-    )
-  }
+  const cancelEdit = () => setEditId(null)
 
   return (
     <>
@@ -212,7 +228,8 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
                       {multi ? (
                         <span className="font-medium tabular-nums">{group.totalQty}</span>
                       ) : (
-                        <StockCell item={group.items[0].item} />
+                        <StockCell item={group.items[0].item} editId={editId} draft={draft}
+                          setDraft={setDraft} startEdit={startEdit} saveEdit={saveEdit} cancelEdit={cancelEdit} />
                       )}
                     </td>
                     <td className="px-4 py-3 font-semibold text-foreground tabular-nums">{formatGBP(sellPrice)}</td>
@@ -243,7 +260,8 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
                         {item.location ? item.location : 'no location'}{item.defectNotes ? ` · ${item.defectNotes}` : ''}
                       </td>
                       <td className="px-4 py-2 text-muted-foreground">cost {formatGBP(item.costPrice)}</td>
-                      <td className="px-4 py-2"><StockCell item={item} /></td>
+                      <td className="px-4 py-2"><StockCell item={item} editId={editId} draft={draft}
+                        setDraft={setDraft} startEdit={startEdit} saveEdit={saveEdit} cancelEdit={cancelEdit} /></td>
                       <td className="px-4 py-2" />
                       <td className="px-4 py-2" />
                       <td className="px-4 py-2" />

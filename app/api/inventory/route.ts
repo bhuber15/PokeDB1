@@ -6,7 +6,7 @@ import { eq, and, like } from 'drizzle-orm'
 import { generateQRId } from '@/lib/qr'
 import { getSession, requireStaff } from '@/lib/auth'
 import { guarded } from '@/lib/api'
-import { parseBody } from '@/lib/validation'
+import { parseBody, parseIdParam } from '@/lib/validation'
 
 const createInventoryBody = z.object({
   cardId: z.number().int(),
@@ -33,7 +33,7 @@ export const GET = guarded(async (req: NextRequest) => {
 
   if (cardId) {
     return NextResponse.json(await base.where(and(
-      eq(inventoryItems.cardId, parseInt(cardId)),
+      eq(inventoryItems.cardId, parseIdParam(cardId, 'cardId')),
       eq(inventoryItems.isActive, true),
     )))
   }

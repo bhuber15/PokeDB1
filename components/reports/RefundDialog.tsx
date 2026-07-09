@@ -42,26 +42,31 @@ export function RefundDialog({ saleId, open, onClose, onDone }: Props) {
   const linesToRefund = Object.entries(selected).filter(([, qty]) => qty > 0)
 
   async function submit() {
-    if (!saleId || linesToRefund.length === 0) return
+    if (!saleId || linesToRefund.length === 0 || loading) return
     setLoading(true)
-    const res = await fetch('/api/refunds', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        saleId, method,
-        items: linesToRefund.map(([saleItemId, quantity]) => ({ saleItemId: Number(saleItemId), quantity })),
-      }),
-    })
-    setLoading(false)
-    if (!res.ok) {
-      const { error } = await res.json()
-      toast.error(error ?? 'Refund failed')
-      return
+    try {
+      const res = await fetch('/api/refunds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          saleId, method,
+          items: linesToRefund.map(([saleItemId, quantity]) => ({ saleItemId: Number(saleItemId), quantity })),
+        }),
+      })
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({}))
+        toast.error(error ?? 'Refund failed')
+        return
+      }
+      const { amount } = await res.json()
+      toast.success(`Refunded ${formatGBP(amount)}`)
+      onDone()
+      onClose()
+    } catch {
+      toast.error('Refund failed — check your connection')
+    } finally {
+      setLoading(false)
     }
-    const { amount } = await res.json()
-    toast.success(`Refunded ${formatGBP(amount)}`)
-    onDone()
-    onClose()
   }
 
   return (

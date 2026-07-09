@@ -3,7 +3,7 @@ import { desc } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { buyTransactions } from '@/lib/db/schema'
-import { getSession, requireStaff } from '@/lib/auth'
+import { getSession, requireStaff, requireAdmin } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
 import { createBuy } from '@/lib/domain/buys'
@@ -33,7 +33,9 @@ export const POST = guarded(async (req: NextRequest) => {
 })
 
 export const GET = guarded(async () => {
-  requireStaff(await getSession())
+  // Buy-transaction history exposes payout totals and customer/staff ids —
+  // same financial sensitivity as GET /api/sales, so it is admin-only.
+  requireAdmin(await getSession())
   const rows = await db.select().from(buyTransactions).orderBy(desc(buyTransactions.createdAt)).limit(50)
   return NextResponse.json(rows)
 })

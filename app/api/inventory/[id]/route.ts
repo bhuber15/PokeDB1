@@ -5,7 +5,7 @@ import { inventoryItems } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { getSession, requireStaff, requireAdmin } from '@/lib/auth'
 import { guarded } from '@/lib/api'
-import { parseBody } from '@/lib/validation'
+import { parseBody, parseIdParam } from '@/lib/validation'
 import { applyInventoryPatch, ADJUSTMENT_REASONS } from '@/lib/domain/inventory'
 
 const patchInventoryBody = z.object({
@@ -25,9 +25,9 @@ export const PATCH = guarded(async (
 ) => {
   const session = requireStaff(await getSession())
 
-  const { id } = await params
+  const id = parseIdParam((await params).id)
   const { reason, ...patch } = await parseBody(req, patchInventoryBody)
-  const updated = await applyInventoryPatch(parseInt(id), session.staffId, patch, reason)
+  const updated = await applyInventoryPatch(id, session.staffId, patch, reason)
   return NextResponse.json(updated)
 })
 
@@ -36,11 +36,11 @@ export const DELETE = guarded(async (
   { params }: { params: Promise<{ id: string }> }
 ) => {
   requireAdmin(await getSession())
-  const { id } = await params
+  const id = parseIdParam((await params).id)
   // Soft delete — preserves historical sale_items that reference this item
   const [updated] = await db.update(inventoryItems)
     .set({ isActive: false })
-    .where(eq(inventoryItems.id, parseInt(id)))
+    .where(eq(inventoryItems.id, id))
     .returning()
   if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json({ ok: true })

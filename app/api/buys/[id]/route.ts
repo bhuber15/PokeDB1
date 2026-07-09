@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { buyTransactions, buyItems, cards, customers, staff } from '@/lib/db/schema'
 import { getSession, requireStaff } from '@/lib/auth'
 import { guarded } from '@/lib/api'
+import { parseIdParam } from '@/lib/validation'
 
 // Buy transaction detail — powers the printable buy slip and batch labels.
 export const GET = guarded(async (
@@ -11,10 +12,10 @@ export const GET = guarded(async (
   { params }: { params: Promise<{ id: string }> }
 ) => {
   requireStaff(await getSession())
-  const { id } = await params
+  const id = parseIdParam((await params).id)
 
   const [buy] = await db.select().from(buyTransactions)
-    .where(eq(buyTransactions.id, parseInt(id))).limit(1)
+    .where(eq(buyTransactions.id, id)).limit(1)
   if (!buy) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const items = await db.select({
