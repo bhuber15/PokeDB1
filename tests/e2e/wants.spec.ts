@@ -37,12 +37,14 @@ test('want list lives under Customers: add a want, see it cross-customer, Sell l
   await page.getByRole('button', { name: 'Add to want list' }).click()
   await expect(page.getByText('Want added')).toBeVisible()
 
-  // Cross-customer Want List tab — staff need "what should I pull from new stock"
+  // Cross-customer Want List tab — staff need "what should I pull from new stock".
+  // The wanted Pikachu is in stock, so it surfaces in the grouped "ready to sell"
+  // panel with a POS deep link, and Ash is listed there as a waiting customer.
   await nav.getByRole('link', { name: 'Customers' }).click()
   await page.getByRole('button', { name: 'Want List' }).click()
-  const row = page.getByRole('row', { name: /Ash Ketchum/ })
-  await expect(row.getByText('In stock')).toBeVisible()
-  await expect(row.getByRole('link', { name: /sell/i })).toHaveAttribute('href', '/pos?q=Pikachu')
+  const inStock = page.locator('section').filter({ has: page.getByRole('heading', { name: /in stock now/i }) })
+  await expect(inStock.getByRole('link', { name: /sell/i })).toHaveAttribute('href', '/pos?q=Pikachu')
+  await expect(inStock.getByRole('link', { name: 'Ash Ketchum' })).toBeVisible()
 
   // Old /wants URL still resolves via redirect
   await page.goto('/wants')
