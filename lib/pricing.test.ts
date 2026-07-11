@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { calculateSellPrice, calculateBuyPrice, usdToGbp, eurToGbp, formatGBP, parsePounds, computeSaleTotals, VAT_RATE, MARGIN_VAT_DIVISOR } from './pricing'
+import { calculateSellPrice, calculateBuyPrice, usdToGbp, eurToGbp, formatGBP, parsePounds, computeSaleTotals, VAT_RATE, MARGIN_VAT_DIVISOR, computeMarginVat } from './pricing'
 
 test('calculateSellPrice: override wins over market price', () => {
   assert.equal(calculateSellPrice(10000, 4200, 0.85), 4200)
@@ -85,4 +85,71 @@ test('computeSaleTotals: margin scheme behaves like none for the customer total 
 test('VAT_RATE and MARGIN_VAT_DIVISOR are the single source of the rate', () => {
   assert.equal(VAT_RATE, 0.2)
   assert.equal(MARGIN_VAT_DIVISOR, 6)
+})
+
+test('computeMarginVat: single line, VAT is round(margin / 6)', () => {
+  // sell 1000, cost 400 → margin 600 → round(600/6) = 100
+  assert.deepEqual(
+    computeMarginVat([{ unitPrice: 1000, quantity: 1, costAtSale: 400 }], 0),
+    { vatAmount: 100, noCostLineCount: 0 },
+  )
+})
+
+test('computeMarginVat: quantity multiplies the line, margin floored at 0 per line', () => {
+  // 2 × sell 500 = 1000, cost 2 × 300 = 600 → margin 400 → round(400/6) = 67
+  assert.deepEqual(
+    computeMarginVat([{ unitPrice: 500, quantity: 2, costAtSale: 300 }], 0),
+    { vatAmount: 67, noCostLineCount: 0 },
+  )
+  // sold at a loss → margin max(0, 500-800) = 0 → no VAT
+  assert.deepEqual(
+    computeMarginVat([{ unitPrice: 500, quantity: 1, costAtSale: 800 }], 0),
+    { vatAmount: 0, noCostLineCount: 0 },
+  )
+})
+
+test('computeMarginVat: no-cost line contributes 0 and is counted', () => {
+  assert.deepEqual(
+    computeMarginVat([
+      { unitPrice: 1000, quantity: 1, costAtSale: 400 }, // margin 600 → 100
+      { unitPrice: 900, quantity: 1, costAtSale: null },  // excluded, counted
+    ], 0),
+    { vatAmount: 100, noCostLineCount: 1 },
+  )
+})
+
+test('computeMarginVat: discount is spread across lines by value, reducing the margin', () => {
+  // Lines value 1000 and 500 (subtotal 1500), discount 300 →
+  // alloc 200 and 100 → effective 800 and 400.
+  // costs 400 and 200 → margins 400 and 200 → round(400/6)=67, round(200/6)=33 → 100
+  assert.deepEqual(
+    computeMarginVat([
+      { unitPrice: 1000, quantity: 1, costAtSale: 400 },
+      { unitPrice: 500, quantity: 1, costAtSale: 200 },
+    ], 300),
+    { vatAmount: 100, noCostLineCount: 0 },
+  )
+})
+
+test('computeMarginVat: discount allocation sums exactly (largest-remainder)', () => {
+  // Three equal lines value 100 each (subtotal 300), discount 100.
+  // Allocations must sum to 100 exactly. costs 0 → margins are (100 - alloc_i).
+  // Total effective margin = 300 - 100 = 200 spread as 66/67/67 across lines,
+  // each VAT = round(m/6). Assert the total is stable regardless of tie-order.
+  const { vatAmount, noCostLineCount } = computeMarginVat([
+    { unitPrice: 100, quantity: 1, costAtSale: 0 },
+    { unitPrice: 100, quantity: 1, costAtSale: 0 },
+    { unitPrice: 100, quantity: 1, costAtSale: 0 },
+  ], 100)
+  // effective margins 66,67,67 → round(66/6)=11, round(67/6)=11, round(67/6)=11 → 33
+  assert.equal(vatAmount, 33)
+  assert.equal(noCostLineCount, 0)
+})
+
+test('computeMarginVat: discount clamped to [0, subtotal]', () => {
+  // Over-large discount wipes the margin to 0.
+  assert.deepEqual(
+    computeMarginVat([{ unitPrice: 1000, quantity: 1, costAtSale: 400 }], 99999),
+    { vatAmount: 0, noCostLineCount: 0 },
+  )
 })

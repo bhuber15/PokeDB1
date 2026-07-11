@@ -79,3 +79,45 @@ export function computeSaleTotals(
   return { discount, vatAmount, total: afterDiscount + vatAmount }
 }
 
+// Server-ONLY. Computes the VAT owed to HMRC on the margin of each sale line,
+// for the VAT Margin Scheme (second-hand goods). VAT is inclusive, so this does
+// NOT change the customer total (see computeSaleTotals). Must never be imported
+// by a client component — it takes cost data, which stays out of the browser.
+//
+// - Discount is spread across lines in proportion to line value (largest-remainder
+//   so integer pence allocations sum exactly to the discount).
+// - Per line: margin = max(0, effectiveLineValue - cost×qty); VAT = round(margin/6).
+//   Margins float at 0 per line — a loss on one card cannot offset another
+//   (pooling is only allowed under HMRC's Global Accounting Scheme, not implemented).
+// - Lines with no cost basis (costAtSale null) can't be in the scheme: they
+//   contribute 0 VAT and are counted so the caller can warn/block.
+export function computeMarginVat(
+  lines: { unitPrice: number; quantity: number; costAtSale: number | null }[],
+  discountPence: number,
+): { vatAmount: number; noCostLineCount: number } {
+  const values = lines.map(l => l.unitPrice * l.quantity)
+  const subtotal = values.reduce((s, v) => s + v, 0)
+  const discount = Math.min(Math.max(0, discountPence), subtotal)
+
+  // Proportional allocation with largest-remainder distribution of leftover pence.
+  const alloc = values.map(v => (subtotal > 0 ? Math.floor((discount * v) / subtotal) : 0))
+  let remainder = discount - alloc.reduce((s, a) => s + a, 0)
+  const byFraction = values
+    .map((v, i) => ({ i, frac: subtotal > 0 ? (discount * v) % subtotal : 0 }))
+    .sort((a, b) => b.frac - a.frac)
+  for (let k = 0; k < byFraction.length && remainder > 0; k++) {
+    alloc[byFraction[k].i]++
+    remainder--
+  }
+
+  let vatAmount = 0
+  let noCostLineCount = 0
+  lines.forEach((l, i) => {
+    if (l.costAtSale == null) { noCostLineCount++; return }
+    const effLineValue = values[i] - alloc[i]
+    const margin = Math.max(0, effLineValue - l.costAtSale * l.quantity)
+    vatAmount += Math.round(margin / MARGIN_VAT_DIVISOR)
+  })
+  return { vatAmount, noCostLineCount }
+}
+
