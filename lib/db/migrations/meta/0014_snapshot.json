@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "facb07a2-a50d-4552-87f7-90a9844e692a",
-  "prevId": "d01002d9-4b38-433c-bed1-8a7ae011495f",
+  "id": "bb0d9ae9-aaed-41cc-9651-7efce47dec40",
+  "prevId": "0489b70f-c5dc-4061-8765-2eb731e3ba1d",
   "tables": {
     "auth_lockouts": {
       "name": "auth_lockouts",
@@ -1056,6 +1056,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "customer_id": {
+          "name": "customer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "subtotal": {
           "name": "subtotal",
           "type": "integer",
@@ -1126,6 +1133,19 @@
           "tableTo": "staff",
           "columnsFrom": [
             "staff_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "sales_customer_id_customers_id_fk": {
+          "name": "sales_customer_id_customers_id_fk",
+          "tableFrom": "sales",
+          "tableTo": "customers",
+          "columnsFrom": [
+            "customer_id"
           ],
           "columnsTo": [
             "id"

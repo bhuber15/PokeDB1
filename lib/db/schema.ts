@@ -71,6 +71,9 @@ export const sales = sqliteTable('sales', {
   // with the same uuid returns the original sale instead of double-charging
   clientUuid: text('client_uuid').unique(),
   staffId: integer('staff_id').references(() => staff.id),
+  // Optional customer the sale is attributed to. Required for store-credit
+  // sales (enforced in createSale); optional for all other payment methods.
+  customerId: integer('customer_id').references(() => customers.id),
   subtotal: integer('subtotal').notNull(),
   discountAmount: integer('discount_amount').notNull().default(0),
   vatAmount: integer('vat_amount').notNull().default(0),

@@ -119,6 +119,7 @@ export async function createSale(
     const [sale] = await tx.insert(sales).values({
       clientUuid: input.clientUuid ?? null,
       staffId: input.staffId,
+      customerId: input.customerId ?? null,
       subtotal,
       discountAmount: discount,
       vatAmount,

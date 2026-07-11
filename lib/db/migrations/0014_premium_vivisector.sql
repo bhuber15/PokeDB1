@@ -10,4 +10,5 @@ CREATE UNIQUE INDEX `cards_external_id_unique` ON `cards` (`external_id`);--> st
 CREATE UNIQUE INDEX `inventory_items_qr_code_unique` ON `inventory_items` (`qr_code`);--> statement-breakpoint
 CREATE UNIQUE INDEX `price_cache_card_id_unique` ON `price_cache` (`card_id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `price_history_card_id_recorded_on_unique` ON `price_history` (`card_id`,`recorded_on`);--> statement-breakpoint
-CREATE UNIQUE INDEX `sales_client_uuid_unique` ON `sales` (`client_uuid`);
+CREATE UNIQUE INDEX `sales_client_uuid_unique` ON `sales` (`client_uuid`);--> statement-breakpoint
+ALTER TABLE `settings` ADD `margin_no_cost_handling` text DEFAULT 'exclude' NOT NULL;

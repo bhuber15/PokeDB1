@@ -1,1 +1,0 @@
-ALTER TABLE `settings` ADD `margin_no_cost_handling` text DEFAULT 'exclude' NOT NULL;
