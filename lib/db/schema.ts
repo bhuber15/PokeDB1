@@ -117,7 +117,8 @@ export const settings = sqliteTable('settings', {
   primaryPriceSource: text('primary_price_source').notNull().default('cardmarket'),
   buyCashPct: real('buy_cash_pct').notNull().default(0.5),
   buyCreditPct: real('buy_credit_pct').notNull().default(0.65),
-  vatScheme: text('vat_scheme').notNull().default('none'), // 'none' | 'standard'
+  vatScheme: text('vat_scheme').notNull().default('none'), // 'none' | 'standard' | 'margin'
+  marginNoCostHandling: text('margin_no_cost_handling').notNull().default('exclude'), // 'exclude' | 'block'
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
 

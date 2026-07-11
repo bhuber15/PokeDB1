@@ -12,7 +12,8 @@ export interface AppSettings {
   buyCashPct: number
   buyCreditPct: number
   primaryPriceSource: 'cardmarket' | 'tcgplayer'
-  vatScheme: 'none' | 'standard'
+  vatScheme: 'none' | 'standard' | 'margin'
+  marginNoCostHandling: 'exclude' | 'block'
 }
 
 // Defaults fall back to env so pricing still works before the row exists
@@ -28,6 +29,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   buyCreditPct: 0.65,
   primaryPriceSource: 'cardmarket',
   vatScheme: 'none',
+  marginNoCostHandling: 'exclude',
 }
 
 function toAppSettings(row: Settings): AppSettings {
@@ -40,7 +42,8 @@ function toAppSettings(row: Settings): AppSettings {
     buyCashPct: row.buyCashPct,
     buyCreditPct: row.buyCreditPct,
     primaryPriceSource: row.primaryPriceSource as 'cardmarket' | 'tcgplayer',
-    vatScheme: row.vatScheme as 'none' | 'standard',
+    vatScheme: row.vatScheme as 'none' | 'standard' | 'margin',
+    marginNoCostHandling: row.marginNoCostHandling as 'exclude' | 'block',
   }
 }
 

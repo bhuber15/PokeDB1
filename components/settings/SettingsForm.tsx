@@ -20,7 +20,7 @@ export function SettingsForm() {
   const [buyCashPct, setBuyCashPct] = useState(String(current.buyCashPct))
   const [buyCreditPct, setBuyCreditPct] = useState(String(current.buyCreditPct))
   const [primaryPriceSource, setPrimaryPriceSource] = useState<'cardmarket' | 'tcgplayer'>(current.primaryPriceSource)
-  const [vatScheme, setVatScheme] = useState<'none' | 'standard'>(current.vatScheme)
+  const [vatScheme, setVatScheme] = useState<'none' | 'standard' | 'margin'>(current.vatScheme)
   const [saving, setSaving] = useState(false)
 
   const rate = parseFloat(usdToGbp) || 0
