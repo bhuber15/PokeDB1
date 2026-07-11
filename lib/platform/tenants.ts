@@ -8,7 +8,7 @@ export const RESERVED_SLUGS = ['www', 'admin', 'api', 'app'] as const
 // "brads-cards.example-brand.co.uk" → "brads-cards"; anything that isn't
 // exactly one non-reserved label in front of the base host → null.
 export function parseTenantSlug(host: string, baseHost: string): string | null {
-  const clean = host.toLowerCase().split(':')[0]
+  const clean = host.trim().toLowerCase().split(':')[0]
   const base = baseHost.toLowerCase()
   if (!clean.endsWith(`.${base}`)) return null
   const prefix = clean.slice(0, clean.length - base.length - 1)

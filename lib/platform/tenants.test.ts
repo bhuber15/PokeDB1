@@ -11,6 +11,7 @@ test('parseTenantSlug extracts the shop subdomain', () => {
   assert.equal(parseTenantSlug('brads-cards.example-brand.co.uk', BASE), 'brads-cards')
   assert.equal(parseTenantSlug('BRADS-CARDS.Example-Brand.CO.UK', BASE), 'brads-cards')
   assert.equal(parseTenantSlug('brads-cards.example-brand.co.uk:3000', BASE), 'brads-cards')
+  assert.equal(parseTenantSlug('  brads-cards.example-brand.co.uk  ', BASE), 'brads-cards')
 })
 
 test('parseTenantSlug returns null for apex, reserved, nested, and foreign hosts', () => {
