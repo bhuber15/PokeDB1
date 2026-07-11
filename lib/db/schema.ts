@@ -30,7 +30,7 @@ export const inventoryItems = sqliteTable('inventory_items', {
   cardId: integer('card_id').references(() => cards.id),
   condition: text('condition').notNull(), // NM | LP | MP | HP | DMG
   quantity: integer('quantity').notNull().default(0),
-  costPrice: integer('cost_price').notNull(),
+  costPrice: integer('cost_price'),
   sellPriceOverride: integer('sell_price_override'),
   qrCode: text('qr_code').notNull().unique(),
   location: text('location'),
@@ -120,7 +120,8 @@ export const settings = sqliteTable('settings', {
   primaryPriceSource: text('primary_price_source').notNull().default('cardmarket'),
   buyCashPct: real('buy_cash_pct').notNull().default(0.5),
   buyCreditPct: real('buy_credit_pct').notNull().default(0.65),
-  vatScheme: text('vat_scheme').notNull().default('none'), // 'none' | 'standard'
+  vatScheme: text('vat_scheme').notNull().default('none'), // 'none' | 'standard' | 'margin'
+  marginNoCostHandling: text('margin_no_cost_handling').notNull().default('exclude'), // 'exclude' | 'block'
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
 

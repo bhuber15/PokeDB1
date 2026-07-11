@@ -13,6 +13,7 @@ export interface ReceiptData {
   subtotal: number
   discount: number
   vatAmount: number
+  vatScheme: 'none' | 'standard' | 'margin'
   total: number
   paymentMethod: string
   cashReceived?: number
@@ -45,12 +46,13 @@ ${r.lines.map(l => row(`${l.quantity}× ${l.name} (${l.condition})`, formatGBP(l
 <table>
 ${row('Subtotal', formatGBP(r.subtotal))}
 ${r.discount > 0 ? row('Discount', `-${formatGBP(r.discount)}`) : ''}
-${r.vatAmount > 0 ? row('VAT (20%)', formatGBP(r.vatAmount)) : ''}
+${r.vatScheme === 'standard' && r.vatAmount > 0 ? row('VAT (20%)', formatGBP(r.vatAmount)) : ''}
 ${row('Total', formatGBP(r.total), true)}
 ${row('Paid', r.paymentMethod.replace('_', ' '))}
 ${r.cashReceived != null ? row('Cash', formatGBP(r.cashReceived)) : ''}
 ${r.changeDue != null && r.changeDue > 0 ? row('Change', formatGBP(r.changeDue)) : ''}
 </table>
+${r.vatScheme === 'margin' ? '<p style="margin:6px 0 0;font-size:11px;">Sold under the VAT Margin Scheme</p>' : ''}
 <hr/>
 <p>Thank you!</p>
 </body></html>`
@@ -87,8 +89,9 @@ export function ReceiptDialog({ receipt, onClose }: { receipt: ReceiptData | nul
             <div className="space-y-1">
               <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatGBP(receipt.subtotal)}</span></div>
               {receipt.discount > 0 && <div className="flex justify-between text-muted-foreground"><span>Discount</span><span>-{formatGBP(receipt.discount)}</span></div>}
-              {receipt.vatAmount > 0 && <div className="flex justify-between text-muted-foreground"><span>VAT (20%)</span><span>{formatGBP(receipt.vatAmount)}</span></div>}
+              {receipt.vatScheme === 'standard' && receipt.vatAmount > 0 && <div className="flex justify-between text-muted-foreground"><span>VAT (20%)</span><span>{formatGBP(receipt.vatAmount)}</span></div>}
               <div className="flex justify-between font-bold text-base"><span>Total ({receipt.paymentMethod.replace('_', ' ')})</span><span>{formatGBP(receipt.total)}</span></div>
+              {receipt.vatScheme === 'margin' && <div className="text-xs text-muted-foreground pt-1">Sold under the VAT Margin Scheme</div>}
               {receipt.changeDue != null && receipt.changeDue > 0 && (
                 <div className="flex justify-between font-semibold text-emerald-400"><span>Change given</span><span>{formatGBP(receipt.changeDue)}</span></div>
               )}

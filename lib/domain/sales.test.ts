@@ -199,3 +199,39 @@ test('replay works even after stock has run out', async () => {
   const replay = await createSale(withUuid, dbc)
   assert.deepEqual(replay, first)
 })
+
+test('VAT scheme "margin": total unchanged, vat_amount is the per-line margin VAT', async () => {
+  await dbc.update(schema.settings).set({ vatScheme: 'margin' }).where(eq(schema.settings.id, 1))
+  // 2 × (sell 850 - cost 300) = margin 1100 → round(1100/6) = 183. Total stays 1700.
+  const { saleId, total, marginNoCostCount } = await createSale({ ...base, expectedTotal: 1700 }, dbc)
+  assert.equal(total, 1700)
+  assert.equal(marginNoCostCount, 0)
+  const [sale] = await dbc.select().from(schema.sales).where(eq(schema.sales.id, saleId))
+  assert.equal(sale.vatScheme, 'margin')
+  assert.equal(sale.subtotal, 1700)
+  assert.equal(sale.total, 1700)
+  assert.equal(sale.vatAmount, 183)
+})
+
+test('VAT scheme "margin": no-cost line excluded by default, counted in the result', async () => {
+  await dbc.update(schema.settings).set({ vatScheme: 'margin' }).where(eq(schema.settings.id, 1))
+  await dbc.update(schema.inventoryItems).set({ costPrice: null }).where(eq(schema.inventoryItems.id, 1))
+  const { total, marginNoCostCount } = await createSale({ ...base, expectedTotal: 1700 }, dbc)
+  assert.equal(total, 1700)
+  assert.equal(marginNoCostCount, 1)
+  const [sale] = await dbc.select().from(schema.sales).where(eq(schema.sales.id, 1))
+  assert.equal(sale.vatAmount, 0) // no cost basis → no margin VAT
+})
+
+test('VAT scheme "margin" with block: no-cost line rejects the sale, nothing written', async () => {
+  await dbc.update(schema.settings)
+    .set({ vatScheme: 'margin', marginNoCostHandling: 'block' })
+    .where(eq(schema.settings.id, 1))
+  await dbc.update(schema.inventoryItems).set({ costPrice: null }).where(eq(schema.inventoryItems.id, 1))
+  await assert.rejects(
+    createSale({ ...base, expectedTotal: 1700 }, dbc),
+    (e: unknown) => e instanceof DomainError && e.code === 'MARGIN_NO_COST',
+  )
+  assert.equal(await stockOf(1), 5) // untouched
+  assert.deepEqual(await dbc.select().from(schema.sales), [])
+})

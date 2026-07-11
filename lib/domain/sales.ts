@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, sql } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
 import { sales, saleItems, inventoryItems, priceCache, creditLedger, customers } from '@/lib/db/schema'
-import { calculateSellPrice, pickMarketPrice, computeSaleTotals } from '@/lib/pricing'
+import { calculateSellPrice, pickMarketPrice, computeSaleTotals, computeMarginVat } from '@/lib/pricing'
 import { getSettings } from '@/lib/settings'
 import { DomainError } from './errors'
 
@@ -20,7 +20,7 @@ const PAYMENT_METHODS = new Set(['cash', 'card', 'store_credit', 'other'])
 export async function createSale(
   input: CreateSaleInput,
   dbc: Db = db,
-): Promise<{ saleId: number; total: number }> {
+): Promise<{ saleId: number; total: number; marginNoCostCount: number }> {
   if (!input.items?.length) throw new DomainError('INVALID_INPUT', 'No items')
   if (!PAYMENT_METHODS.has(input.paymentMethod)) throw new DomainError('INVALID_INPUT', 'Invalid payment method')
   for (const item of input.items) {
@@ -37,7 +37,7 @@ export async function createSale(
   if (input.clientUuid) {
     const [existing] = await dbc.select().from(sales)
       .where(eq(sales.clientUuid, input.clientUuid)).limit(1)
-    if (existing) return { saleId: existing.id, total: existing.total }
+    if (existing) return { saleId: existing.id, total: existing.total, marginNoCostCount: 0 }
   }
 
   const settings = await getSettings(dbc)
@@ -67,7 +67,20 @@ export async function createSale(
   })
 
   const subtotal = lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
-  const { discount, vatAmount, total } = computeSaleTotals(subtotal, input.discount ?? 0, settings.vatScheme)
+  const { discount, vatAmount: standardVat, total } = computeSaleTotals(subtotal, input.discount ?? 0, settings.vatScheme)
+
+  // Margin scheme: VAT is inclusive (total already correct above); compute the
+  // per-line margin VAT owed to HMRC from the cost snapshots, server-side only.
+  let vatAmount = standardVat
+  let marginNoCostCount = 0
+  if (settings.vatScheme === 'margin') {
+    const margin = computeMarginVat(lines, discount)
+    vatAmount = margin.vatAmount
+    marginNoCostCount = margin.noCostLineCount
+    if (settings.marginNoCostHandling === 'block' && marginNoCostCount > 0) {
+      throw new DomainError('MARGIN_NO_COST', 'Sale contains item(s) with no cost basis — cannot use the VAT Margin Scheme. Enter a cost or change the no-cost setting.', { marginNoCostCount })
+    }
+  }
 
   if (total !== input.expectedTotal) {
     throw new DomainError('PRICE_CHANGED', `Prices changed: server total is ${total}`, { total, expectedTotal: input.expectedTotal })
@@ -148,5 +161,5 @@ export async function createSale(
     throw e
   })
 
-  return { saleId, total }
+  return { saleId, total, marginNoCostCount }
 }

@@ -20,7 +20,8 @@ export function SettingsForm() {
   const [buyCashPct, setBuyCashPct] = useState(String(current.buyCashPct))
   const [buyCreditPct, setBuyCreditPct] = useState(String(current.buyCreditPct))
   const [primaryPriceSource, setPrimaryPriceSource] = useState<'cardmarket' | 'tcgplayer'>(current.primaryPriceSource)
-  const [vatScheme, setVatScheme] = useState<'none' | 'standard'>(current.vatScheme)
+  const [vatScheme, setVatScheme] = useState<'none' | 'standard' | 'margin'>(current.vatScheme)
+  const [marginNoCostHandling, setMarginNoCostHandling] = useState<'exclude' | 'block'>(current.marginNoCostHandling)
   const [saving, setSaving] = useState(false)
 
   const rate = parseFloat(usdToGbp) || 0
@@ -51,6 +52,7 @@ export function SettingsForm() {
           buyCreditPct: parseFloat(buyCreditPct),
           primaryPriceSource,
           vatScheme,
+          marginNoCostHandling,
         }),
       })
       if (!res.ok) {
@@ -138,33 +140,67 @@ export function SettingsForm() {
         <div className="space-y-1.5">
           <Label>VAT scheme</Label>
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setVatScheme('none')}
-              className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
-                vatScheme === 'none'
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'border-border hover:bg-muted'
-              }`}
-            >
-              Not registered
-            </button>
-            <button
-              type="button"
-              onClick={() => setVatScheme('standard')}
-              className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
-                vatScheme === 'standard'
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'border-border hover:bg-muted'
-              }`}
-            >
-              Standard VAT
-            </button>
+            {([
+              ['none', 'Not registered'],
+              ['standard', 'Standard VAT'],
+              ['margin', 'Margin scheme'],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setVatScheme(value)}
+                className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                  vatScheme === value
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-border hover:bg-muted'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
           <p className="text-xs text-muted-foreground">
-            Applied to sales at checkout. Switch to Standard when the shop registers for VAT.
+            Applied to sales at checkout. <strong>Margin scheme</strong>: VAT is charged only on your
+            profit (sale − cost) per card and is already included in the shelf price — the customer pays
+            the same and no VAT line shows on their receipt.
           </p>
         </div>
+
+        {vatScheme === 'margin' && (
+          <div className="space-y-1.5">
+            <Label>Cards with no recorded cost</Label>
+            <div className="flex gap-2">
+              {([
+                ['exclude', 'Sell & warn'],
+                ['block', 'Block sale'],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setMarginNoCostHandling(value)}
+                  className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                    marginNoCostHandling === value
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-border hover:bg-muted'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              A card with no recorded purchase price can&apos;t legally use the margin scheme.
+              <strong> Sell &amp; warn</strong>: complete the sale, charge £0 margin VAT on that card,
+              and flag it (review it in the margin stock book). <strong>Block sale</strong>: refuse the
+              sale until a cost is entered.
+            </p>
+            <div className="bg-muted/30 rounded-lg p-3 text-sm">
+              <div className="text-xs text-muted-foreground mb-1">Worked example — a card you sell for £10 that cost you £4:</div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Profit (margin)</span><span className="font-medium">{formatGBP(600)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">VAT owed (included in the £10)</span><span className="font-bold text-primary">{formatGBP(Math.round(600 / 6))}</span></div>
+            </div>
+          </div>
+        )}
 
         <div className="space-y-1.5">
           <Label htmlFor="settings-margin">Margin multiplier</Label>

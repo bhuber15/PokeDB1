@@ -34,10 +34,16 @@ export const PATCH = guarded(async (req: NextRequest) => {
     patch.primaryPriceSource = body.primaryPriceSource
   }
   if (body.vatScheme != null) {
-    if (body.vatScheme !== 'none' && body.vatScheme !== 'standard') {
+    if (body.vatScheme !== 'none' && body.vatScheme !== 'standard' && body.vatScheme !== 'margin') {
       return NextResponse.json({ error: 'Invalid vatScheme' }, { status: 400 })
     }
     patch.vatScheme = body.vatScheme
+  }
+  if (body.marginNoCostHandling != null) {
+    if (body.marginNoCostHandling !== 'exclude' && body.marginNoCostHandling !== 'block') {
+      return NextResponse.json({ error: 'Invalid marginNoCostHandling' }, { status: 400 })
+    }
+    patch.marginNoCostHandling = body.marginNoCostHandling
   }
   for (const key of ['buyCashPct', 'buyCreditPct'] as const) {
     if (body[key] != null) {

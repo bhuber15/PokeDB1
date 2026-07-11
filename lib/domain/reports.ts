@@ -8,7 +8,8 @@
 
 import { and, gte, lt, sql, eq } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
-import { sales, refunds, buyTransactions, staff } from '@/lib/db/schema'
+import { sales, refunds, buyTransactions, staff, saleItems, inventoryItems, cards } from '@/lib/db/schema'
+import { MARGIN_VAT_DIVISOR } from '@/lib/pricing'
 
 // ---------------------------------------------------------------------------
 // getCashUpSummary
@@ -109,4 +110,80 @@ export async function getSalesByStaff(from: string, to: string, dbc: Db = db): P
     saleCount: r.saleCount,
     revenue: r.revenue,
   }))
+}
+
+// ---------------------------------------------------------------------------
+// getMarginStockBook
+// ---------------------------------------------------------------------------
+// The VAT Margin Scheme legally requires a "stock book": a purchase→sale record
+// per item. One row per line of every margin-scheme sale in the range. Money is
+// integer pence; margin/VAT mirror computeMarginVat (per-line, round(margin/divisor)).
+// Lines with no cost basis are flagged and carry 0 margin/VAT (they can't be in
+// the scheme). Ordered oldest-first for a readable ledger.
+
+export interface MarginStockBookRow {
+  saleId: number
+  soldAt: string
+  cardName: string | null
+  condition: string
+  quantity: number
+  costPence: number | null // line total (× quantity); null when no cost basis
+  salePence: number        // line total (× quantity)
+  marginPence: number      // line margin: max(0, salePence − costPence)
+  vatPence: number         // round(margin / MARGIN_VAT_DIVISOR)
+  noCostBasis: boolean
+}
+
+export async function getMarginStockBook(from: string, to: string, dbc: Db = db): Promise<MarginStockBookRow[]> {
+  const fromTs = `${from} 00:00:00`
+  const toExcl = sql<string>`datetime(${to}, '+1 day')`
+
+  const rows = await dbc
+    .select({
+      saleId: sales.id,
+      soldAt: sales.createdAt,
+      cardName: cards.name,
+      condition: inventoryItems.condition,
+      quantity: saleItems.quantity,
+      salePence: saleItems.priceAtSale,
+      costPence: saleItems.costAtSale,
+    })
+    .from(saleItems)
+    .innerJoin(sales, eq(saleItems.saleId, sales.id))
+    .leftJoin(inventoryItems, eq(saleItems.inventoryItemId, inventoryItems.id))
+    .leftJoin(cards, eq(inventoryItems.cardId, cards.id))
+    .where(and(
+      eq(sales.vatScheme, 'margin'),
+      gte(sales.createdAt, fromTs),
+      lt(sales.createdAt, toExcl),
+    ))
+    .orderBy(sales.createdAt)
+
+  // NOTE: every money column is a LINE TOTAL (× quantity) so the CSV reconciles:
+  //   Margin = Sale − Cost (when cost present); VAT = round(Margin / divisor).
+  // The stock book computes GROSS margins and does NOT apply any whole-sale
+  // discount allocation.  The authoritative VAT owed per sale is the stored
+  // sales.vat_amount (summed as vatTotal in the sales report); on discounted
+  // sales the CSV VAT total can therefore exceed the reported figure.
+  return rows.map(r => {
+    const unitCost = r.costPence          // per-unit snapshot from DB (nullable)
+    const unitSale = r.salePence          // per-unit snapshot from DB
+    const qty = r.quantity
+    const noCostBasis = unitCost == null
+    const costPence = noCostBasis ? null : unitCost * qty           // line total, or null
+    const salePence = unitSale * qty                                // line total
+    const marginPence = noCostBasis ? 0 : Math.max(0, salePence - (costPence as number))
+    return {
+      saleId: r.saleId,
+      soldAt: r.soldAt,
+      cardName: r.cardName ?? null,
+      condition: r.condition ?? '',
+      quantity: qty,
+      costPence,
+      salePence,
+      marginPence,
+      vatPence: Math.round(marginPence / MARGIN_VAT_DIVISOR),
+      noCostBasis,
+    }
+  })
 }
