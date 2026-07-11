@@ -70,7 +70,7 @@ export const POST = guarded(async (req: NextRequest) => {
   if (existing) {
     const newQty = existing.quantity + quantity
     const newCost = newQty > 0
-      ? Math.round((existing.costPrice * existing.quantity + costPrice * quantity) / newQty)
+      ? Math.round(((existing.costPrice ?? 0) * existing.quantity + costPrice * quantity) / newQty)
       : existing.costPrice
     const [updated] = await db.update(inventoryItems)
       .set({ quantity: newQty, costPrice: newCost })

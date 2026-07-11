@@ -30,7 +30,7 @@ export const inventoryItems = sqliteTable('inventory_items', {
   cardId: integer('card_id').references(() => cards.id),
   condition: text('condition').notNull(), // NM | LP | MP | HP | DMG
   quantity: integer('quantity').notNull().default(0),
-  costPrice: integer('cost_price').notNull(),
+  costPrice: integer('cost_price'),
   sellPriceOverride: integer('sell_price_override'),
   qrCode: text('qr_code').notNull().unique(),
   location: text('location'),

@@ -20,7 +20,7 @@ export const GET = guarded(async () => {
       item.id, card.externalId ?? '', card.name, card.setName, card.setNumber,
       // CSV money columns are pounds (human-facing, opened in Excel) — bare
       // numbers, not formatGBP, so the column stays numeric
-      item.condition, item.quantity, (item.costPrice / 100).toFixed(2),
+      item.condition, item.quantity, item.costPrice != null ? (item.costPrice / 100).toFixed(2) : '',
       item.sellPriceOverride != null ? (item.sellPriceOverride / 100).toFixed(2) : '',
       item.location ?? '', item.defectNotes ?? '',
     ]),

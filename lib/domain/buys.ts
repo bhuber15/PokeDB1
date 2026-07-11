@@ -88,7 +88,7 @@ export async function createBuy(
       if (existing) {
         const newQty = existing.quantity + it.quantity
         // Division can produce a fraction of a pence even with integer inputs — round to nearest pence.
-        const newCost = Math.round((existing.costPrice * existing.quantity + it.payPrice * it.quantity) / newQty)
+        const newCost = Math.round(((existing.costPrice ?? 0) * existing.quantity + it.payPrice * it.quantity) / newQty)
         await tx.update(inventoryItems)
           .set({ quantity: newQty, costPrice: newCost })
           .where(eq(inventoryItems.id, existing.id))

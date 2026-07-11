@@ -25,7 +25,7 @@ async function main() {
     items.sort((a, b) => a.id - b.id)
     const survivor = items[0]
     const totalQty = items.reduce((s, i) => s + i.quantity, 0)
-    const costSum = items.reduce((s, i) => s + i.costPrice * i.quantity, 0)
+    const costSum = items.reduce((s, i) => s + (i.costPrice ?? 0) * i.quantity, 0)
     const newCost = totalQty > 0 ? Math.round(costSum / totalQty) : survivor.costPrice // pence
 
     await db.update(inventoryItems)
