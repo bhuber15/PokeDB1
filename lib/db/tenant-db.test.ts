@@ -30,4 +30,7 @@ test('getTenantDbFor returns isolated, cached clients', async () => {
   const a2 = getTenantDbFor('1', 'file:/tmp/tenant-a-test.db')
   assert.notEqual(a, b)
   assert.equal(a, a2)
+  // Same tenant id with a rotated URL must produce a fresh client.
+  const aRotated = getTenantDbFor('1', 'file:/tmp/tenant-a-rotated-test.db')
+  assert.notEqual(aRotated, a)
 })

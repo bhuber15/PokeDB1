@@ -42,11 +42,13 @@ export const db: Db = new Proxy({} as Db, {
 const tenantDbs = new Map<string, Db>()
 
 export function getTenantDbFor(tenantId: string, dbUrl: string): Db {
-  const existing = tenantDbs.get(tenantId)
+  // Keyed by id+url so a rotated tenant DB never serves a stale connection.
+  const key = `${tenantId}:${dbUrl}`
+  const existing = tenantDbs.get(key)
   if (existing) return existing
   const authToken = dbUrl.startsWith('libsql:') ? process.env.TURSO_GROUP_AUTH_TOKEN : undefined
   const client = makeDb(dbUrl, authToken)
-  tenantDbs.set(tenantId, client)
+  tenantDbs.set(key, client)
   return client
 }
 
