@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { db } from '@/lib/db'
-import { staff } from '@/lib/db/schema'
-import bcrypt from 'bcryptjs'
-import { getSession, requireOwner, requireAdmin } from '@/lib/auth'
+import { getSession, requireAdmin } from '@/lib/auth'
+import { DomainError } from '@/lib/domain/errors'
 import { guarded } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
+import { listStaff, createStaff } from '@/lib/domain/staff'
 
 const createStaffBody = z.object({
   name: z.string().trim().min(1, 'name is required'),
@@ -13,23 +12,18 @@ const createStaffBody = z.object({
   role: z.enum(['admin', 'staff']).default('staff'),
 })
 
+// Readable by the device owner (pre-PIN) or any admin (Settings → Staff).
 export const GET = guarded(async () => {
-  requireOwner(await getSession())
-  const members = await db.select({
-    id: staff.id,
-    name: staff.name,
-    role: staff.role,
-    isActive: staff.isActive,
-  }).from(staff)
-  return NextResponse.json(members)
+  const session = await getSession()
+  if (!session.isOwnerLoggedIn && session.staffRole !== 'admin') {
+    throw new DomainError('UNAUTHORIZED', 'Login required')
+  }
+  return NextResponse.json(await listStaff())
 })
 
 export const POST = guarded(async (req: NextRequest) => {
   requireAdmin(await getSession())
   const { name, pin, role } = await parseBody(req, createStaffBody)
-  const pinHash = await bcrypt.hash(pin, 10)
-  const [member] = await db.insert(staff)
-    .values({ name, pinHash, role })
-    .returning({ id: staff.id, name: staff.name, role: staff.role })
+  const member = await createStaff({ name, pin, role })
   return NextResponse.json(member, { status: 201 })
 })
