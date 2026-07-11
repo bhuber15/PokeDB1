@@ -60,8 +60,8 @@ export function pickMarketPrice(
 // Standard UK VAT rate. Single source of truth so a rate change is one edit.
 export const VAT_RATE = 0.2
 // Margin VAT is VAT-inclusive: the VAT inside a gross amount is amount × rate/(1+rate).
-// For 20% that is amount/6, so divide the margin by this to get the inclusive VAT.
-export const MARGIN_VAT_DIVISOR = 6
+// MARGIN_VAT_DIVISOR is derived from VAT_RATE to stay exact and avoid rounding artifacts.
+export const MARGIN_VAT_DIVISOR = Math.round((1 + VAT_RATE) / VAT_RATE)
 
 // Single source of truth for the CUSTOMER total — used by createSale (canonical)
 // and the checkout UI (so the client's expectedTotal always agrees with the
@@ -79,8 +79,3 @@ export function computeSaleTotals(
   return { discount, vatAmount, total: afterDiscount + vatAmount }
 }
 
-// Placeholder for Task 2 — calculates the VAT component of a cost under the
-// margin scheme. Imported here so the test import line doesn't need updating.
-export function computeMarginVat(costPence: number): number {
-  return Math.round(costPence / MARGIN_VAT_DIVISOR)
-}

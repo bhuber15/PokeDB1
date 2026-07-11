@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { calculateSellPrice, calculateBuyPrice, usdToGbp, eurToGbp, formatGBP, parsePounds, computeSaleTotals, computeMarginVat, VAT_RATE, MARGIN_VAT_DIVISOR } from './pricing'
+import { calculateSellPrice, calculateBuyPrice, usdToGbp, eurToGbp, formatGBP, parsePounds, computeSaleTotals, VAT_RATE, MARGIN_VAT_DIVISOR } from './pricing'
 
 test('calculateSellPrice: override wins over market price', () => {
   assert.equal(calculateSellPrice(10000, 4200, 0.85), 4200)
