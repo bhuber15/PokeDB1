@@ -1,6 +1,6 @@
 import { test, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { WantsPanel } from './WantsPanel'
 
 afterEach(cleanup)
@@ -66,8 +66,9 @@ test('toggling notify PATCHes the want', async () => {
 
   const checkbox = await screen.findByLabelText(/notify/i)
   fireEvent.click(checkbox)
-  await new Promise(r => setTimeout(r, 0))
-
+  await waitFor(() => {
+    assert.ok(fetchCalls.some(c => c.init?.method === 'PATCH'))
+  })
   const patch = fetchCalls.find(c => c.init?.method === 'PATCH')
   assert.ok(patch, 'expected a PATCH call')
   assert.equal(patch!.url, '/api/wants?id=1')

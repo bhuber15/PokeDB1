@@ -29,6 +29,14 @@ test('cardLabel formats name, set and number, falling back to free text', () => 
     cardLabel({ cardName: null, cardSetName: null, cardSetNumber: null, freeText: 'Charizard promo' }),
     'Charizard promo',
   )
+  assert.equal(
+    cardLabel({ cardName: 'Pikachu', cardSetName: null, cardSetNumber: null, freeText: null }),
+    'Pikachu',
+  )
+  assert.equal(
+    cardLabel({ cardName: null, cardSetName: null, cardSetNumber: null, freeText: null }),
+    '(unknown)',
+  )
 })
 
 test('groups multiple in-stock customers under one card', () => {

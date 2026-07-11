@@ -8,8 +8,7 @@ import { SettingsProvider } from '@/components/shared/SettingsProvider'
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession()
   if (!session.staffId) redirect('/pin')
-  const settings = await getSettings()
-  const inStockWantsCount = await countInStockWants()
+  const [settings, inStockWantsCount] = await Promise.all([getSettings(), countInStockWants()])
   return (
     <SettingsProvider value={settings}>
       <div className="min-h-screen bg-background">
