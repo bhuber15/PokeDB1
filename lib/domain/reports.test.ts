@@ -238,3 +238,31 @@ test('getMarginStockBook: only includes margin-scheme sales, flags no-cost lines
   assert.equal(rows[0].marginPence, 0)
   assert.equal(rows[0].vatPence, 0)
 })
+
+test('getMarginStockBook: qty>1 line — all money columns are line totals and reconcile', async () => {
+  // qty 3, unit sale 1000p, unit cost 400p
+  //   salePence  = 1000 × 3 = 3000
+  //   costPence  =  400 × 3 = 1200
+  //   marginPence = 3000 − 1200 = 1800
+  //   vatPence  = round(1800 / 6) = 300
+  await dbc.insert(schema.cards).values({ id: 3, name: 'Blastoise', setName: 'Base', setNumber: '2/102' })
+  await dbc.insert(schema.inventoryItems).values({ id: 2, cardId: 3, condition: 'LP', quantity: 0, costPrice: 400, qrCode: 'qr-sb-3' })
+  const [sale] = await dbc.insert(schema.sales).values({
+    subtotal: 3000, discountAmount: 0, vatAmount: 300, vatScheme: 'margin', total: 3000, paymentMethod: 'cash',
+    createdAt: '2026-07-11 14:00:00',
+  }).returning()
+  await dbc.insert(schema.saleItems).values({
+    saleId: sale.id, inventoryItemId: 2, quantity: 3, priceAtSale: 1000, costAtSale: 400,
+  })
+
+  const rows = await getMarginStockBook('2026-07-11', '2026-07-11', dbc)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].quantity, 3)
+  assert.equal(rows[0].salePence, 3000)    // line total
+  assert.equal(rows[0].costPence, 1200)    // line total
+  assert.equal(rows[0].marginPence, 1800)  // salePence − costPence
+  assert.equal(rows[0].vatPence, 300)      // round(1800 / 6)
+  assert.equal(rows[0].noCostBasis, false)
+  // Full reconciliation check: Sale − Cost === Margin
+  assert.equal(rows[0].salePence - (rows[0].costPence as number), rows[0].marginPence)
+})

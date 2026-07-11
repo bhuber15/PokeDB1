@@ -88,6 +88,10 @@ export async function createBuy(
       if (existing) {
         const newQty = existing.quantity + it.quantity
         // Division can produce a fraction of a pence even with integer inputs — round to nearest pence.
+        // A null existing cost means "no recorded cost basis"; treating it as 0 understates
+        // blended cost → conservatively over-states future margin VAT (never under-charges HMRC).
+        // This is intentionally different from the sale path, where a null cost is preserved so
+        // the line is excluded from the margin scheme rather than treated as zero-cost.
         const newCost = Math.round(((existing.costPrice ?? 0) * existing.quantity + it.payPrice * it.quantity) / newQty)
         await tx.update(inventoryItems)
           .set({ quantity: newQty, costPrice: newCost })

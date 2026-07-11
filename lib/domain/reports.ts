@@ -127,9 +127,9 @@ export interface MarginStockBookRow {
   cardName: string | null
   condition: string
   quantity: number
-  costPence: number | null // per-unit cost snapshot
-  salePence: number        // per-unit sale price
-  marginPence: number      // line margin: max(0, (sale-cost)×qty)
+  costPence: number | null // line total (× quantity); null when no cost basis
+  salePence: number        // line total (× quantity)
+  marginPence: number      // line margin: max(0, salePence − costPence)
   vatPence: number         // round(margin / MARGIN_VAT_DIVISOR)
   noCostBasis: boolean
 }
@@ -159,17 +159,28 @@ export async function getMarginStockBook(from: string, to: string, dbc: Db = db)
     ))
     .orderBy(sales.createdAt)
 
+  // NOTE: every money column is a LINE TOTAL (× quantity) so the CSV reconciles:
+  //   Margin = Sale − Cost (when cost present); VAT = round(Margin / divisor).
+  // The stock book computes GROSS margins and does NOT apply any whole-sale
+  // discount allocation.  The authoritative VAT owed per sale is the stored
+  // sales.vat_amount (summed as vatTotal in the sales report); on discounted
+  // sales the CSV VAT total can therefore exceed the reported figure.
   return rows.map(r => {
-    const noCostBasis = r.costPence == null
-    const marginPence = noCostBasis ? 0 : Math.max(0, (r.salePence - (r.costPence as number)) * r.quantity)
+    const unitCost = r.costPence          // per-unit snapshot from DB (nullable)
+    const unitSale = r.salePence          // per-unit snapshot from DB
+    const qty = r.quantity
+    const noCostBasis = unitCost == null
+    const costPence = noCostBasis ? null : unitCost * qty           // line total, or null
+    const salePence = unitSale * qty                                // line total
+    const marginPence = noCostBasis ? 0 : Math.max(0, salePence - (costPence as number))
     return {
       saleId: r.saleId,
       soldAt: r.soldAt,
       cardName: r.cardName ?? null,
       condition: r.condition ?? '',
-      quantity: r.quantity,
-      costPence: r.costPence ?? null,
-      salePence: r.salePence,
+      quantity: qty,
+      costPence,
+      salePence,
       marginPence,
       vatPence: Math.round(marginPence / MARGIN_VAT_DIVISOR),
       noCostBasis,

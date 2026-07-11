@@ -20,6 +20,9 @@ export const GET = guarded(async (req: NextRequest) => {
     return NextResponse.json({ error: 'from must be before to' }, { status: 400 })
   }
 
+  // NOTE: CSV margins/VAT are GROSS of any whole-sale discount; authoritative VAT
+  // per sale is the stored sales.vat_amount — on discounted sales CSV VAT totals
+  // can exceed the sales-report figure.
   const rows = await getMarginStockBook(from, to)
   const csv = toCSV(
     ['Sale #', 'Sold at', 'Card', 'Condition', 'Qty', 'Cost (£)', 'Sale (£)', 'Margin (£)', 'VAT (£)', 'No cost basis'],
