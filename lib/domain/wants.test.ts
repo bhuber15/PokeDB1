@@ -110,6 +110,30 @@ test('setWantNotify throws NOT_FOUND for a missing want', async () => {
   await assert.rejects(() => setWantNotify(9999, false, dbc), isNotFound)
 })
 
+test('countInStockWants counts each in-stock want, including multiple wants for the same card', async () => {
+  const a = await seedCustomer('A')
+  const b = await seedCustomer('B')
+  const card = await seedCard('Charizard')
+  await stock(card.id, true)
+  await dbc.insert(schema.wantList).values({ customerId: a.id, cardId: card.id })
+  await dbc.insert(schema.wantList).values({ customerId: b.id, cardId: card.id })
+  assert.equal(await countInStockWants(dbc), 2)
+
+  const card2 = await seedCard('Blastoise')
+  await stock(card2.id, true)
+  await dbc.insert(schema.wantList).values({ customerId: a.id, cardId: card2.id })
+  assert.equal(await countInStockWants(dbc), 3)
+})
+
+test('a want whose card has multiple active inventory rows is counted once', async () => {
+  const c = await seedCustomer('C')
+  const card = await seedCard('Venusaur')
+  await stock(card.id, true)
+  await stock(card.id, true)
+  await dbc.insert(schema.wantList).values({ customerId: c.id, cardId: card.id })
+  assert.equal(await countInStockWants(dbc), 1)
+})
+
 test('sendWantInStockNotification reports the provider is not configured', async () => {
   const cust = await seedCustomer('Nurse Joy')
   const card = await seedCard('Chansey')

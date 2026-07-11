@@ -1,4 +1,4 @@
-import { eq, isNull, and, inArray, desc } from 'drizzle-orm'
+import { eq, isNull, and, inArray, desc, countDistinct } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
 import { wantList, cards, customers, inventoryItems } from '@/lib/db/schema'
 import { DomainError } from './errors'
@@ -47,8 +47,15 @@ export async function listOpenWants(dbc: Db = db): Promise<WantRow[]> {
 
 // Count of open wants that are sellable right now — powers the nav badge.
 export async function countInStockWants(dbc: Db = db): Promise<number> {
-  const wants = await listOpenWants(dbc)
-  return wants.filter(w => w.inStock).length
+  const [row] = await dbc
+    .select({ n: countDistinct(wantList.id) })
+    .from(wantList)
+    .innerJoin(
+      inventoryItems,
+      and(eq(inventoryItems.cardId, wantList.cardId), eq(inventoryItems.isActive, true)),
+    )
+    .where(isNull(wantList.fulfilledAt))
+  return row?.n ?? 0
 }
 
 // Toggle whether the customer should be contacted when their want is in stock.
