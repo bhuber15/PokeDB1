@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { calculateSellPrice, calculateBuyPrice, usdToGbp, eurToGbp, formatGBP, parsePounds, computeSaleTotals } from './pricing'
+import { calculateSellPrice, calculateBuyPrice, usdToGbp, eurToGbp, formatGBP, parsePounds, computeSaleTotals, computeMarginVat, VAT_RATE, MARGIN_VAT_DIVISOR } from './pricing'
 
 test('calculateSellPrice: override wins over market price', () => {
   assert.equal(calculateSellPrice(10000, 4200, 0.85), 4200)
@@ -75,4 +75,14 @@ test('computeSaleTotals: standard VAT is 20% of the discounted amount', () => {
 test('computeSaleTotals: discount clamps to [0, subtotal]', () => {
   assert.deepEqual(computeSaleTotals(500, 900, 'none'), { discount: 500, vatAmount: 0, total: 0 })
   assert.deepEqual(computeSaleTotals(500, -100, 'none'), { discount: 0, vatAmount: 0, total: 500 })
+})
+
+test('computeSaleTotals: margin scheme behaves like none for the customer total (VAT-inclusive)', () => {
+  assert.deepEqual(computeSaleTotals(1700, 0, 'margin'), { discount: 0, vatAmount: 0, total: 1700 })
+  assert.deepEqual(computeSaleTotals(1700, 200, 'margin'), { discount: 200, vatAmount: 0, total: 1500 })
+})
+
+test('VAT_RATE and MARGIN_VAT_DIVISOR are the single source of the rate', () => {
+  assert.equal(VAT_RATE, 0.2)
+  assert.equal(MARGIN_VAT_DIVISOR, 6)
 })

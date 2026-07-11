@@ -57,17 +57,30 @@ export function pickMarketPrice(
   return source === 'cardmarket' ? (cm ?? tcg) : (tcg ?? cm)
 }
 
-// Single source of truth for sale arithmetic — used by createSale (canonical)
+// Standard UK VAT rate. Single source of truth so a rate change is one edit.
+export const VAT_RATE = 0.2
+// Margin VAT is VAT-inclusive: the VAT inside a gross amount is amount × rate/(1+rate).
+// For 20% that is amount/6, so divide the margin by this to get the inclusive VAT.
+export const MARGIN_VAT_DIVISOR = 6
+
+// Single source of truth for the CUSTOMER total — used by createSale (canonical)
 // and the checkout UI (so the client's expectedTotal always agrees with the
-// server). Discount is clamped to [0, subtotal]; standard VAT is 20% on the
-// discounted amount, rounded to the nearest pence.
+// server). The client never needs cost data: under the margin scheme VAT is
+// inclusive, so the total is identical to 'none'. Standard VAT is added on top.
+// Discount is clamped to [0, subtotal].
 export function computeSaleTotals(
   subtotalPence: number,
   discountPence: number,
-  vatScheme: 'none' | 'standard',
+  vatScheme: 'none' | 'standard' | 'margin',
 ): { discount: number; vatAmount: number; total: number } {
   const discount = Math.min(Math.max(0, discountPence), subtotalPence)
   const afterDiscount = subtotalPence - discount
-  const vatAmount = vatScheme === 'standard' ? Math.round(afterDiscount * 0.2) : 0
+  const vatAmount = vatScheme === 'standard' ? Math.round(afterDiscount * VAT_RATE) : 0
   return { discount, vatAmount, total: afterDiscount + vatAmount }
+}
+
+// Placeholder for Task 2 — calculates the VAT component of a cost under the
+// margin scheme. Imported here so the test import line doesn't need updating.
+export function computeMarginVat(costPence: number): number {
+  return Math.round(costPence / MARGIN_VAT_DIVISOR)
 }
