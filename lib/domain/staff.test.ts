@@ -2,9 +2,9 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import bcrypt from 'bcryptjs'
 import { eq } from 'drizzle-orm'
-import { createTestDb } from '../db/test-helpers'
+import { createTestDb, seedBase } from '../db/test-helpers'
 import * as schema from '../db/schema'
-import { createStaff, updateStaff, listStaff } from './staff'
+import { createStaff, updateStaff, listStaff, getOwnerPasswordHash, setOwnerPasswordHash } from './staff'
 import { DomainError } from './errors'
 import type { Db } from '../db'
 
@@ -114,4 +114,12 @@ test('updateStaff on an unknown id throws NOT_FOUND', async () => {
 test('updateStaff with no fields throws INVALID_INPUT', async () => {
   const [ann] = await dbc.select().from(schema.staff).where(eq(schema.staff.name, 'Ann'))
   await assert.rejects(updateStaff(ann.id, {}, dbc), domainCode('INVALID_INPUT'))
+})
+
+test('owner password hash: unset by default, settable, retrievable', async () => {
+  const dbc2 = await createTestDb()
+  await seedBase(dbc2)
+  assert.equal(await getOwnerPasswordHash(dbc2), null)
+  await setOwnerPasswordHash('$2b$10$fakehash', dbc2)
+  assert.equal(await getOwnerPasswordHash(dbc2), '$2b$10$fakehash')
 })

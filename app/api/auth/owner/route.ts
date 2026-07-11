@@ -5,13 +5,15 @@ import { getSession } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
 import { assertNotLocked, recordFailedAttempt, clearLockout } from '@/lib/domain/auth-lockout'
+import { db } from '@/lib/db'
+import { getOwnerPasswordHash } from '@/lib/domain/staff'
 
 const ownerLoginBody = z.object({ password: z.string().min(1) })
 
 export const POST = guarded(async (req: NextRequest) => {
   await assertNotLocked('owner')
   const { password } = await parseBody(req, ownerLoginBody)
-  const hash = process.env.OWNER_PASSWORD_HASH
+  const hash = (await getOwnerPasswordHash(db)) ?? process.env.OWNER_PASSWORD_HASH
   if (!hash) return NextResponse.json({ error: 'Server not configured' }, { status: 500 })
   const valid = await bcrypt.compare(password, hash)
   if (!valid) {

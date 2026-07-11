@@ -122,6 +122,9 @@ export const settings = sqliteTable('settings', {
   buyCreditPct: real('buy_credit_pct').notNull().default(0.65),
   vatScheme: text('vat_scheme').notNull().default('none'), // 'none' | 'standard' | 'margin'
   marginNoCostHandling: text('margin_no_cost_handling').notNull().default('exclude'), // 'exclude' | 'block'
+  // Per-tenant owner password (bcrypt). Null = fall back to the
+  // OWNER_PASSWORD_HASH env var (single-tenant installs).
+  ownerPasswordHash: text('owner_password_hash'),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
 
