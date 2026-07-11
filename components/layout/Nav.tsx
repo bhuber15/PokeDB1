@@ -9,9 +9,10 @@ interface NavProps {
   shopName?: string
   staffName?: string
   staffRole?: string
+  inStockWantsCount?: number
 }
 
-export function Nav({ shopName = 'PokeDB', staffName, staffRole }: NavProps) {
+export function Nav({ shopName = 'PokeDB', staffName, staffRole, inStockWantsCount = 0 }: NavProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -20,13 +21,13 @@ export function Nav({ shopName = 'PokeDB', staffName, staffRole }: NavProps) {
     router.push('/pin')
   }
 
-  const links = [
+  const links: { href: string; label: string; icon: typeof UserIcon; badge?: number }[] = [
     { href: '/pos', label: 'Sales', icon: ShoppingCartIcon },
     { href: '/buylist', label: 'Purchasing', icon: BanknoteIcon },
     { href: '/catalogue', label: 'Catalogue', icon: LibraryIcon },
     { href: '/prices', label: 'Price Check', icon: SearchIcon },
     { href: '/inventory', label: 'Inventory', icon: PackageIcon },
-    { href: '/customers', label: 'Customers', icon: UserIcon },
+    { href: '/customers', label: 'Customers', icon: UserIcon, badge: inStockWantsCount },
     ...(staffRole === 'admin' ? [
       { href: '/reports', label: 'Reports', icon: BarChart3Icon },
       { href: '/settings', label: 'Settings', icon: SettingsIcon },
@@ -58,6 +59,14 @@ export function Nav({ shopName = 'PokeDB', staffName, staffRole }: NavProps) {
               >
                 <Icon className="size-4" aria-hidden="true" />
                 {l.label}
+                {l.badge && l.badge > 0 ? (
+                  <Badge
+                    className="ml-1 h-4 min-w-4 justify-center rounded-full px-1 text-[10px] leading-none"
+                    aria-label={`${l.badge} wanted cards in stock`}
+                  >
+                    {l.badge}
+                  </Badge>
+                ) : null}
               </Link>
             )
           })}
