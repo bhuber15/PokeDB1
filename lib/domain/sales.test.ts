@@ -52,6 +52,22 @@ test('happy path: server computes price from market, decrements stock, snapshots
   assert.equal(items[0].costAtSale, 300)
 })
 
+test('persists an optional customerId on a non-store-credit sale', async () => {
+  await dbc.insert(schema.customers).values({ id: 1, name: 'Dave' })
+  const { saleId } = await createSale({ ...base, paymentMethod: 'card', customerId: 1 }, dbc)
+  const [sale] = await dbc.select().from(schema.sales).where(eq(schema.sales.id, saleId))
+  assert.equal(sale.customerId, 1)
+  // No store-credit ledger side effects for a card sale
+  const ledger = await dbc.select().from(schema.creditLedger).where(eq(schema.creditLedger.customerId, 1))
+  assert.equal(ledger.length, 0)
+})
+
+test('customerId is null when no customer is supplied', async () => {
+  const { saleId } = await createSale(base, dbc)
+  const [sale] = await dbc.select().from(schema.sales).where(eq(schema.sales.id, saleId))
+  assert.equal(sale.customerId, null)
+})
+
 test('sell_price_override beats market price', async () => {
   await dbc.update(schema.inventoryItems).set({ sellPriceOverride: 1200 }).where(eq(schema.inventoryItems.id, 1))
   const { total } = await createSale({ ...base, expectedTotal: 2400 }, dbc)

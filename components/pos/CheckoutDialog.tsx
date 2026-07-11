@@ -67,7 +67,8 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
   async function confirm() {
     setLoading(true)
     try {
-      await onConfirm(method, discountAmount, total, isStoreCredit && customer ? customer.id : undefined, receivedPence ?? undefined)
+      // Attribute the sale to the selected customer for any payment method.
+      await onConfirm(method, discountAmount, total, customer?.id, receivedPence ?? undefined)
     } finally {
       setLoading(false)
     }
@@ -156,20 +157,21 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
             </div>
           )}
 
-          {isStoreCredit && (
-            <div className="space-y-2">
-              <Label>Customer</Label>
-              <CustomerPicker onSelect={handleCustomerSelect} selected={customer} />
-              {!customer && (
-                <p className="text-xs text-muted-foreground">Select a customer to pay with their store credit.</p>
-              )}
-              {insufficientBalance && (
-                <p className="text-xs text-destructive font-medium">
-                  Insufficient balance ({formatGBP(customerBalance ?? 0)}) — total is {formatGBP(total)}.
-                </p>
-              )}
-            </div>
-          )}
+          <div className="space-y-2">
+            <Label>Customer {isStoreCredit ? '' : <span className="text-muted-foreground font-normal">(optional)</span>}</Label>
+            <CustomerPicker onSelect={handleCustomerSelect} selected={customer} />
+            {isStoreCredit && !customer && (
+              <p className="text-xs text-muted-foreground">Select a customer to pay with their store credit.</p>
+            )}
+            {!isStoreCredit && !customer && (
+              <p className="text-xs text-muted-foreground">Attach a customer to record this sale in their purchase history.</p>
+            )}
+            {insufficientBalance && (
+              <p className="text-xs text-destructive font-medium">
+                Insufficient balance ({formatGBP(customerBalance ?? 0)}) — total is {formatGBP(total)}.
+              </p>
+            )}
+          </div>
 
           <Separator />
           {discountAmount > 0 && (

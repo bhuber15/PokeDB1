@@ -1,0 +1,1 @@
+ALTER TABLE `sales` ADD `customer_id` integer REFERENCES customers(id);
