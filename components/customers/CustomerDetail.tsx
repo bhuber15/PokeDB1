@@ -22,11 +22,28 @@ interface WantWithCard {
   cardSetNumber: string | null
 }
 
+interface PurchaseItem {
+  quantity: number
+  priceAtSale: number
+  cardName: string | null
+  cardSetName: string | null
+  cardSetNumber: string | null
+}
+
+interface Purchase {
+  id: number
+  total: number
+  paymentMethod: string
+  createdAt: string
+  items: PurchaseItem[]
+}
+
 interface CustomerData {
   customer: Customer
   balance: number
   ledger: CreditLedger[]
   wants: WantWithCard[]
+  purchases: Purchase[]
 }
 
 interface Props {
@@ -193,7 +210,7 @@ export function CustomerDetail({ id }: Props) {
   )
   if (!data) return null
 
-  const { customer, balance, ledger, wants } = data
+  const { customer, balance, ledger, wants, purchases } = data
   const openWants = wants.filter(w => !w.fulfilledAt)
 
   return (
@@ -303,6 +320,36 @@ export function CustomerDetail({ id }: Props) {
               </tbody>
             </table>
           </div>
+        )}
+      </section>
+
+      {/* Purchases */}
+      <section className="bg-card border border-border rounded-xl p-5 space-y-3">
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Purchases</h2>
+        {purchases.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No purchases yet.</p>
+        ) : (
+          <ul className="space-y-2">
+            {purchases.map(p => (
+              <li key={p.id} className="rounded-lg border border-border p-3 space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">
+                    {new Date(p.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    <span className="ml-2 capitalize">{p.paymentMethod.replace('_', ' ')}</span>
+                  </span>
+                  <span className="font-semibold">{formatGBP(p.total)}</span>
+                </div>
+                <ul className="text-sm text-muted-foreground space-y-0.5">
+                  {p.items.map((it, i) => (
+                    <li key={i} className="flex justify-between gap-2">
+                      <span>{it.quantity}× {it.cardName ?? 'Item'}</span>
+                      <span className="whitespace-nowrap">{formatGBP(it.priceAtSale * it.quantity)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 
