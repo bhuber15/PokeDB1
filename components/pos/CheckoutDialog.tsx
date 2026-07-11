@@ -177,9 +177,14 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
               <span>Discount</span><span>-{formatGBP(discountAmount)}</span>
             </div>
           )}
-          {vatAmount > 0 && (
+          {vatScheme === 'standard' && vatAmount > 0 && (
             <div className="flex justify-between text-sm text-muted-foreground">
               <span>VAT (20%)</span><span>{formatGBP(vatAmount)}</span>
+            </div>
+          )}
+          {vatScheme === 'margin' && (
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>VAT Margin Scheme</span><span>included</span>
             </div>
           )}
           <div className="flex justify-between text-xl font-bold">

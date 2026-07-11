@@ -180,7 +180,7 @@ export default function POSPage() {
       return
     }
     if (res.ok) {
-      const { saleId, total } = await res.json()
+      const { saleId, total, marginNoCostCount } = await res.json()
       const changeDue = cashReceived != null ? cashReceived - total : undefined
       const data: ReceiptData = {
         saleId,
@@ -190,6 +190,7 @@ export default function POSPage() {
         subtotal,
         discount: discountAmount,
         vatAmount: computeSaleTotals(subtotal, discountAmount, vatScheme).vatAmount,
+        vatScheme,
         total,
         paymentMethod,
         cashReceived,
@@ -203,6 +204,9 @@ export default function POSPage() {
           : `Sale complete — ${formatGBP(total)}`,
         { action: { label: 'Receipt', onClick: () => setReceipt(data) } },
       )
+      if (marginNoCostCount > 0) {
+        toast.warning(`${marginNoCostCount} card(s) had no cost basis — excluded from margin VAT. Review the margin stock book.`)
+      }
     } else {
       const data = await res.json().catch(() => null)
       toast.error(
