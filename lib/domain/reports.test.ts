@@ -2,7 +2,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { createTestDb, seedBase } from '../db/test-helpers'
 import * as schema from '../db/schema'
-import { getCashUpSummary, getSalesByStaff } from './reports'
+import { getCashUpSummary, getSalesByStaff, getMarginStockBook } from './reports'
 import type { Db } from '../db'
 
 let dbc: Db
@@ -185,4 +185,56 @@ test('getSalesByStaff excludes sales outside the date range', async () => {
   assert.equal(rows[0].staffId, 1)
   assert.equal(rows[0].revenue, 800) // 400 + 400
   assert.equal(rows[0].saleCount, 2)
+})
+
+// ---------------------------------------------------------------------------
+// getMarginStockBook
+// ---------------------------------------------------------------------------
+
+test('getMarginStockBook: one row per margin sale-line with margin + VAT', async () => {
+  // A margin-scheme sale: sell 1000, cost 400, qty 1 → margin 600 → VAT round(600/6)=100
+  // seedBase already inserted card id:1 and staff id:1; use id:2 to avoid conflict
+  await dbc.insert(schema.cards).values({ id: 2, name: 'Charizard', setName: 'Base', setNumber: '4/102' })
+  await dbc.insert(schema.inventoryItems).values({ id: 1, cardId: 2, condition: 'NM', quantity: 0, costPrice: 400, qrCode: 'qr-sb-1' })
+  const [sale] = await dbc.insert(schema.sales).values({
+    subtotal: 1000, discountAmount: 0, vatAmount: 100, vatScheme: 'margin', total: 1000, paymentMethod: 'cash',
+    createdAt: '2026-07-11 10:00:00',
+  }).returning()
+  await dbc.insert(schema.saleItems).values({
+    saleId: sale.id, inventoryItemId: 1, quantity: 1, priceAtSale: 1000, costAtSale: 400,
+  })
+
+  const rows = await getMarginStockBook('2026-07-11', '2026-07-11', dbc)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].cardName, 'Charizard')
+  assert.equal(rows[0].salePence, 1000)
+  assert.equal(rows[0].costPence, 400)
+  assert.equal(rows[0].marginPence, 600)
+  assert.equal(rows[0].vatPence, 100)
+  assert.equal(rows[0].noCostBasis, false)
+})
+
+test('getMarginStockBook: only includes margin-scheme sales, flags no-cost lines', async () => {
+  // seedBase already inserted card id:1; use id:2 for new card
+  await dbc.insert(schema.cards).values({ id: 2, name: 'Pikachu Alt', setName: 'Base', setNumber: '58/102' })
+  await dbc.insert(schema.inventoryItems).values({ id: 1, cardId: 2, condition: 'NM', quantity: 0, costPrice: null, qrCode: 'qr-sb-2' })
+  // standard-scheme sale — must be excluded
+  const [std] = await dbc.insert(schema.sales).values({
+    subtotal: 500, discountAmount: 0, vatAmount: 100, vatScheme: 'standard', total: 600, paymentMethod: 'cash',
+    createdAt: '2026-07-11 11:00:00',
+  }).returning()
+  await dbc.insert(schema.saleItems).values({ saleId: std.id, inventoryItemId: 1, quantity: 1, priceAtSale: 500, costAtSale: 200 })
+  // margin sale with a no-cost line
+  const [mrg] = await dbc.insert(schema.sales).values({
+    subtotal: 900, discountAmount: 0, vatAmount: 0, vatScheme: 'margin', total: 900, paymentMethod: 'cash',
+    createdAt: '2026-07-11 12:00:00',
+  }).returning()
+  await dbc.insert(schema.saleItems).values({ saleId: mrg.id, inventoryItemId: 1, quantity: 1, priceAtSale: 900, costAtSale: null })
+
+  const rows = await getMarginStockBook('2026-07-11', '2026-07-11', dbc)
+  assert.equal(rows.length, 1) // only the margin sale
+  assert.equal(rows[0].noCostBasis, true)
+  assert.equal(rows[0].costPence, null)
+  assert.equal(rows[0].marginPence, 0)
+  assert.equal(rows[0].vatPence, 0)
 })
