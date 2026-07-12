@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { getTenantDb } from '@/lib/db'
 import { cards, inventoryItems, priceCache } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
-import { getSession, requireAdmin } from '@/lib/auth'
+import { getSession, requireAdmin, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseCSV } from '@/lib/csv'
 import { generateQRId } from '@/lib/qr'
@@ -11,7 +11,8 @@ import { parsePounds } from '@/lib/pricing'
 const CONDITIONS = new Set(['NM', 'LP', 'MP', 'HP', 'DMG'])
 
 export const POST = guarded(async (req: NextRequest) => {
-  requireAdmin(await getSession())
+  const db = await getTenantDb()
+  requireAdmin(await getSession(await currentTenantId()))
 
   const text = await req.text()
   const rows = parseCSV(text)

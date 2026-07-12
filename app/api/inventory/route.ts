@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { db } from '@/lib/db'
+import { getTenantDb } from '@/lib/db'
 import { inventoryItems, cards, priceCache } from '@/lib/db/schema'
 import { eq, and, like } from 'drizzle-orm'
 import { generateQRId } from '@/lib/qr'
-import { getSession, requireStaff } from '@/lib/auth'
+import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody, parseIdParam } from '@/lib/validation'
 
@@ -19,7 +19,8 @@ const createInventoryBody = z.object({
 })
 
 export const GET = guarded(async (req: NextRequest) => {
-  requireStaff(await getSession())
+  const db = await getTenantDb()
+  requireStaff(await getSession(await currentTenantId()))
 
   const cardId = req.nextUrl.searchParams.get('cardId')
   const qrCode = req.nextUrl.searchParams.get('qrCode')
@@ -54,7 +55,8 @@ export const GET = guarded(async (req: NextRequest) => {
 })
 
 export const POST = guarded(async (req: NextRequest) => {
-  requireStaff(await getSession())
+  const db = await getTenantDb()
+  requireStaff(await getSession(await currentTenantId()))
 
   const { cardId, condition, quantity, costPrice, sellPriceOverride, location, defectNotes } =
     await parseBody(req, createInventoryBody)

@@ -1,7 +1,8 @@
-import { db, type Db } from '@/lib/db'
+import { db, isMultiTenant, type Db } from '@/lib/db'
 import { settings, type Settings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { parsePounds } from '@/lib/pricing'
+import { BRAND } from '@/lib/brand'
 
 export interface AppSettings {
   shopName: string
@@ -19,7 +20,7 @@ export interface AppSettings {
 // Defaults fall back to env so pricing still works before the row exists
 // or if the DB is briefly unreachable.
 export const DEFAULT_SETTINGS: AppSettings = {
-  shopName: 'PokeDB',
+  shopName: BRAND.name,
   usdToGbp: parseFloat(process.env.PRICE_USD_TO_GBP ?? process.env.NEXT_PUBLIC_USD_TO_GBP ?? '0.79') || 0.79,
   eurToGbp: parseFloat(process.env.PRICE_EUR_TO_GBP ?? process.env.NEXT_PUBLIC_EUR_TO_GBP ?? '0.86') || 0.86,
   marginMultiplier: parseFloat(process.env.MARGIN_MULTIPLIER ?? '0.85') || 0.85,
@@ -63,14 +64,17 @@ export async function getSettings(dbc: Db = db): Promise<AppSettings> {
     // A concurrent call created it — read again.
     const [row2] = await dbc.select().from(settings).where(eq(settings.id, 1)).limit(1)
     return row2 ? toAppSettings(row2) : DEFAULT_SETTINGS
-  } catch {
+  } catch (e) {
+    // Single-tenant: a briefly unreachable DB falls back to defaults. Multi-tenant:
+    // silently serving another shop's defaults would mis-tax sales — fail loudly.
+    if (isMultiTenant()) throw e
     return DEFAULT_SETTINGS
   }
 }
 
-export async function updateSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
-  await getSettings() // ensure the row exists
-  const [updated] = await db.update(settings)
+export async function updateSettings(patch: Partial<AppSettings>, dbc: Db = db): Promise<AppSettings> {
+  await getSettings(dbc) // ensure the row exists
+  const [updated] = await dbc.update(settings)
     .set({ ...patch, updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19) })
     .where(eq(settings.id, 1))
     .returning()

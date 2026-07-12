@@ -1,16 +1,17 @@
 // app/api/reports/sales/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { getTenantDb } from '@/lib/db'
 import { sales, saleItems, inventoryItems, cards } from '@/lib/db/schema'
 import { and, gte, lt, eq, sql, isNotNull } from 'drizzle-orm'
-import { getSession, requireAdmin } from '@/lib/auth'
+import { getSession, requireAdmin, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { getSalesByStaff } from '@/lib/domain/reports'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
 export const GET = guarded(async (req: NextRequest) => {
-  requireAdmin(await getSession())
+  const db = await getTenantDb()
+  requireAdmin(await getSession(await currentTenantId()))
 
   const from = req.nextUrl.searchParams.get('from') ?? ''
   const to = req.nextUrl.searchParams.get('to') ?? ''
@@ -76,7 +77,7 @@ export const GET = guarded(async (req: NextRequest) => {
     grossMargin: marginRow.revenue - marginRow.cost,
     saleCount: totals.saleCount,
     byPaymentMethod,
-    byStaff: await getSalesByStaff(from, to),
+    byStaff: await getSalesByStaff(from, to, db),
     topCards: topCardsRaw
       .map(r => ({ cardId: r.cardId!, name: r.name ?? 'Unknown', quantitySold: r.quantitySold, revenue: r.revenue })),
   })

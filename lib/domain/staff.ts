@@ -1,7 +1,8 @@
 import { eq, and, ne } from 'drizzle-orm'
 import bcrypt from 'bcryptjs'
 import { db, type Db } from '@/lib/db'
-import { staff } from '@/lib/db/schema'
+import { staff, settings } from '@/lib/db/schema'
+import { getSettings } from '@/lib/settings'
 import { DomainError } from './errors'
 
 export type StaffRole = 'admin' | 'staff'
@@ -74,4 +75,17 @@ export async function updateStaff(
     const [updated] = await tx.update(staff).set(updates).where(eq(staff.id, id)).returning(publicCols)
     return updated as StaffSummary
   })
+}
+
+export async function getOwnerPasswordHash(dbc: Db = db): Promise<string | null> {
+  const [row] = await dbc.select({ hash: settings.ownerPasswordHash }).from(settings).limit(1)
+  return row?.hash ?? null
+}
+
+export async function setOwnerPasswordHash(hash: string, dbc: Db = db): Promise<void> {
+  // A fresh tenant DB has no settings row yet (Phase 2's /setup flow calls this
+  // before anything else has lazily created one) — ensure it exists first, or
+  // the UPDATE below silently affects 0 rows.
+  await getSettings(dbc)
+  await dbc.update(settings).set({ ownerPasswordHash: hash })
 }

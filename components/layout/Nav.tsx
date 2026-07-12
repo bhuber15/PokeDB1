@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { ShoppingCartIcon, BanknoteIcon, LibraryIcon, UserIcon, PackageIcon, SearchIcon, BarChart3Icon, SettingsIcon, LockIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { BRAND } from '@/lib/brand'
 
 interface NavProps {
   shopName?: string
@@ -12,7 +13,7 @@ interface NavProps {
   inStockWantsCount?: number
 }
 
-export function Nav({ shopName = 'PokeDB', staffName, staffRole, inStockWantsCount = 0 }: NavProps) {
+export function Nav({ shopName = BRAND.name, staffName, staffRole, inStockWantsCount = 0 }: NavProps) {
   const pathname = usePathname()
   const router = useRouter()
 

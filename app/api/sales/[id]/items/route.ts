@@ -1,13 +1,14 @@
 // app/api/sales/[id]/items/route.ts
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { getTenantDb } from '@/lib/db'
 import { sales, saleItems, inventoryItems, cards, refundItems } from '@/lib/db/schema'
 import { eq, sql } from 'drizzle-orm'
-import { getSession, requireStaff } from '@/lib/auth'
+import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 
 export const GET = guarded(async (_req: Request, { params }: { params: Promise<{ id: string }> }) => {
-  requireStaff(await getSession())
+  const db = await getTenantDb()
+  requireStaff(await getSession(await currentTenantId()))
 
   const saleId = parseInt((await params).id)
   if (!Number.isInteger(saleId)) return NextResponse.json({ error: 'Invalid sale id' }, { status: 400 })

@@ -1,13 +1,14 @@
 // app/api/sales/history/route.ts
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { getTenantDb } from '@/lib/db'
 import { sales, saleItems, inventoryItems, cards, staff } from '@/lib/db/schema'
 import { eq, sql, gte, inArray } from 'drizzle-orm'
-import { getSession, requireAdmin } from '@/lib/auth'
+import { getSession, requireAdmin, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 
 export const GET = guarded(async () => {
-  requireAdmin(await getSession())
+  const db = await getTenantDb()
+  requireAdmin(await getSession(await currentTenantId()))
 
   // createdAt is stored via SQLite datetime('now') → "YYYY-MM-DD HH:MM:SS" (UTC, space separator).
   // Compare against the same format — a JS toISOString() ("...T...Z") sorts differently and would

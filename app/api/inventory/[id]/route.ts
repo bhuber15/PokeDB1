@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { db } from '@/lib/db'
+import { getTenantDb } from '@/lib/db'
 import { inventoryItems } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
-import { getSession, requireStaff, requireAdmin } from '@/lib/auth'
+import { getSession, requireStaff, requireAdmin, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody, parseIdParam } from '@/lib/validation'
 import { applyInventoryPatch, ADJUSTMENT_REASONS } from '@/lib/domain/inventory'
@@ -23,11 +23,12 @@ export const PATCH = guarded(async (
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) => {
-  const session = requireStaff(await getSession())
+  const db = await getTenantDb()
+  const session = requireStaff(await getSession(await currentTenantId()))
 
   const id = parseIdParam((await params).id)
   const { reason, ...patch } = await parseBody(req, patchInventoryBody)
-  const updated = await applyInventoryPatch(id, session.staffId, patch, reason)
+  const updated = await applyInventoryPatch(id, session.staffId, patch, reason, db)
   return NextResponse.json(updated)
 })
 
@@ -35,7 +36,8 @@ export const DELETE = guarded(async (
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) => {
-  requireAdmin(await getSession())
+  const db = await getTenantDb()
+  requireAdmin(await getSession(await currentTenantId()))
   const id = parseIdParam((await params).id)
   // Soft delete — preserves historical sale_items that reference this item
   const [updated] = await db.update(inventoryItems)
