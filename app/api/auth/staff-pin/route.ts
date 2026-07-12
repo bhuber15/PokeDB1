@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { staff } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import bcrypt from 'bcryptjs'
-import { getSession } from '@/lib/auth'
+import { getSession, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
 import { assertNotLocked, recordFailedAttempt, clearLockout } from '@/lib/domain/auth-lockout'
@@ -22,6 +22,7 @@ export const POST = guarded(async (req: NextRequest) => {
       session.staffId = member.id
       session.staffRole = member.role as 'admin' | 'staff'
       session.staffName = member.name
+      session.tenantId = await currentTenantId()
       await session.save()
       return NextResponse.json({ id: member.id, name: member.name, role: member.role })
     }

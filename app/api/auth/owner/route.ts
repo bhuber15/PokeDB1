@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
-import { getSession } from '@/lib/auth'
+import { getSession, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
 import { assertNotLocked, recordFailedAttempt, clearLockout } from '@/lib/domain/auth-lockout'
@@ -26,6 +26,7 @@ export const POST = guarded(async (req: NextRequest) => {
   await clearLockout('staff-pin')
   const session = await getSession()
   session.isOwnerLoggedIn = true
+  session.tenantId = await currentTenantId()
   await session.save()
   return NextResponse.json({ ok: true })
 })

@@ -7,6 +7,7 @@ export interface SessionData {
   staffId?: number
   staffRole?: 'admin' | 'staff'
   staffName?: string
+  tenantId?: string
 }
 
 export const sessionOptions: SessionOptions = {
@@ -20,8 +21,23 @@ export const sessionOptions: SessionOptions = {
   },
 }
 
-export async function getSession(): Promise<IronSession<SessionData>> {
-  return getIronSession<SessionData>(await cookies(), sessionOptions)
+// currentTenantId: pass the resolved tenant on multi-tenant requests so a
+// session minted for one shop can never act on another (defence in depth —
+// cookies are already host-scoped per subdomain).
+export async function getSession(currentTenantId?: string): Promise<IronSession<SessionData>> {
+  const session = await getIronSession<SessionData>(await cookies(), sessionOptions)
+  if (currentTenantId && session.tenantId && session.tenantId !== currentTenantId) {
+    session.destroy()
+    return getIronSession<SessionData>(await cookies(), sessionOptions)
+  }
+  return session
+}
+
+// Resolve the current tenant id from proxy-injected headers (multi mode only).
+export async function currentTenantId(): Promise<string | undefined> {
+  if (process.env.TENANCY_MODE !== 'multi') return undefined
+  const { headers } = await import('next/headers')
+  return (await headers()).get('x-tenant-id') ?? undefined
 }
 
 // Device unlocked (owner password) — pre-PIN surfaces like the PIN pad's staff list.
