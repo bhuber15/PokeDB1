@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession, requireStaff } from '@/lib/auth'
+import { getTenantDb } from '@/lib/db'
+import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { searchCards } from '@/lib/domain/card-search'
 
@@ -7,12 +8,13 @@ import { searchCards } from '@/lib/domain/card-search'
 // `{ cards, prices, fuzzy, unavailable }` — see lib/domain/card-search.ts for
 // the search cascade and result cap.
 export const GET = guarded(async (req: NextRequest) => {
-  requireStaff(await getSession())
+  const db = await getTenantDb()
+  requireStaff(await getSession(await currentTenantId()))
 
   const q = req.nextUrl.searchParams.get('q')?.trim() ?? ''
   if (q.length < 2) {
     return NextResponse.json({ cards: [], prices: {}, fuzzy: false, unavailable: false })
   }
 
-  return NextResponse.json(await searchCards(q))
+  return NextResponse.json(await searchCards(q, db))
 })

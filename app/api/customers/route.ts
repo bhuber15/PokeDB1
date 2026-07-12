@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { db } from '@/lib/db'
+import { getTenantDb } from '@/lib/db'
 import { customers } from '@/lib/db/schema'
 import { like, desc } from 'drizzle-orm'
-import { getSession, requireStaff } from '@/lib/auth'
+import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
 
@@ -15,7 +15,8 @@ const createCustomerBody = z.object({
 })
 
 export const GET = guarded(async (req: NextRequest) => {
-  requireStaff(await getSession())
+  const db = await getTenantDb()
+  requireStaff(await getSession(await currentTenantId()))
   const q = req.nextUrl.searchParams.get('q')?.trim() ?? ''
   const rows = q
     ? await db.select().from(customers).where(like(customers.name, `%${q}%`)).limit(20)
@@ -24,7 +25,8 @@ export const GET = guarded(async (req: NextRequest) => {
 })
 
 export const POST = guarded(async (req: NextRequest) => {
-  requireStaff(await getSession())
+  const db = await getTenantDb()
+  requireStaff(await getSession(await currentTenantId()))
   const { name, phone, email, notes } = await parseBody(req, createCustomerBody)
   const [c] = await db.insert(customers).values({
     name, phone: phone || null, email: email || null, notes: notes || null,

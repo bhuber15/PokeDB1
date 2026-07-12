@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession, requireStaff, requireAdmin } from '@/lib/auth'
+import { getTenantDb } from '@/lib/db'
+import { getSession, requireStaff, requireAdmin, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { getSettings, updateSettings, type AppSettings } from '@/lib/settings'
 
 export const GET = guarded(async () => {
-  requireStaff(await getSession())
-  return NextResponse.json(await getSettings())
+  const db = await getTenantDb()
+  requireStaff(await getSession(await currentTenantId()))
+  return NextResponse.json(await getSettings(db))
 })
 
 export const PATCH = guarded(async (req: NextRequest) => {
+  const db = await getTenantDb()
   // Only admins can change shop settings
-  requireAdmin(await getSession())
+  requireAdmin(await getSession(await currentTenantId()))
 
   const body = await req.json()
   const patch: Partial<AppSettings> = {}
@@ -59,5 +62,5 @@ export const PATCH = guarded(async (req: NextRequest) => {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
   }
 
-  return NextResponse.json(await updateSettings(patch))
+  return NextResponse.json(await updateSettings(patch, db))
 })

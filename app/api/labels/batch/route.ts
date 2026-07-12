@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { eq, inArray, and } from 'drizzle-orm'
-import { db } from '@/lib/db'
+import { getTenantDb } from '@/lib/db'
 import { inventoryItems, cards, priceCache } from '@/lib/db/schema'
 import { generateQRDataURL } from '@/lib/qr'
 import { getSettings } from '@/lib/settings'
 import { calculateSellPrice, pickMarketPrice } from '@/lib/pricing'
-import { getSession, requireStaff } from '@/lib/auth'
+import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
 
@@ -17,7 +17,8 @@ const batchLabelsBody = z.object({
 // QR label data for a set of inventory items (one buy, one CSV import, …).
 // Sell prices are server-computed: override, else market × margin.
 export const POST = guarded(async (req: NextRequest) => {
-  requireStaff(await getSession())
+  const db = await getTenantDb()
+  requireStaff(await getSession(await currentTenantId()))
   const { inventoryItemIds } = await parseBody(req, batchLabelsBody)
 
   const rows = await db.select({ item: inventoryItems, card: cards, prices: priceCache })
@@ -26,7 +27,7 @@ export const POST = guarded(async (req: NextRequest) => {
     .leftJoin(priceCache, eq(cards.id, priceCache.cardId))
     .where(and(inArray(inventoryItems.id, inventoryItemIds), eq(inventoryItems.isActive, true)))
 
-  const settings = await getSettings()
+  const settings = await getSettings(db)
   const labels = await Promise.all(rows.map(async ({ item, card, prices }) => ({
     inventoryItemId: item.id,
     dataUrl: await generateQRDataURL(item.qrCode),

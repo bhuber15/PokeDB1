@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { db } from '@/lib/db'
+import { getTenantDb } from '@/lib/db'
 import { customers, creditLedger, wantList, cards, sales, saleItems, inventoryItems } from '@/lib/db/schema'
 import { eq, desc, inArray } from 'drizzle-orm'
-import { getSession, requireStaff } from '@/lib/auth'
+import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody, parseIdParam } from '@/lib/validation'
 import { getCustomerBalance } from '@/lib/credit'
@@ -16,12 +16,13 @@ const patchCustomerBody = z.object({
 })
 
 export const GET = guarded(async (_req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
-  requireStaff(await getSession())
+  const db = await getTenantDb()
+  requireStaff(await getSession(await currentTenantId()))
   const id = parseIdParam((await params).id)
   const [customer] = await db.select().from(customers).where(eq(customers.id, id))
   if (!customer) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   const [balance, ledger, wants, saleRows] = await Promise.all([
-    getCustomerBalance(id),
+    getCustomerBalance(id, db),
     db.select().from(creditLedger).where(eq(creditLedger.customerId, id)).orderBy(desc(creditLedger.createdAt)).limit(50),
     db.select({
       id: wantList.id,
@@ -69,7 +70,8 @@ export const GET = guarded(async (_req: NextRequest, { params }: { params: Promi
 })
 
 export const PATCH = guarded(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
-  requireStaff(await getSession())
+  const db = await getTenantDb()
+  requireStaff(await getSession(await currentTenantId()))
   const id = parseIdParam((await params).id)
   const body = await parseBody(req, patchCustomerBody)
   const updates = Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined))

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { getTenantDb } from '@/lib/db'
 import { inventoryItems } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { generateQRDataURL } from '@/lib/qr'
-import { getSession, requireStaff } from '@/lib/auth'
+import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseIdParam } from '@/lib/validation'
 
@@ -11,7 +11,8 @@ export const GET = guarded(async (
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) => {
-  requireStaff(await getSession())
+  const db = await getTenantDb()
+  requireStaff(await getSession(await currentTenantId()))
 
   const id = parseIdParam((await params).id)
   const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, id))

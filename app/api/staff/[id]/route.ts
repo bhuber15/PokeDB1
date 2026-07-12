@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { getSession, requireAdmin } from '@/lib/auth'
+import { getTenantDb } from '@/lib/db'
+import { getSession, requireAdmin, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody, parseIdParam } from '@/lib/validation'
 import { updateStaff } from '@/lib/domain/staff'
@@ -13,9 +14,10 @@ const patchStaffBody = z.object({
 })
 
 export const PATCH = guarded(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
-  requireAdmin(await getSession())
+  const db = await getTenantDb()
+  requireAdmin(await getSession(await currentTenantId()))
   const id = parseIdParam((await params).id)
   const patch = await parseBody(req, patchStaffBody)
-  const updated = await updateStaff(id, patch)
+  const updated = await updateStaff(id, patch, db)
   return NextResponse.json(updated)
 })

@@ -1,12 +1,12 @@
-import { db } from '@/lib/db'
+import { db, type Db } from '@/lib/db'
 import { creditLedger } from '@/lib/db/schema'
 import { eq, sql } from 'drizzle-orm'
 
 // NOTE: calculateBuyPrice moved to lib/pricing.ts (pure, no DB) so client
 // components can import it without pulling the libSQL client into the browser.
 
-export async function getCustomerBalance(customerId: number): Promise<number> {
-  const [row] = await db
+export async function getCustomerBalance(customerId: number, dbc: Db = db): Promise<number> {
+  const [row] = await dbc
     .select({ balance: sql<number>`COALESCE(SUM(${creditLedger.delta}), 0)` })
     .from(creditLedger)
     .where(eq(creditLedger.customerId, customerId))

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession, requireStaff } from '@/lib/auth'
+import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { searchPokemonCards } from '@/lib/apis/pokemon-tcg'
 
@@ -10,7 +10,7 @@ import { searchPokemonCards } from '@/lib/apis/pokemon-tcg'
 // API slows down at larger page sizes. The catalogue search returns up to
 // CARD_SEARCH_LIMIT (lib/domain/card-search.ts).
 export const GET = guarded(async (req: NextRequest) => {
-  requireStaff(await getSession())
+  requireStaff(await getSession(await currentTenantId()))
 
   const q = req.nextUrl.searchParams.get('q')?.trim() ?? ''
   if (q.length < 2) return NextResponse.json({ cards: [] })

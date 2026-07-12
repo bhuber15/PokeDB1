@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession, requireStaff } from '@/lib/auth'
+import { getTenantDb } from '@/lib/db'
+import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { fetchCardmarketPrices } from '@/lib/apis/tcgdex'
 import { getSettings } from '@/lib/settings'
 import { eurToGbp } from '@/lib/pricing'
 
 export const GET = guarded(async (req: NextRequest) => {
-  requireStaff(await getSession())
+  const db = await getTenantDb()
+  requireStaff(await getSession(await currentTenantId()))
 
   const id = req.nextUrl.searchParams.get('id')?.trim() ?? ''
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
@@ -14,7 +16,7 @@ export const GET = guarded(async (req: NextRequest) => {
   try {
     const [cm, settings] = await Promise.all([
       fetchCardmarketPrices(id),
-      getSettings(),
+      getSettings(db),
     ])
     if (!cm) return NextResponse.json({ trend: null, low: null, avg: null })
 

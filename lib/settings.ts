@@ -69,9 +69,9 @@ export async function getSettings(dbc: Db = db): Promise<AppSettings> {
   }
 }
 
-export async function updateSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
-  await getSettings() // ensure the row exists
-  const [updated] = await db.update(settings)
+export async function updateSettings(patch: Partial<AppSettings>, dbc: Db = db): Promise<AppSettings> {
+  await getSettings(dbc) // ensure the row exists
+  const [updated] = await dbc.update(settings)
     .set({ ...patch, updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19) })
     .where(eq(settings.id, 1))
     .returning()
