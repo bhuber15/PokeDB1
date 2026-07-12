@@ -297,15 +297,17 @@ happens once the name is chosen. UK-English copy audit (catalogue/colour) rides 
 Each phase is shippable and gated; shop-product code stays untouched until Phase 1's edge
 refactor, which lands behind `TENANCY_MODE`.
 
-**Phase 0 — now, pre-validation (≈1 day)**
+**Phase 0 — now, pre-validation (≈1 day)** — DONE (2026-07-12)
 Wizard-of-Oz runbook + env template; `lib/brand.ts` + cookie rename; `/api/health`.
 *Unblocks the Week-1–3 validation sprint with zero platform code.*
 
-**Phase 1 — tenancy core (≈1.5–2 weeks)**
+**Phase 1 — tenancy core (≈1.5–2 weeks)** — DONE (2026-07-12)
 Registry DB + schema; `getTenantDb()` factory replacing the singleton across ~29 files;
 `proxy.ts` subdomain resolution + status gates + header injection; session `tenantId`;
 convert migrations to the parent-schema model. **Exit test**: two tenants on one local
 deployment, full e2e green on both, `npm test` still green in single mode.
+
+Deviations from plan: guard test allowlists the health route (platform liveness exception); create-tenant checks the registry before touching the tenant DB and grew a --skip-migrations flag for adopting already-migrated DBs; sweepTcgplayerCatalogue takes dbc as its 3rd parameter (the plan's sample showed 2nd); cron fan-out is a simple sequential loop as planned, cursor staggering remains Phase 3.
 
 **Phase 2 — billing + provisioning (≈1.5–2 weeks)**
 Stripe products/checkout/portal/webhooks (idempotent); provisioning incl. catalogue seed

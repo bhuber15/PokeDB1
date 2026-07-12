@@ -31,6 +31,19 @@ PokeDB is a point-of-sale and inventory system for a UK Pokémon card shop: sell
 - `components/` is organised by feature (pos, inventory, buylist, customers, reports, …) mirroring the pages in `app/(app)/`.
 - Key tables: `cards`, `inventory_items`, `price_cache`, `sales`/`sale_items`, `refunds`/`refund_items`, `buy_transactions`/`buy_items`, `customers`, `credit_ledger`, `want_list`, `staff`, `settings`.
 
+## Multi-tenancy (platform layer)
+
+- `TENANCY_MODE` unset = single-tenant (tests, e2e, Wizard-of-Oz deploys). `TENANCY_MODE=multi`
+  enables the platform: `proxy.ts` resolves the tenant from the subdomain against the registry
+  DB (`lib/platform/`, env `PLATFORM_DATABASE_URL`) and injects `x-tenant-*` headers.
+- **Route handlers must call `const db = await getTenantDb()` and pass it to every domain/lib
+  call** — never import the `db` singleton in a route (`tests/tenancy-guard.test.ts` enforces;
+  the singleton throws in multi mode). Domain functions keep their `dbc: Db = db` defaults for tests.
+- Registry migrations: `npx drizzle-kit generate --config drizzle-platform.config.ts`
+  (separate journal in `lib/platform/migrations/`).
+- New tenant locally: `scripts/create-tenant.ts`; per-shop single-tenant deploys:
+  `docs/runbooks/wizard-of-oz-shop-deploy.md`.
+
 ## Domain rules (do not violate)
 
 - **All money is integer pence (GBP).** No floats, no decimal pounds in the DB or domain layer. Convert at the UI edge only.
