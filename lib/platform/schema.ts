@@ -13,6 +13,7 @@ export const tenants = sqliteTable('tenants', {
   plan: text('plan').notNull().default('growth'),  // 'starter' | 'growth' | 'pro'
   stripeCustomerId: text('stripe_customer_id'),
   stripeSubscriptionId: text('stripe_subscription_id'),
+  email: text('email'),                            // owner email (welcome, dunning)
   tursoDbName: text('turso_db_name'),              // null for local file: DBs
   dbUrl: text('db_url').notNull(),                 // libsql://… or file:… (dev)
   region: text('region').notNull().default('fra'), // EU residency for UK GDPR

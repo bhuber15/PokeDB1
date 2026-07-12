@@ -125,6 +125,9 @@ export const settings = sqliteTable('settings', {
   // Per-tenant owner password (bcrypt). Null = fall back to the
   // OWNER_PASSWORD_HASH env var (single-tenant installs).
   ownerPasswordHash: text('owner_password_hash'),
+  // Onboarding checklist state (JSON: { dismissedAt?, done? }). Null = feature
+  // off — only tenants provisioned by the platform get a value seeded.
+  onboarding: text('onboarding'),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
 
