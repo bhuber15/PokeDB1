@@ -123,3 +123,11 @@ test('owner password hash: unset by default, settable, retrievable', async () =>
   await setOwnerPasswordHash('$2b$10$fakehash', dbc2)
   assert.equal(await getOwnerPasswordHash(dbc2), '$2b$10$fakehash')
 })
+
+test('setOwnerPasswordHash creates the settings row on a fresh tenant DB with none', async () => {
+  // No seedBase: simulates a brand-new tenant DB before anything has lazily
+  // created the settings row (the state Phase 2's /setup flow will see).
+  const dbc3 = await createTestDb()
+  await setOwnerPasswordHash('$2b$10$freshtenanthash', dbc3)
+  assert.equal(await getOwnerPasswordHash(dbc3), '$2b$10$freshtenanthash')
+})

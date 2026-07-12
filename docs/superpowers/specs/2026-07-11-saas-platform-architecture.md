@@ -307,7 +307,7 @@ Registry DB + schema; `getTenantDb()` factory replacing the singleton across ~29
 convert migrations to the parent-schema model. **Exit test**: two tenants on one local
 deployment, full e2e green on both, `npm test` still green in single mode.
 
-Deviations from plan: guard test allowlists the health route (platform liveness exception); create-tenant checks the registry before touching the tenant DB and grew a --skip-migrations flag for adopting already-migrated DBs; sweepTcgplayerCatalogue takes dbc as its 3rd parameter (the plan's sample showed 2nd); cron fan-out is a simple sequential loop as planned, cursor staggering remains Phase 3.
+Deviations from plan: guard test allowlists the health route (platform liveness exception); create-tenant checks the registry before touching the tenant DB and grew a --skip-migrations flag for adopting already-migrated DBs; sweepTcgplayerCatalogue takes dbc as its 3rd parameter (the plan's sample showed 2nd); cron fan-out is a simple sequential loop as planned, cursor staggering remains Phase 3; final review: server components (app layout, login page) also resolve the tenant Db — the route sweep originally missed them (C1), guard test now scans app/**/{layout,page}.tsx
 
 **Phase 2 — billing + provisioning (≈1.5–2 weeks)**
 Stripe products/checkout/portal/webhooks (idempotent); provisioning incl. catalogue seed

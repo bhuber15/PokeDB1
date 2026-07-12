@@ -1,4 +1,4 @@
-import { db, type Db } from '@/lib/db'
+import { db, isMultiTenant, type Db } from '@/lib/db'
 import { settings, type Settings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { parsePounds } from '@/lib/pricing'
@@ -64,7 +64,10 @@ export async function getSettings(dbc: Db = db): Promise<AppSettings> {
     // A concurrent call created it — read again.
     const [row2] = await dbc.select().from(settings).where(eq(settings.id, 1)).limit(1)
     return row2 ? toAppSettings(row2) : DEFAULT_SETTINGS
-  } catch {
+  } catch (e) {
+    // Single-tenant: a briefly unreachable DB falls back to defaults. Multi-tenant:
+    // silently serving another shop's defaults would mis-tax sales — fail loudly.
+    if (isMultiTenant()) throw e
     return DEFAULT_SETTINGS
   }
 }

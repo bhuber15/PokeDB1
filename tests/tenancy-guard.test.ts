@@ -23,3 +23,23 @@ test('no API route imports the db singleton', () => {
   })
   assert.deepEqual(offenders, [])
 })
+
+// Server components (layouts/pages) are just as exposed as API routes: they
+// run on the request path and must resolve a tenant Db too. This slipped
+// through the original route sweep (see C1 in the final-review pass) — app
+// layout and the login page called getSettings()/countInStockWants() with no
+// args, silently binding to the single-tenant singleton default.
+test('no server component (layout/page) imports the db singleton or calls getSettings()/countInStockWants() bare', () => {
+  const files = [
+    ...globSync('app/**/layout.tsx', { cwd: process.cwd() }),
+    ...globSync('app/**/page.tsx', { cwd: process.cwd() }),
+  ]
+  assert.ok(files.length >= 10, `expected to find layout/page files, got ${files.length}`)
+  const offenders = files.filter(f => {
+    const src = readFileSync(join(process.cwd(), f), 'utf8')
+    const importsSingleton = /import\s*{[^}]*\bdb\b[^}]*}\s*from\s*'@\/lib\/db'/.test(src)
+    const bareCall = /\b(getSettings|countInStockWants)\(\)/.test(src)
+    return importsSingleton || bareCall
+  })
+  assert.deepEqual(offenders, [])
+})

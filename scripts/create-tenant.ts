@@ -13,6 +13,7 @@ import { drizzle } from 'drizzle-orm/libsql'
 import { eq } from 'drizzle-orm'
 import { applyMigrations } from '../lib/db/test-helpers'
 import { applyPlatformMigrations } from '../lib/platform/test-helpers'
+import { RESERVED_SLUGS } from '../lib/platform/tenants'
 import * as tenantSchema from '../lib/db/schema'
 import * as platformSchema from '../lib/platform/schema'
 
@@ -34,6 +35,10 @@ async function main() {
   }
   if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug)) {
     console.error('Slug must be lowercase letters/digits/hyphens, 3–40 chars')
+    process.exit(1)
+  }
+  if ((RESERVED_SLUGS as readonly string[]).includes(slug)) {
+    console.error(`Slug '${slug}' is reserved (${RESERVED_SLUGS.join(', ')}) and cannot be used for a tenant`)
     process.exit(1)
   }
 
