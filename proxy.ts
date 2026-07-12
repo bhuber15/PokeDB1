@@ -25,13 +25,13 @@ export async function proxy(req: NextRequest) {
     if (decision.kind === 'not-tenant') {
       // Apex/www/admin: no shop app here yet (marketing site is external;
       // admin arrives in Phase 3). Health stays reachable for monitors.
-      if (pathname.startsWith('/api/health')) return NextResponse.next()
+      if (pathname.startsWith('/api/health')) return NextResponse.next({ request: { headers: requestHeaders } })
       return new NextResponse('Not found', { status: 404 })
     }
     if (decision.kind === 'unknown') return new NextResponse('Unknown shop', { status: 404 })
     if (decision.kind === 'blocked') {
       if (pathname.startsWith('/suspended') || pathname.startsWith('/api/health')) {
-        return NextResponse.next()
+        return NextResponse.next({ request: { headers: requestHeaders } })
       }
       return NextResponse.rewrite(new URL('/suspended', req.url))
     }
