@@ -45,6 +45,18 @@ export function eurToGbp(
   return Math.round(eur * rate * 100)
 }
 
+// A Cardmarket cache entry older than this is refreshed on demand when the
+// buylist/search screens price the card (see lib/prices/sync.ts). Client-safe
+// so the buylist page can decide when to request a refresh. In-stock cards are
+// re-synced nightly; this only governs the rest of the catalogue.
+export const CARDMARKET_STALE_MS = 7 * 24 * 3600 * 1000
+
+export function isCardmarketFresh(syncedAt: string | null | undefined, now = Date.now()): boolean {
+  if (!syncedAt) return false
+  const t = Date.parse(syncedAt)
+  return Number.isFinite(t) && now - t < CARDMARKET_STALE_MS
+}
+
 // Pick the "market" price that drives sell-price math, per shop setting.
 // Both inputs are already GBP pence. Falls back to the other source if the chosen one is missing.
 export function pickMarketPrice(

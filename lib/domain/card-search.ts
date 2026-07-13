@@ -4,7 +4,7 @@ import { cards, priceCache, type Card, type PriceCache } from '@/lib/db/schema'
 import { searchPokemonCards, extractBestPrice, type PokemonTCGCard } from '@/lib/apis/pokemon-tcg'
 import { getSettings } from '@/lib/settings'
 import { usdToGbp } from '@/lib/pricing'
-import { syncCardmarketForCard } from '@/lib/prices/sync'
+import { syncCardmarketForCard, refreshStaleCardmarket } from '@/lib/prices/sync'
 import { similarity } from '@/lib/fuzzy'
 
 // Catalogue searches return up to 100 rows — enough for every printing of a
@@ -58,12 +58,12 @@ export async function searchCards(
     )
     .limit(CARD_SEARCH_LIMIT)
   if (likeMatches.length > 0) {
-    return { cards: likeMatches, prices: await pricesFor(likeMatches, dbc), fuzzy: false, unavailable: false }
+    return { cards: likeMatches, prices: await pricesForFresh(likeMatches, dbc, syncCardmarket), fuzzy: false, unavailable: false }
   }
 
   const fuzzyMatches = await searchFuzzy(q, dbc)
   if (fuzzyMatches.length > 0) {
-    return { cards: fuzzyMatches, prices: await pricesFor(fuzzyMatches, dbc), fuzzy: true, unavailable: false }
+    return { cards: fuzzyMatches, prices: await pricesForFresh(fuzzyMatches, dbc, syncCardmarket), fuzzy: true, unavailable: false }
   }
 
   // Nothing local — fall back to the live API (e.g. a set newer than the
@@ -80,7 +80,19 @@ export async function searchCards(
     apiCards.map(apiCard => insertCardSafely(apiCard, settings.highValueThreshold, settings.usdToGbp, settings.eurToGbp, dbc, syncCardmarket))
   )).filter((c): c is Card => c != null)
 
-  return { cards: newCards, prices: await pricesFor(newCards, dbc), fuzzy: false, unavailable: false }
+  return { cards: newCards, prices: await pricesForFresh(newCards, dbc, syncCardmarket), fuzzy: false, unavailable: false }
+}
+
+// Refresh missing/stale Cardmarket cache entries for the top results before
+// pricing them: buy offers must come from the shop's primary source rather
+// than silently from the TCGplayer USD fallback — the nightly in-stock sync
+// never covers cards the shop hasn't stocked. Bounded and best-effort inside
+// refreshStaleCardmarket, so a TCGdex outage cannot slow or break search.
+async function pricesForFresh(
+  rows: Card[], dbc: Db, sync: typeof syncCardmarketForCard,
+): Promise<Record<number, PriceCache>> {
+  await refreshStaleCardmarket(rows, dbc, { sync })
+  return pricesFor(rows, dbc)
 }
 
 async function pricesFor(rows: Card[], dbc: Db): Promise<Record<number, PriceCache>> {

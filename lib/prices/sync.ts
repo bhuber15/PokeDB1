@@ -1,10 +1,10 @@
-import { sql, eq, and, inArray, lt } from 'drizzle-orm'
+import { sql, eq, and, or, inArray, lt, asc, isNull, isNotNull } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
-import { cards, inventoryItems, priceCache, priceHistory } from '@/lib/db/schema'
+import { cards, inventoryItems, priceCache, priceHistory, type Card } from '@/lib/db/schema'
 import { fetchCardmarketPrices } from '@/lib/apis/tcgdex'
 import { fetchCardPage, extractBestPrice, type PokemonTCGCard } from '@/lib/apis/pokemon-tcg'
-import { eurToGbp, usdToGbp } from '@/lib/pricing'
-import type { AppSettings } from '@/lib/settings'
+import { eurToGbp, usdToGbp, isCardmarketFresh } from '@/lib/pricing'
+import { getSettings, type AppSettings } from '@/lib/settings'
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -20,19 +20,34 @@ async function isInteresting(dbc: Db, cardId: number): Promise<boolean> {
   return pc?.hv ?? false
 }
 
+// Propagates TcgdexError on transient failures (so sweeps count them as
+// failed and retry another night). `opts.interesting` lets batch callers
+// precompute the history gate instead of paying two lookups per card.
 export async function syncCardmarketForCard(
   cardId: number, externalId: string | null, variant: string | null, eurRate: number, dbc: Db = db,
+  opts: { interesting?: boolean } = {},
 ): Promise<void> {
   if (!externalId) return
   const cm = await fetchCardmarketPrices(externalId, variant)
-  if (!cm) return
+  const syncedAt = new Date().toISOString()
+  if (!cm) {
+    // TCGdex answered but has no Cardmarket pricing for this card. Record the
+    // check (keeping any previously cached values) so the nightly rotation and
+    // the on-demand refresh move on instead of re-asking the same cards forever.
+    await dbc.insert(priceCache).values({ cardId, cardmarketSyncedAt: syncedAt })
+      .onConflictDoUpdate({
+        target: priceCache.cardId,
+        set: { cardmarketSyncedAt: sql`excluded.cardmarket_synced_at` },
+      })
+    return
+  }
   const trend = eurToGbp(cm.trend, eurRate)
   await dbc.insert(priceCache).values({
     cardId,
     cardmarketTrend: trend,
     cardmarketLow: eurToGbp(cm.low, eurRate),
     cardmarketAvg: eurToGbp(cm.avg, eurRate),
-    cardmarketSyncedAt: new Date().toISOString(),
+    cardmarketSyncedAt: syncedAt,
   }).onConflictDoUpdate({
     target: priceCache.cardId,
     set: {
@@ -42,7 +57,7 @@ export async function syncCardmarketForCard(
       cardmarketSyncedAt: sql`excluded.cardmarket_synced_at`,
     },
   })
-  if (await isInteresting(dbc, cardId)) {
+  if (opts.interesting ?? await isInteresting(dbc, cardId)) {
     await dbc.insert(priceHistory).values({ cardId, cardmarketTrend: trend, recordedOn: today() })
       .onConflictDoUpdate({
         target: [priceHistory.cardId, priceHistory.recordedOn],
@@ -203,7 +218,8 @@ export async function syncInStockCardmarket(
   let failed = 0
   for (const batch of chunked(inStock, 8)) {
     const results = await Promise.allSettled(
-      batch.map(c => syncCardmarketForCard(c.id, c.externalId, c.variant, settings.eurToGbp, dbc)),
+      // In stock by construction, so the history gate is a given.
+      batch.map(c => syncCardmarketForCard(c.id, c.externalId, c.variant, settings.eurToGbp, dbc, { interesting: true })),
     )
     for (const r of results) {
       if (r.status === 'fulfilled') synced++
@@ -211,6 +227,102 @@ export async function syncInStockCardmarket(
     }
   }
   return { synced, failed }
+}
+
+// Nightly Cardmarket rotation across the whole catalogue. In-stock cards are
+// re-synced every night by syncInStockCardmarket; this walks the rest
+// stalest-first (never-checked cards first), so buy offers for cards the shop
+// does NOT stock are priced off Cardmarket instead of silently falling back
+// to TCGplayer USD. Bounded by count and wall-clock so the cron fits its
+// function budget: at ~2,000 cards/night the ~20k catalogue refreshes about
+// fortnightly.
+export const CARDMARKET_ROTATION_LIMIT = 2000
+export const CARDMARKET_ROTATION_BUDGET_MS = 60_000
+// Skip cards checked within the last 20h so a catalogue smaller than the
+// nightly limit is fetched at most once per daily cron run.
+const ROTATION_MIN_AGE_MS = 20 * 3600 * 1000
+
+export interface RotationResult { synced: number; failed: number; remaining: number }
+
+export async function syncStaleCardmarket(
+  settings: AppSettings,
+  opts: { limit?: number; timeBudgetMs?: number } = {},
+  dbc: Db = db,
+): Promise<RotationResult> {
+  const limit = opts.limit ?? CARDMARKET_ROTATION_LIMIT
+  const deadline = Date.now() + (opts.timeBudgetMs ?? CARDMARKET_ROTATION_BUDGET_MS)
+  const cutoff = new Date(Date.now() - ROTATION_MIN_AGE_MS).toISOString()
+
+  const candidates = await dbc.select({
+    id: cards.id, externalId: cards.externalId, variant: cards.variant,
+    isHighValue: priceCache.isHighValue,
+  }).from(cards)
+    .leftJoin(priceCache, eq(priceCache.cardId, cards.id))
+    .where(and(
+      isNotNull(cards.externalId),
+      or(isNull(priceCache.cardmarketSyncedAt), lt(priceCache.cardmarketSyncedAt, cutoff)),
+    ))
+    .orderBy(asc(priceCache.cardmarketSyncedAt)) // NULLs (never checked) sort first
+    .limit(limit)
+
+  // Precompute the history gate once — per-card isInteresting lookups would
+  // triple the DB round-trips over a 2,000-card batch.
+  const stocked = await dbc.selectDistinct({ cardId: inventoryItems.cardId }).from(inventoryItems)
+    .where(eq(inventoryItems.isActive, true))
+  const stockedIds = new Set(stocked.map(r => r.cardId).filter((id): id is number => id != null))
+
+  const result: RotationResult = { synced: 0, failed: 0, remaining: candidates.length }
+  for (const batch of chunked(candidates, 8)) {
+    if (Date.now() >= deadline) break
+    const results = await Promise.allSettled(batch.map(c =>
+      syncCardmarketForCard(c.id, c.externalId, c.variant, settings.eurToGbp, dbc,
+        { interesting: stockedIds.has(c.id) || (c.isHighValue ?? false) }),
+    ))
+    for (const r of results) {
+      if (r.status === 'fulfilled') result.synced++
+      else result.failed++
+    }
+    result.remaining -= batch.length
+  }
+  return result
+}
+
+// Bounded on-demand refresh for interactive callers (buylist/card search):
+// given the cards about to be priced, refresh Cardmarket for up to `maxCards`
+// whose cache entry is missing or stale. Time-boxed and best-effort — a
+// TCGdex outage must never break search. Returns how many cards were synced.
+export const ON_DEMAND_MAX_CARDS = 12
+export const ON_DEMAND_BUDGET_MS = 2500
+
+export async function refreshStaleCardmarket(
+  cardRows: Pick<Card, 'id' | 'externalId' | 'variant'>[],
+  dbc: Db = db,
+  opts: { maxCards?: number; timeBudgetMs?: number; sync?: typeof syncCardmarketForCard } = {},
+): Promise<number> {
+  const withExternal = cardRows.filter(c => c.externalId != null)
+  if (withExternal.length === 0) return 0
+  const cache = await dbc.select({ cardId: priceCache.cardId, syncedAt: priceCache.cardmarketSyncedAt })
+    .from(priceCache).where(inArray(priceCache.cardId, withExternal.map(c => c.id)))
+  const syncedAtByCard = new Map(cache.map(r => [r.cardId, r.syncedAt]))
+  // Callers pass rows in display order (best match first), so the bound keeps
+  // the cards the user is actually looking at.
+  const stale = withExternal
+    .filter(c => !isCardmarketFresh(syncedAtByCard.get(c.id)))
+    .slice(0, opts.maxCards ?? ON_DEMAND_MAX_CARDS)
+  if (stale.length === 0) return 0
+
+  const sync = opts.sync ?? syncCardmarketForCard
+  const settings = await getSettings(dbc)
+  const deadline = Date.now() + (opts.timeBudgetMs ?? ON_DEMAND_BUDGET_MS)
+  let refreshed = 0
+  for (const batch of chunked(stale, 4)) {
+    if (Date.now() >= deadline) break
+    const results = await Promise.allSettled(
+      batch.map(c => sync(c.id, c.externalId, c.variant, settings.eurToGbp, dbc)),
+    )
+    refreshed += results.filter(r => r.status === 'fulfilled').length
+  }
+  return refreshed
 }
 
 export async function pruneOldHistory(dbc: Db = db): Promise<void> {
