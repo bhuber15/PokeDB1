@@ -58,7 +58,17 @@ export async function handleStripeEvent(event: StripeEventLike, deps: BillingDep
       default: return { outcome: `ignored:${event.type}` }
     }
   } catch (e) {
-    await deps.pdb.delete(stripeEvents).where(eq(stripeEvents.stripeEventId, event.id))
+    // Release the claim so Stripe's retry re-processes — but never at the cost
+    // of the original error. Residual risk, accepted for now: if the release
+    // itself fails (correlated registry outage), the claim survives and every
+    // retry hits the duplicate branch — visible in logs, reconciled manually
+    // (delete the claim row, redeliver from the Stripe dashboard). A durable
+    // release mechanism is a Phase 3 item.
+    try {
+      await deps.pdb.delete(stripeEvents).where(eq(stripeEvents.stripeEventId, event.id))
+    } catch (releaseError) {
+      console.error(`[stripe] failed to release claim for ${event.id} — event may be permanently claimed:`, releaseError)
+    }
     throw e
   }
 }

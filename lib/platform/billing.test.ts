@@ -77,6 +77,25 @@ test('a failed handler releases the claim so retries re-process', async () => {
   assert.equal(r.outcome, 'provisioned')
 })
 
+test('a claim-release failure preserves the original handler error (claim survives)', async () => {
+  const { pdb, deps } = await makeDeps()
+  deps.provision = async () => { throw new Error('turso down') }
+  deps.pdb = {
+    insert: pdb.insert.bind(pdb),
+    select: pdb.select.bind(pdb),
+    update: pdb.update.bind(pdb),
+    delete: () => { throw new Error('registry down') },
+  } as unknown as BillingDeps['pdb']
+  await assert.rejects(() => handleStripeEvent(checkoutCompleted(), deps), /turso down/)
+  // Documented residual: the release failed, so the claim survived — Stripe's
+  // retries see 'duplicate' until the claim row is deleted and the event is
+  // redelivered from the dashboard.
+  deps.pdb = pdb
+  deps.provision = async () => ({ tenantId: 1 })
+  const r = await handleStripeEvent(checkoutCompleted(), deps)
+  assert.equal(r.outcome, 'duplicate')
+})
+
 test('sessions without our metadata are ignored', async () => {
   const { deps, provisioned } = await makeDeps()
   const r = await handleStripeEvent(checkoutCompleted({ metadata: {} }), deps)
