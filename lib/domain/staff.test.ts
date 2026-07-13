@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs'
 import { eq } from 'drizzle-orm'
 import { createTestDb, seedBase } from '../db/test-helpers'
 import * as schema from '../db/schema'
-import { createStaff, updateStaff, listStaff, getOwnerPasswordHash, setOwnerPasswordHash } from './staff'
+import { createStaff, updateStaff, listStaff, getOwnerPasswordHash, setOwnerPasswordHash, assertStaffSeatAvailable } from './staff'
 import { DomainError } from './errors'
 import type { Db } from '../db'
 
@@ -130,4 +130,17 @@ test('setOwnerPasswordHash creates the settings row on a fresh tenant DB with no
   const dbc3 = await createTestDb()
   await setOwnerPasswordHash('$2b$10$freshtenanthash', dbc3)
   assert.equal(await getOwnerPasswordHash(dbc3), '$2b$10$freshtenanthash')
+})
+
+test('assertStaffSeatAvailable enforces the plan seat limit on active staff', async () => {
+  const db = await createTestDb()
+  await createStaff({ name: 'A', pin: '1111', role: 'admin' }, db)
+  await createStaff({ name: 'B', pin: '2222' }, db)
+  const twoSeats = { staffSeats: 2, listingSync: false, apiAccess: false }
+  await assert.rejects(() => assertStaffSeatAvailable(twoSeats, db), domainCode('PLAN_LIMIT'))
+  // Deactivated staff free their seat; unlimited plans never block.
+  const b = await listStaff(db).then(s => s.find(x => x.name === 'B')!)
+  await updateStaff(b.id, { isActive: false }, db)
+  await assertStaffSeatAvailable(twoSeats, db) // no throw
+  await assertStaffSeatAvailable({ staffSeats: null, listingSync: true, apiAccess: true }, db) // no throw
 })

@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import { db, type Db } from '@/lib/db'
 import { staff, settings } from '@/lib/db/schema'
 import { getSettings } from '@/lib/settings'
+import type { Entitlements } from '@/lib/plan'
 import { DomainError } from './errors'
 
 export type StaffRole = 'admin' | 'staff'
@@ -88,4 +89,18 @@ export async function setOwnerPasswordHash(hash: string, dbc: Db = db): Promise<
   // the UPDATE below silently affects 0 rows.
   await getSettings(dbc)
   await dbc.update(settings).set({ ownerPasswordHash: hash })
+}
+
+// Plan seat gating (spec §3.5): counts active staff only — deactivated
+// members keep their history but free their seat.
+export async function assertStaffSeatAvailable(ent: Entitlements, dbc: Db = db): Promise<void> {
+  if (ent.staffSeats === null) return
+  const active = await dbc.select({ id: staff.id }).from(staff).where(eq(staff.isActive, true))
+  if (active.length >= ent.staffSeats) {
+    throw new DomainError(
+      'PLAN_LIMIT',
+      `Your plan includes ${ent.staffSeats} staff seats — upgrade in Settings → Billing to add more`,
+      { staffSeats: ent.staffSeats },
+    )
+  }
 }

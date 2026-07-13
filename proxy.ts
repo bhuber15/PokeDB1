@@ -11,7 +11,7 @@ export async function proxy(req: NextRequest) {
 
   // Never trust inbound tenant headers — the proxy is their only writer.
   const requestHeaders = new Headers(req.headers)
-  for (const h of ['x-tenant-id', 'x-tenant-db-url', 'x-tenant-status']) requestHeaders.delete(h)
+  for (const h of ['x-tenant-id', 'x-tenant-db-url', 'x-tenant-status', 'x-tenant-plan', 'x-tenant-entitlements']) requestHeaders.delete(h)
 
   let resolvedTenantId: string | undefined
 
