@@ -6,6 +6,7 @@ import { BuyCard } from '@/components/buylist/BuyCard'
 import { BuyCart, BuyCartLine } from '@/components/buylist/BuyCart'
 import { CatalogueBrowser, type CatalogueSelection } from '@/components/catalogue/CatalogueBrowser'
 import { toast } from 'sonner'
+import { isCardmarketFresh } from '@/lib/pricing'
 import type { Card, PriceCache } from '@/lib/db/schema'
 
 interface SearchResult {
@@ -61,6 +62,20 @@ export default function BuylistPage() {
 
   function handleBrowseSelect({ card, prices }: CatalogueSelection) {
     setResults(prev => prev.some(r => r.card.id === card.id) ? prev : [{ card, prices }, ...prev])
+    // Browse rows come straight from the local cache; for cards we've never
+    // stocked there's usually no Cardmarket entry, so the offer would quietly
+    // be priced off TCGplayer USD. Refresh it and swap the prices in.
+    // (Search results get the same treatment server-side in searchCards.)
+    if (card.externalId && !isCardmarketFresh(prices?.cardmarketSyncedAt)) {
+      fetch(`/api/prices/cardmarket?cardId=${card.id}`)
+        .then(res => (res.ok ? res.json() : null))
+        .then((data: { prices?: PriceCache | null } | null) => {
+          if (data?.prices) {
+            setResults(prev => prev.map(r => (r.card.id === card.id ? { ...r, prices: data.prices! } : r)))
+          }
+        })
+        .catch(() => {})
+    }
   }
 
   return (

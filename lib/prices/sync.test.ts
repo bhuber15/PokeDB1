@@ -7,6 +7,7 @@ import type { Db } from '../db'
 import type { AppSettings } from '../settings'
 import {
   syncCardmarketForCard, sweepTcgplayerCatalogue, syncInStockCardmarket, pruneOldHistory,
+  syncStaleCardmarket, refreshStaleCardmarket,
 } from './sync'
 
 const SETTINGS: AppSettings = {
@@ -28,9 +29,11 @@ function apiCard(externalId: string, name: string, marketUsd: number | null) {
 }
 
 // Routes fetch calls by hostname: TCG API pages and TCGdex per-card pricing.
+// TCGdex entries: 'missing' → 404 (card unknown, a real "no data" answer);
+// 'fail' or unstubbed → 500 (transient failure, the client throws).
 function stubFetch(opts: {
   pages?: Record<number, { data: unknown[]; totalCount: number } | 'fail'>
-  cardmarket?: Record<string, { trend?: number; low?: number; avg?: number } | 'fail'>
+  cardmarket?: Record<string, { trend?: number; low?: number; avg?: number } | 'fail' | 'missing'>
 }) {
   globalThis.fetch = (async (input: string | URL | Request) => {
     const url = String(input instanceof Request ? input.url : input)
@@ -43,6 +46,7 @@ function stubFetch(opts: {
     if (url.includes('api.tcgdex.net')) {
       const id = url.split('/').pop()!
       const cm = opts.cardmarket?.[id]
+      if (cm === 'missing') return new Response('not found', { status: 404 })
       if (!cm || cm === 'fail') return new Response('boom', { status: 500 })
       return Response.json({ pricing: { cardmarket: cm } })
     }
@@ -150,11 +154,123 @@ test('syncInStockCardmarket isolates per-card failures', async () => {
   ])
   stubFetch({ cardmarket: { 'base1-58': { trend: 10 }, 'base1-99': 'fail' } })
   const result = await syncInStockCardmarket(SETTINGS, db)
-  // TCGdex client swallows HTTP errors into null, so both "sync" (one updates,
-  // one no-ops) — the failure counter covers thrown errors (network/DB)
-  assert.equal(result.synced + result.failed, 2)
+  // A TCGdex 5xx/network error throws and is counted as failed; the good card
+  // still lands and the failed one keeps no cardmarket_synced_at, so it is
+  // retried on the next run rather than treated as checked.
+  assert.equal(result.synced, 1)
+  assert.equal(result.failed, 1)
   const [row] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, 1))
   assert.equal(row.cardmarketTrend, 850)
+  const failedRows = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, 2))
+  assert.equal(failedRows.length, 0, 'transient failure leaves no cache row / stamp behind')
+})
+
+test('syncCardmarketForCard records a no-data check without clobbering cached values', async () => {
+  await db.insert(schema.priceCache).values({ cardId: 1, tcgplayerMarket: 500, cardmarketTrend: 999 })
+  stubFetch({ cardmarket: { 'base1-58': 'missing' } }) // TCGdex 404 — a real answer
+  await syncCardmarketForCard(1, 'base1-58', null, 0.85, db)
+  const [row] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, 1))
+  assert.ok(row.cardmarketSyncedAt, 'check recorded so rotation/on-demand move on')
+  assert.equal(row.cardmarketTrend, 999, 'previously cached trend preserved')
+  assert.equal(row.tcgplayerMarket, 500)
+
+  // No pre-existing row: the check still creates one, so the card leaves the
+  // never-checked front of the rotation queue.
+  await db.insert(schema.cards).values({ id: 2, name: 'Mew', setName: 'S', setNumber: '2', externalId: 'base1-99' })
+  stubFetch({ cardmarket: { 'base1-99': 'missing' } })
+  await syncCardmarketForCard(2, 'base1-99', null, 0.85, db)
+  const [row2] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, 2))
+  assert.ok(row2?.cardmarketSyncedAt)
+  assert.equal(row2.cardmarketTrend, null)
+})
+
+test('syncStaleCardmarket walks the catalogue stalest-first within its limit', async () => {
+  await db.insert(schema.cards).values([
+    { id: 2, name: 'Mew', setName: 'S', setNumber: '2', externalId: 'base1-99' },
+    { id: 3, name: 'Mewtwo', setName: 'S', setNumber: '3', externalId: 'base1-77' },
+    { id: 4, name: 'Hand-entered', setName: 'S', setNumber: '4' }, // no externalId → never a candidate
+  ])
+  const staleAt = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()
+  const freshAt = new Date(Date.now() - 3600 * 1000).toISOString() // within the 20h re-check guard
+  await db.insert(schema.priceCache).values([
+    { cardId: 2, cardmarketTrend: 100, cardmarketSyncedAt: staleAt },
+    { cardId: 3, cardmarketTrend: 200, cardmarketSyncedAt: freshAt },
+  ])
+  // Card 1 has no cache row (never checked) → sorts before the stale card 2.
+  stubFetch({ cardmarket: { 'base1-58': { trend: 10 }, 'base1-99': { trend: 20 } } })
+
+  let res = await syncStaleCardmarket(SETTINGS, { limit: 1 }, db)
+  assert.deepEqual(res, { synced: 1, failed: 0, remaining: 0 })
+  const trendOf = async (cardId: number) =>
+    (await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, cardId)))[0]?.cardmarketTrend
+  assert.equal(await trendOf(1), 850, 'never-checked card synced first')
+  assert.equal(await trendOf(2), 100, 'stale card waits for the next slice')
+
+  res = await syncStaleCardmarket(SETTINGS, { limit: 1 }, db)
+  assert.equal(res.synced, 1)
+  assert.equal(await trendOf(2), 1700, 'stale card picked up on the next run')
+  assert.equal(await trendOf(3), 200, 'fresh card never re-fetched')
+
+  // Everything now checked within 20h → nothing left to rotate.
+  res = await syncStaleCardmarket(SETTINGS, {}, db)
+  assert.deepEqual(res, { synced: 0, failed: 0, remaining: 0 })
+})
+
+test('syncStaleCardmarket advances past cards TCGdex has no data for', async () => {
+  await db.insert(schema.cards).values({ id: 2, name: 'Mew', setName: 'S', setNumber: '2', externalId: 'base1-99' })
+  stubFetch({ cardmarket: { 'base1-58': 'missing', 'base1-99': { trend: 20 } } })
+  const res = await syncStaleCardmarket(SETTINGS, {}, db)
+  assert.equal(res.synced, 2, 'a no-data answer still counts as a completed check')
+  assert.equal(res.failed, 0)
+  const rows = await db.select().from(schema.priceCache)
+  assert.equal(rows.length, 2)
+  assert.ok(rows.every(r => r.cardmarketSyncedAt), 'both cards stamped — the rotation queue advances')
+})
+
+test('syncStaleCardmarket leaves transient failures unstamped for retry and stops at its time budget', async () => {
+  stubFetch({ cardmarket: { 'base1-58': 'fail' } })
+  const res = await syncStaleCardmarket(SETTINGS, {}, db)
+  assert.deepEqual(res, { synced: 0, failed: 1, remaining: 0 })
+  const rows = await db.select().from(schema.priceCache)
+  assert.equal(rows.length, 0, 'failed fetch is not recorded as a check')
+
+  const spent = await syncStaleCardmarket(SETTINGS, { timeBudgetMs: 0 }, db)
+  assert.deepEqual(spent, { synced: 0, failed: 0, remaining: 1 }, 'exhausted budget syncs nothing')
+})
+
+test('refreshStaleCardmarket refreshes missing/stale entries, skips fresh ones, respects its bound', async () => {
+  await db.insert(schema.cards).values([
+    { id: 2, name: 'Mew', setName: 'S', setNumber: '2', externalId: 'base1-99' },
+    { id: 3, name: 'Mewtwo', setName: 'S', setNumber: '3', externalId: 'base1-77' },
+  ])
+  await db.insert(schema.priceCache).values([
+    // Stale: past the 7-day on-demand threshold.
+    { cardId: 2, cardmarketTrend: 100, cardmarketSyncedAt: new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString() },
+    { cardId: 3, cardmarketTrend: 200, cardmarketSyncedAt: new Date().toISOString() },
+  ])
+  stubFetch({ cardmarket: { 'base1-58': { trend: 10 }, 'base1-99': { trend: 20 } } })
+  const cardRows = await db.select().from(schema.cards).orderBy(schema.cards.id)
+
+  // maxCards keeps the bound on the first rows passed (display order).
+  const first = await refreshStaleCardmarket(cardRows, db, { maxCards: 1 })
+  assert.equal(first, 1)
+  const trendOf = async (cardId: number) =>
+    (await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, cardId)))[0]?.cardmarketTrend
+  // Settings row default eurToGbp (0.86) applies: €10 → 860p.
+  assert.equal(await trendOf(1), 860)
+  assert.equal(await trendOf(2), 100, 'beyond maxCards — untouched')
+
+  const rest = await refreshStaleCardmarket(cardRows, db)
+  assert.equal(rest, 1, 'card 1 now fresh; only the stale card 2 refreshed')
+  assert.equal(await trendOf(2), 1720)
+  assert.equal(await trendOf(3), 200, 'fresh entry never re-fetched')
+})
+
+test('refreshStaleCardmarket is best-effort: TCGdex failures are swallowed, not thrown', async () => {
+  stubFetch({ cardmarket: { 'base1-58': 'fail' } })
+  const cardRows = await db.select().from(schema.cards)
+  const n = await refreshStaleCardmarket(cardRows, db)
+  assert.equal(n, 0)
 })
 
 test('pruneOldHistory deletes rows older than 90 days only', async () => {

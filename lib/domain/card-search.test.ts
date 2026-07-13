@@ -96,6 +96,52 @@ test('live fallback inserts new cards with cached prices and returns them', asyn
   assert.ok(res.prices[row.id], 'price cache row returned with the result')
 })
 
+test('search refreshes a missing Cardmarket entry before pricing results', async () => {
+  // Catalogue card with only TCGplayer (USD-derived) data — the exact case
+  // where a buy offer would silently price off the US market.
+  await dbc.update(schema.cards).set({ externalId: 'base1-58' }).where(eq(schema.cards.id, 1))
+  await dbc.insert(schema.priceCache).values({ cardId: 1, tcgplayerMarket: 1000 })
+
+  const synced: number[] = []
+  const res = await searchCards('Pikachu', dbc, {
+    fetchLive: liveNever,
+    syncCardmarket: async (cardId) => {
+      synced.push(cardId)
+      await dbc.update(schema.priceCache)
+        .set({ cardmarketTrend: 850, cardmarketSyncedAt: new Date().toISOString() })
+        .where(eq(schema.priceCache.cardId, cardId))
+    },
+  })
+  // Only card 1 has an externalId; the other Pikachu printings can't be fetched.
+  assert.deepEqual(synced, [1])
+  assert.equal(res.prices[1]?.cardmarketTrend, 850, 'response carries the refreshed price')
+})
+
+test('search leaves fresh Cardmarket entries alone', async () => {
+  await dbc.update(schema.cards).set({ externalId: 'base1-58' }).where(eq(schema.cards.id, 1))
+  await dbc.insert(schema.priceCache).values({
+    cardId: 1, cardmarketTrend: 900, cardmarketSyncedAt: new Date().toISOString(),
+  })
+  let called = false
+  const res = await searchCards('Pikachu', dbc, {
+    fetchLive: liveNever,
+    syncCardmarket: async () => { called = true },
+  })
+  assert.equal(called, false, 'fresh cache → no TCGdex round-trip')
+  assert.equal(res.prices[1]?.cardmarketTrend, 900)
+})
+
+test('a failing Cardmarket refresh never breaks search', async () => {
+  await dbc.update(schema.cards).set({ externalId: 'base1-58' }).where(eq(schema.cards.id, 1))
+  await dbc.insert(schema.priceCache).values({ cardId: 1, tcgplayerMarket: 1000 })
+  const res = await searchCards('Pikachu', dbc, {
+    fetchLive: liveNever,
+    syncCardmarket: () => Promise.reject(new Error('tcgdex down')),
+  })
+  assert.equal(res.cards.length, 3)
+  assert.equal(res.prices[1]?.tcgplayerMarket, 1000, 'cached prices still served')
+})
+
 test('live fallback returns the existing row instead of duplicating it', async () => {
   await dbc.insert(schema.cards).values({
     id: 42, name: 'Zzzqqqxxx', setName: 'Future Set', setNumber: '99', externalId: 'sv9-999',

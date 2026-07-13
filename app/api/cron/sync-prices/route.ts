@@ -4,7 +4,7 @@ import { getTenantDb, getTenantDbFor, isMultiTenant, type Db } from '@/lib/db'
 import { getPlatformDb } from '@/lib/platform/db'
 import { tenants } from '@/lib/platform/schema'
 import { getSettings } from '@/lib/settings'
-import { sweepTcgplayerCatalogue, syncInStockCardmarket, pruneOldHistory } from '@/lib/prices/sync'
+import { sweepTcgplayerCatalogue, syncInStockCardmarket, syncStaleCardmarket, pruneOldHistory } from '@/lib/prices/sync'
 
 // Full catalogue sweep takes minutes — allow the platform maximum
 export const maxDuration = 300
@@ -12,11 +12,16 @@ export const maxDuration = 300
 async function syncOne(db: Db) {
   const settings = await getSettings(db)
   // Full-catalogue TCGplayer refresh (also picks up newly released sets),
-  // then per-card Cardmarket for in-stock, then history retention.
+  // then per-card Cardmarket for in-stock, then a bounded stalest-first
+  // Cardmarket rotation over the rest of the catalogue (so buylist offers for
+  // unstocked cards aren't left on the USD fallback), then history retention.
+  // Rotation runs after the in-stock sync so freshly synced stock sorts to the
+  // back of the rotation queue instead of being fetched twice.
   const sweep = await sweepTcgplayerCatalogue(settings, {}, db)
   const cardmarket = await syncInStockCardmarket(settings, db)
+  const cardmarketRotation = await syncStaleCardmarket(settings, {}, db)
   await pruneOldHistory(db)
-  return { sweep, cardmarket }
+  return { sweep, cardmarket, cardmarketRotation }
 }
 
 export async function GET(req: NextRequest) {

@@ -36,6 +36,10 @@ export function BuyCard({ card, prices, onAdd }: BuyCardProps) {
   const market = pickMarketPrice(prices, primaryPriceSource)
   const cashOffer = calculateBuyPrice(market, buyCashPct)
   const creditOffer = calculateBuyPrice(market, buyCreditPct)
+  // A Cardmarket-primary shop can still land on the TCGplayer fallback (card
+  // never synced) — flag it so a US-market number isn't presented as the
+  // market price at the moment an offer is being made.
+  const usdFallback = primaryPriceSource === 'cardmarket' && market != null && prices?.cardmarketTrend == null
 
   return (
     <>
@@ -75,7 +79,12 @@ export function BuyCard({ card, prices, onAdd }: BuyCardProps) {
             <p className="text-sm text-muted-foreground">{card.setName} · #{card.setNumber}</p>
             <div className="flex gap-2 mt-2 flex-wrap items-center">
               {market != null && (
-                <Badge variant="secondary">Market {formatGBP(market)}</Badge>
+                <Badge
+                  variant="secondary"
+                  title={usdFallback ? 'No Cardmarket price yet — estimated from TCGplayer (USD)' : undefined}
+                >
+                  Market {formatGBP(market)}{usdFallback && ' · US est.'}
+                </Badge>
               )}
               {cashOffer != null && (
                 <Badge variant="outline" className="border-green-500/50 text-green-400">
