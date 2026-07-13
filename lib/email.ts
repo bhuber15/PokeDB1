@@ -24,21 +24,26 @@ export async function sendEmail(msg: EmailMessage, fetchImpl: typeof fetch = fet
     return { ok: false, skipped: true }
   }
   const from = process.env.EMAIL_FROM ?? `${BRAND.name} <onboarding@resend.dev>`
-  const res = await fetchImpl('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      from,
-      to: [msg.to],
-      subject: msg.subject,
-      text: msg.text,
-      ...(msg.html ? { html: msg.html } : {}),
-    }),
-  })
-  if (!res.ok) {
-    console.error(`[email failed] status=${res.status} to=${msg.to} subject="${msg.subject}"`)
+  try {
+    const res = await fetchImpl('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        from,
+        to: [msg.to],
+        subject: msg.subject,
+        text: msg.text,
+        ...(msg.html ? { html: msg.html } : {}),
+      }),
+    })
+    if (!res.ok) {
+      console.error(`[email failed] status=${res.status} to=${msg.to} subject="${msg.subject}"`)
+      return { ok: false }
+    }
+    const body = (await res.json()) as { id?: string }
+    return { ok: true, id: body.id }
+  } catch (err) {
+    console.error(`[email failed] error=${err instanceof Error ? err.message : String(err)} to=${msg.to} subject="${msg.subject}"`)
     return { ok: false }
   }
-  const body = (await res.json()) as { id?: string }
-  return { ok: true, id: body.id }
 }

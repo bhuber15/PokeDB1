@@ -35,3 +35,11 @@ test('sendEmail reports failure without throwing', async () => {
   assert.deepEqual(result, { ok: false })
   delete process.env.RESEND_API_KEY
 })
+
+test('sendEmail reports network errors instead of rejecting', async () => {
+  process.env.RESEND_API_KEY = 're_test_key'
+  const fakeFetch = (async () => { throw new Error('network down') }) as typeof fetch
+  const result = await sendEmail({ to: 'a@b.com', subject: 'Hi', text: 'Hello' }, fakeFetch)
+  assert.deepEqual(result, { ok: false })
+  delete process.env.RESEND_API_KEY
+})
