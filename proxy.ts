@@ -4,7 +4,7 @@ import { SessionData, sessionOptions } from '@/lib/auth'
 import { parseTenantSlug, getTenantBySlug } from '@/lib/platform/tenants'
 import { decideTenantRouting } from '@/lib/platform/routing'
 
-const PUBLIC_PATHS = ['/login', '/pin', '/api/auth/owner', '/api/auth/staff-pin', '/api/cron/', '/api/health', '/suspended', '/signup', '/api/platform/']
+const PUBLIC_PATHS = ['/login', '/pin', '/api/auth/owner', '/api/auth/staff-pin', '/api/cron/', '/api/health', '/suspended', '/signup', '/api/platform/', '/setup', '/api/setup']
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
