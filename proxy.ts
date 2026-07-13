@@ -4,7 +4,7 @@ import { SessionData, sessionOptions } from '@/lib/auth'
 import { parseTenantSlug, getTenantBySlug } from '@/lib/platform/tenants'
 import { decideTenantRouting } from '@/lib/platform/routing'
 
-const PUBLIC_PATHS = ['/login', '/pin', '/api/auth/owner', '/api/auth/staff-pin', '/api/cron/', '/api/health', '/suspended']
+const PUBLIC_PATHS = ['/login', '/pin', '/api/auth/owner', '/api/auth/staff-pin', '/api/cron/', '/api/health', '/suspended', '/signup', '/api/platform/']
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
@@ -23,9 +23,12 @@ export async function proxy(req: NextRequest) {
     const decision = decideTenantRouting({ slug, tenant })
 
     if (decision.kind === 'not-tenant') {
-      // Apex/www/admin: no shop app here yet (marketing site is external;
-      // admin arrives in Phase 3). Health stays reachable for monitors.
-      if (pathname.startsWith('/api/health')) return NextResponse.next({ request: { headers: requestHeaders } })
+      // Apex/www/admin: marketing site is external; admin arrives in Phase 3.
+      // The platform surface (signup, Stripe webhook, health) lives here.
+      const platformPaths = ['/signup', '/api/platform/', '/api/health']
+      if (platformPaths.some(p => pathname.startsWith(p))) {
+        return NextResponse.next({ request: { headers: requestHeaders } })
+      }
       return new NextResponse('Not found', { status: 404 })
     }
     if (decision.kind === 'unknown') return new NextResponse('Unknown shop', { status: 404 })
