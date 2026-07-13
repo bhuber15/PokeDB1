@@ -103,7 +103,13 @@ function defaultConnect(dbUrl: string): Client {
   })
 }
 
+// Witnesses that the migration journal completed, not merely started: probe
+// the newest artifact it produces (0016's settings.onboarding column). A DB
+// that died mid-journal fails this check, so the retry re-runs migrations and
+// fails loudly on the first duplicate statement — a stuck signup we can see,
+// never a silently half-migrated live shop. Maintenance rule: when a new
+// migration lands, point this probe at its newest artifact.
 async function hasTenantSchema(client: Client): Promise<boolean> {
-  const r = await client.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'")
+  const r = await client.execute("SELECT 1 FROM pragma_table_info('settings') WHERE name='onboarding'")
   return r.rows.length > 0
 }

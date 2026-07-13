@@ -88,3 +88,21 @@ test('provisionTenant resumes over a half-created tenant DB', async () => {
   const [t] = await deps.pdb.select().from(tenants).where(eq(tenants.slug, 'brads-cards'))
   assert.ok(t)
 })
+
+test('provisionTenant fails loudly on a half-migrated tenant DB', async () => {
+  const f = fixture()
+  const deps = await f.deps()
+  // Simulate a prior attempt that died mid-journal: the settings table exists
+  // but the newest migration artifact (0016's onboarding column) is missing.
+  const { applyMigrations } = await import('@/lib/db/migrate')
+  const client = createClient({ url: `file:${f.dbPath}` })
+  await applyMigrations(client)
+  await client.execute('ALTER TABLE settings DROP COLUMN onboarding')
+  client.close()
+  // The retry must re-run the journal and throw on the first duplicate CREATE
+  // — a stuck signup we can see, never a silently half-migrated live shop.
+  await assert.rejects(() => provisionTenant(f.input, deps), /already exists/)
+  // The loud path must not half-commit: no registry row for the slug.
+  const rows = await deps.pdb.select().from(tenants).where(eq(tenants.slug, 'brads-cards'))
+  assert.equal(rows.length, 0)
+})
