@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert'
-import { parseTenantSlug, getTenantBySlug, clearTenantCache } from './tenants'
+import { parseTenantSlug, getTenantBySlug, clearTenantCache, tenantUrl } from './tenants'
 import { createTestPlatformDb } from './test-helpers'
 import { tenants } from './schema'
 import { eq } from 'drizzle-orm'
@@ -45,4 +45,10 @@ test('getTenantBySlug returns null for unknown slugs (and caches the miss)', asy
   clearTenantCache()
   const pdb = await createTestPlatformDb()
   assert.equal(await getTenantBySlug('nope', { db: pdb, now: 0 }), null)
+})
+
+test('tenantUrl builds shop links for prod and local hosts', () => {
+  assert.equal(tenantUrl('brads', 'example-brand.co.uk', '/setup?token=t'),
+    'https://brads.example-brand.co.uk/setup?token=t')
+  assert.equal(tenantUrl('brads', 'localhost', '/settings'), 'http://brads.localhost:3000/settings')
 })

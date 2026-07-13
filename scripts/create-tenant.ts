@@ -11,9 +11,9 @@ import { parseArgs } from 'node:util'
 import { createClient } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
 import { eq } from 'drizzle-orm'
-import { applyMigrations } from '../lib/db/test-helpers'
+import { applyMigrations } from '../lib/db/migrate'
 import { applyPlatformMigrations } from '../lib/platform/test-helpers'
-import { RESERVED_SLUGS } from '../lib/platform/tenants'
+import { RESERVED_SLUGS, TENANT_SLUG_RE } from '../lib/platform/tenants'
 import * as tenantSchema from '../lib/db/schema'
 import * as platformSchema from '../lib/platform/schema'
 
@@ -33,7 +33,7 @@ async function main() {
     console.error('Required: --slug --name --db-url')
     process.exit(1)
   }
-  if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug)) {
+  if (!TENANT_SLUG_RE.test(slug)) {
     console.error('Slug must be lowercase letters/digits/hyphens, 3–40 chars')
     process.exit(1)
   }
