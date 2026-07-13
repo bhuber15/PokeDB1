@@ -93,8 +93,19 @@ export async function setOwnerPasswordHash(hash: string, dbc: Db = db): Promise<
 
 // Plan seat gating (spec §3.5): counts active staff only — deactivated
 // members keep their history but free their seat.
-export async function assertStaffSeatAvailable(ent: Entitlements, dbc: Db = db): Promise<void> {
+export async function assertStaffSeatAvailable(
+  ent: Entitlements,
+  dbc: Db = db,
+  opts: { reactivatingId?: number } = {},
+): Promise<void> {
   if (ent.staffSeats === null) return
+  if (opts.reactivatingId !== undefined) {
+    const [target] = await dbc.select({ isActive: staff.isActive }).from(staff)
+      .where(eq(staff.id, opts.reactivatingId)).limit(1)
+    // Already active: no seat transition. Missing: let updateStaff report
+    // NOT_FOUND rather than a misleading PLAN_LIMIT.
+    if (!target || target.isActive) return
+  }
   const active = await dbc.select({ id: staff.id }).from(staff).where(eq(staff.isActive, true))
   if (active.length >= ent.staffSeats) {
     throw new DomainError(

@@ -19,7 +19,7 @@ export const PATCH = guarded(async (req: NextRequest, { params }: { params: Prom
   requireAdmin(await getSession(await currentTenantId()))
   const id = parseIdParam((await params).id)
   const patch = await parseBody(req, patchStaffBody)
-  if (patch.isActive === true) await assertStaffSeatAvailable(await getEntitlements(), db)
+  if (patch.isActive === true) await assertStaffSeatAvailable(await getEntitlements(), db, { reactivatingId: id })
   const updated = await updateStaff(id, patch, db)
   return NextResponse.json(updated)
 })

@@ -144,3 +144,21 @@ test('assertStaffSeatAvailable enforces the plan seat limit on active staff', as
   await assertStaffSeatAvailable(twoSeats, db) // no throw
   await assertStaffSeatAvailable({ staffSeats: null, listingSync: true, apiAccess: true }, db) // no throw
 })
+
+test('assertStaffSeatAvailable ignores no-op reactivations of already-active staff', async () => {
+  const db = await createTestDb()
+  const a = await createStaff({ name: 'A', pin: '1111', role: 'admin' }, db)
+  await createStaff({ name: 'B', pin: '2222' }, db)
+  const c = await createStaff({ name: 'C', pin: '3333' }, db)
+  await updateStaff(c.id, { isActive: false }, db) // A + B active — at the 2-seat cap
+  const twoSeats = { staffSeats: 2, listingSync: false, apiAccess: false }
+  // Re-sending isActive: true for an already-active member is not a seat transition.
+  await assertStaffSeatAvailable(twoSeats, db, { reactivatingId: a.id }) // no throw
+  // A genuinely deactivated member would consume a seat — still blocked at cap.
+  await assert.rejects(
+    () => assertStaffSeatAvailable(twoSeats, db, { reactivatingId: c.id }),
+    domainCode('PLAN_LIMIT'),
+  )
+  // Unknown id: NOT_FOUND is updateStaff's job, not a misleading PLAN_LIMIT.
+  await assertStaffSeatAvailable(twoSeats, db, { reactivatingId: 999 }) // no throw
+})
