@@ -66,3 +66,12 @@ export function requireAdmin(session: SessionData): SessionData & { staffId: num
   if (s.staffRole !== 'admin') throw new DomainError('FORBIDDEN', 'Admin only')
   return s
 }
+
+// Owner (device unlocked) or admin PIN — billing surfaces are the owner's
+// business, reachable before any staff PIN is entered.
+export function requireOwnerOrAdmin(session: SessionData): SessionData {
+  if (!session.isOwnerLoggedIn && session.staffRole !== 'admin') {
+    throw new DomainError('UNAUTHORIZED', 'Login required')
+  }
+  return session
+}

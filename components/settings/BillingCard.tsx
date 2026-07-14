@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { PLANS, isPlan } from '@/lib/plan'
+import { formatGBP } from '@/lib/pricing'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
@@ -23,13 +24,14 @@ const STATUS_COPY: Record<string, string> = {
 export function BillingCard() {
   const [billing, setBilling] = useState<Billing | null>(null)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/billing').then(r => (r.ok ? r.json() : null)).then(setBilling).catch(() => setBilling(null))
   }, [])
 
   if (!billing?.managed) return null
-  const planLabel = isPlan(billing.plan) ? `${PLANS[billing.plan].label} — £${PLANS[billing.plan].pricePence / 100}/month` : billing.plan
+  const planLabel = isPlan(billing.plan) ? `${PLANS[billing.plan].label} — ${formatGBP(PLANS[billing.plan].pricePence)}/month` : billing.plan
   const daysLeft = billing.trialEndsAt
     // eslint-disable-next-line react-hooks/purity -- trial countdown; a fresh clock reading each render is intended
     ? Math.max(0, Math.ceil((billing.trialEndsAt * 1000 - Date.now()) / 86_400_000))
@@ -37,12 +39,18 @@ export function BillingCard() {
 
   async function openPortal() {
     setBusy(true)
+    setError(null)
     try {
       const res = await fetch('/api/billing/portal', { method: 'POST' })
       const body = await res.json()
-      if (res.ok && body.url) window.location.href = body.url
-      else setBusy(false)
+      if (res.ok && body.url) {
+        window.location.href = body.url
+      } else {
+        setError("Couldn't open billing — please try again, or email support.")
+        setBusy(false)
+      }
     } catch {
+      setError("Couldn't open billing — please try again, or email support.")
       setBusy(false)
     }
   }
@@ -64,6 +72,7 @@ export function BillingCard() {
       {billing.cancelAtPeriodEnd && (
         <p className="text-sm text-muted-foreground">Your subscription is set to cancel at the end of the period.</p>
       )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
       <Button onClick={openPortal} disabled={busy} variant="outline">
         {busy ? 'Opening…' : 'Manage billing'}
       </Button>

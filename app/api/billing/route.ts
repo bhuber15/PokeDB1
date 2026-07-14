@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { guarded } from '@/lib/api'
 import { isMultiTenant } from '@/lib/db'
-import { getSession, currentTenantId } from '@/lib/auth'
+import { getSession, currentTenantId, requireOwnerOrAdmin } from '@/lib/auth'
 import { DomainError } from '@/lib/domain/errors'
 import { getTenantById } from '@/lib/platform/tenants'
 import { getStripe } from '@/lib/platform/stripe'
@@ -10,10 +10,7 @@ import { getStripe } from '@/lib/platform/stripe'
 // Stripe customer portal (spec §3.5 — no billing UI of our own).
 export const GET = guarded(async () => {
   if (!isMultiTenant()) return NextResponse.json({ managed: false })
-  const session = await getSession(await currentTenantId())
-  if (!session.isOwnerLoggedIn && session.staffRole !== 'admin') {
-    throw new DomainError('UNAUTHORIZED', 'Login required')
-  }
+  requireOwnerOrAdmin(await getSession(await currentTenantId()))
   const tenantId = await currentTenantId()
   const tenant = tenantId ? await getTenantById(Number(tenantId)) : null
   if (!tenant) throw new DomainError('NOT_FOUND', 'Tenant not found')
