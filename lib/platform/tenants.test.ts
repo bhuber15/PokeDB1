@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert'
-import { parseTenantSlug, getTenantBySlug, clearTenantCache, tenantUrl } from './tenants'
+import { parseTenantSlug, getTenantBySlug, getTenantById, clearTenantCache, tenantUrl } from './tenants'
 import { createTestPlatformDb } from './test-helpers'
 import { tenants } from './schema'
 import { eq } from 'drizzle-orm'
@@ -45,6 +45,14 @@ test('getTenantBySlug returns null for unknown slugs (and caches the miss)', asy
   clearTenantCache()
   const pdb = await createTestPlatformDb()
   assert.equal(await getTenantBySlug('nope', { db: pdb, now: 0 }), null)
+})
+
+test('getTenantById fetches without caching', async () => {
+  const pdb = await createTestPlatformDb()
+  const [t] = await pdb.insert(tenants).values({ slug: 'by-id', name: 'By Id', dbUrl: 'file:x.db' }).returning()
+  const found = await getTenantById(t.id, { db: pdb })
+  assert.equal(found?.slug, 'by-id')
+  assert.equal(await getTenantById(999999, { db: pdb }), null)
 })
 
 test('tenantUrl builds shop links for prod and local hosts', () => {

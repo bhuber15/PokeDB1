@@ -36,6 +36,14 @@ export async function proxy(req: NextRequest) {
       if (pathname.startsWith('/suspended') || pathname.startsWith('/api/health')) {
         return NextResponse.next({ request: { headers: requestHeaders } })
       }
+      // API calls from a still-open till get a machine-readable answer,
+      // not a rewritten HTML lock screen.
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json(
+          { error: 'This shop is currently unavailable', code: 'SHOP_UNAVAILABLE' },
+          { status: 403 },
+        )
+      }
       return NextResponse.rewrite(new URL('/suspended', req.url))
     }
     for (const [k, v] of Object.entries(decision.headers)) requestHeaders.set(k, v)

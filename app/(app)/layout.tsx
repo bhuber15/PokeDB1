@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { getSession } from '@/lib/auth'
+import { getSession, currentTenantStatus } from '@/lib/auth'
 import { getTenantDb } from '@/lib/db'
 import { getSettings } from '@/lib/settings'
 import { countInStockWants } from '@/lib/domain/wants'
@@ -7,6 +7,7 @@ import { getOnboarding } from '@/lib/domain/onboarding'
 import { Nav } from '@/components/layout/Nav'
 import { SettingsProvider } from '@/components/shared/SettingsProvider'
 import { OnboardingChecklist } from '@/components/onboarding/OnboardingChecklist'
+import { BillingBanner } from '@/components/shared/BillingBanner'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession()
@@ -17,6 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     countInStockWants(db),
     getOnboarding(db),
   ])
+  const tenantStatus = await currentTenantStatus()
   return (
     <SettingsProvider value={settings}>
       <div className="min-h-screen bg-background">
@@ -26,6 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           staffRole={session.staffRole}
           inStockWantsCount={inStockWantsCount}
         />
+        {tenantStatus === 'past_due' && <BillingBanner />}
         {onboarding.enabled && <OnboardingChecklist initial={onboarding} />}
         <main className="container mx-auto px-4 py-6">{children}</main>
       </div>

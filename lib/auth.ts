@@ -40,6 +40,14 @@ export async function currentTenantId(): Promise<string | undefined> {
   return (await headers()).get('x-tenant-id') ?? undefined
 }
 
+// Billing status of the current tenant, from proxy-injected headers
+// (multi mode only) — drives the past-due banner.
+export async function currentTenantStatus(): Promise<string | undefined> {
+  if (process.env.TENANCY_MODE !== 'multi') return undefined
+  const { headers } = await import('next/headers')
+  return (await headers()).get('x-tenant-status') ?? undefined
+}
+
 // Device unlocked (owner password) — pre-PIN surfaces like the PIN pad's staff list.
 export function requireOwner(session: SessionData): SessionData {
   if (!session.isOwnerLoggedIn) throw new DomainError('UNAUTHORIZED', 'Login required')
