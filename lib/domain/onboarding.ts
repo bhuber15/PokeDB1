@@ -17,6 +17,7 @@ export interface OnboardingState {
 
 interface Stored {
   dismissedAt?: string
+  completedAt?: string
   done?: OnboardingStepId[]
 }
 
@@ -26,21 +27,30 @@ export async function getOnboarding(dbc: Db = db): Promise<OnboardingState> {
   const [row] = await dbc.select({ onboarding: settings.onboarding }).from(settings).limit(1)
   if (!row?.onboarding) return DISABLED
   const stored = parseStored(row.onboarding)
+  // Terminal states (dismissed, or previously completed) skip the live counts
+  // for the rest of the shop's life and return no steps. completedAt doubles
+  // as the hide signal so a finished checklist never renders or counts again.
+  if (stored.dismissedAt || stored.completedAt) {
+    return { enabled: true, dismissedAt: stored.dismissedAt ?? stored.completedAt ?? null, steps: [] }
+  }
   const [[inv], [sal], [stf]] = await Promise.all([
     dbc.select({ n: count() }).from(inventoryItems),
     dbc.select({ n: count() }).from(sales),
     dbc.select({ n: count() }).from(staff),
   ])
-  return {
-    enabled: true,
-    dismissedAt: stored.dismissedAt ?? null,
-    steps: [
-      { id: 'settings', done: stored.done?.includes('settings') ?? false },
-      { id: 'inventory', done: inv.n >= 5 },
-      { id: 'sale', done: sal.n >= 1 },
-      { id: 'staff', done: stf.n >= 2 }, // beyond the admin created at setup
-    ],
+  const steps: OnboardingState['steps'] = [
+    { id: 'settings', done: stored.done?.includes('settings') ?? false },
+    { id: 'inventory', done: inv.n >= 5 },
+    { id: 'sale', done: sal.n >= 1 },
+    { id: 'staff', done: stf.n >= 2 }, // beyond the admin created at setup
+  ]
+  if (steps.every(s => s.done)) {
+    // One small write so every later call takes the terminal short-circuit
+    // instead of re-counting. This call still returns the computed steps —
+    // the card hides itself this render via remaining === 0.
+    await patchStored(s => ({ ...s, completedAt: new Date().toISOString() }), dbc)
   }
+  return { enabled: true, dismissedAt: null, steps }
 }
 
 export async function markOnboardingStep(step: 'settings', dbc: Db = db): Promise<void> {

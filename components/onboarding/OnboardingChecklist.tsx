@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { CheckCircle2, Circle, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { OnboardingState, OnboardingStepId } from '@/lib/domain/onboarding'
@@ -16,6 +17,24 @@ const STEP_META: Record<OnboardingStepId, { label: string; href: string }> = {
 
 export function OnboardingChecklist({ initial }: { initial: OnboardingState }) {
   const [state, setState] = useState(initial)
+  const pathname = usePathname()
+  const mounted = useRef(false)
+
+  // The server layout renders once per hard load — App Router client
+  // navigations never re-run it, so `initial` goes stale as soon as the owner
+  // completes a step. Refetch on every route change; first paint keeps the
+  // server-provided snapshot (the mounted ref skips the initial run).
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true
+      return
+    }
+    fetch('/api/onboarding')
+      .then(r => (r.ok ? r.json() : null))
+      .then(s => s && setState(s))
+      .catch(() => {})
+  }, [pathname])
+
   if (!state.enabled || state.dismissedAt) return null
   const remaining = state.steps.filter(s => !s.done).length
   if (remaining === 0) return null
