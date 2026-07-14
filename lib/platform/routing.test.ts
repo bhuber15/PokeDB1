@@ -16,7 +16,7 @@ test('slug with no registry row → unknown', () => {
 
 test('suspended/cancelled/paused tenants are blocked', () => {
   for (const s of ['suspended', 'cancelled', 'paused']) {
-    assert.deepEqual(decideTenantRouting({ slug: 'x', tenant: tenant(s) }), { kind: 'blocked' })
+    assert.deepEqual(decideTenantRouting({ slug: 'x', tenant: tenant(s) }), { kind: 'blocked', status: s })
   }
 })
 

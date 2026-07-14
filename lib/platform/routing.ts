@@ -6,7 +6,7 @@ const BLOCKED_STATUSES = new Set(['suspended', 'cancelled', 'paused'])
 export type TenantRouting =
   | { kind: 'not-tenant' }
   | { kind: 'unknown' }
-  | { kind: 'blocked' }
+  | { kind: 'blocked'; status: string }
   | { kind: 'serve'; headers: Record<string, string> }
 
 export function decideTenantRouting(input: {
@@ -15,7 +15,7 @@ export function decideTenantRouting(input: {
 }): TenantRouting {
   if (input.slug === null) return { kind: 'not-tenant' }
   if (!input.tenant) return { kind: 'unknown' }
-  if (BLOCKED_STATUSES.has(input.tenant.status)) return { kind: 'blocked' }
+  if (BLOCKED_STATUSES.has(input.tenant.status)) return { kind: 'blocked', status: input.tenant.status }
   const plan: Plan = isPlan(input.tenant.plan) ? input.tenant.plan : 'growth'
   return {
     kind: 'serve',

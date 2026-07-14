@@ -67,8 +67,8 @@ const stripeCheckout: CheckoutCreator = async (args) => {
     line_items: [{ price: args.priceId, quantity: 1 }],
     // 14-day card-less trial (spec §3.5): nothing is due today so Checkout
     // shows no card fields; if no card exists at trial end Stripe pauses the
-    // subscription (→ tenant status 'paused'), and adding a card via the
-    // customer portal resumes it.
+    // subscription (→ tenant status 'paused', lock screen). Reactivation is
+    // support-assisted at launch — self-service resume is a Phase 3 item.
     payment_method_collection: 'if_required',
     subscription_data: {
       trial_period_days: 14,

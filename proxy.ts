@@ -44,7 +44,7 @@ export async function proxy(req: NextRequest) {
           { status: 403 },
         )
       }
-      return NextResponse.rewrite(new URL('/suspended', req.url))
+      return NextResponse.rewrite(new URL(`/suspended?reason=${decision.status}`, req.url))
     }
     for (const [k, v] of Object.entries(decision.headers)) requestHeaders.set(k, v)
     resolvedTenantId = decision.headers['x-tenant-id']
