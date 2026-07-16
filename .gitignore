@@ -52,3 +52,6 @@ next-env.d.ts
 # Claude Code local state (skills are tracked; settings + worktrees are not)
 .claude/*
 !.claude/skills/
+
+# local tenant databases
+tenant-dbs/

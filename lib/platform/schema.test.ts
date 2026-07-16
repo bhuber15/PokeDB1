@@ -29,3 +29,11 @@ test('stripe event ids are unique (webhook idempotency)', async () => {
     pdb.insert(stripeEvents).values({ stripeEventId: 'evt_1', type: 'checkout.session.completed' }),
   )
 })
+
+test('tenants.email round-trips', async () => {
+  const pdb = await createTestPlatformDb()
+  const [row] = await pdb.insert(tenants)
+    .values({ slug: 'email-shop', name: 'Email Shop', dbUrl: 'file:x.db', email: 'owner@example.com' })
+    .returning()
+  assert.equal(row.email, 'owner@example.com')
+})

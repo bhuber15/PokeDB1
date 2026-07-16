@@ -62,6 +62,13 @@ export function SettingsForm() {
       }
       toast.success('Settings saved')
       router.refresh() // re-reads settings in the server layout → updates everywhere
+
+      // Reviewing settings is the one onboarding step we can't infer from data.
+      fetch('/api/onboarding', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ step: 'settings' }),
+      }).catch(() => {})
     } catch {
       toast.error('Could not reach the server')
     } finally {

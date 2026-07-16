@@ -37,3 +37,23 @@ export async function getTenantBySlug(
   cache.set(slug, { tenant: tenant ?? null, at: now })
   return tenant ?? null
 }
+
+// Uncached: used by low-traffic authenticated billing routes where staleness
+// (plan just changed in the portal) would be visible.
+export async function getTenantById(id: number, opts: { db?: PlatformDb } = {}): Promise<Tenant | null> {
+  const pdb = opts.db ?? getPlatformDb()
+  const [tenant] = await pdb.select().from(tenants).where(eq(tenants.id, id)).limit(1)
+  return tenant ?? null
+}
+
+// Slug rules shared by signup validation and scripts/create-tenant.ts.
+export const TENANT_SLUG_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/
+
+// Absolute URL for a tenant subdomain. Local base hosts get http + the dev
+// port so emailed links work straight from `npm run dev`.
+export function tenantUrl(slug: string, baseHost: string, path = ''): string {
+  const local = baseHost === 'localhost' || baseHost.endsWith('.localhost')
+  return local
+    ? `http://${slug}.${baseHost}:3000${path}`
+    : `https://${slug}.${baseHost}${path}`
+}

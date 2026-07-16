@@ -4,14 +4,14 @@ import { SessionData, sessionOptions } from '@/lib/auth'
 import { parseTenantSlug, getTenantBySlug } from '@/lib/platform/tenants'
 import { decideTenantRouting } from '@/lib/platform/routing'
 
-const PUBLIC_PATHS = ['/login', '/pin', '/api/auth/owner', '/api/auth/staff-pin', '/api/cron/', '/api/health', '/suspended']
+const PUBLIC_PATHS = ['/login', '/pin', '/api/auth/owner', '/api/auth/staff-pin', '/api/cron/', '/api/health', '/suspended', '/signup', '/api/platform/', '/setup', '/api/setup']
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
 
   // Never trust inbound tenant headers — the proxy is their only writer.
   const requestHeaders = new Headers(req.headers)
-  for (const h of ['x-tenant-id', 'x-tenant-db-url', 'x-tenant-status']) requestHeaders.delete(h)
+  for (const h of ['x-tenant-id', 'x-tenant-db-url', 'x-tenant-status', 'x-tenant-plan', 'x-tenant-entitlements']) requestHeaders.delete(h)
 
   let resolvedTenantId: string | undefined
 
@@ -23,9 +23,12 @@ export async function proxy(req: NextRequest) {
     const decision = decideTenantRouting({ slug, tenant })
 
     if (decision.kind === 'not-tenant') {
-      // Apex/www/admin: no shop app here yet (marketing site is external;
-      // admin arrives in Phase 3). Health stays reachable for monitors.
-      if (pathname.startsWith('/api/health')) return NextResponse.next({ request: { headers: requestHeaders } })
+      // Apex/www/admin: marketing site is external; admin arrives in Phase 3.
+      // The platform surface (signup, Stripe webhook, health) lives here.
+      const platformPaths = ['/signup', '/api/platform/', '/api/health']
+      if (platformPaths.some(p => pathname.startsWith(p))) {
+        return NextResponse.next({ request: { headers: requestHeaders } })
+      }
       return new NextResponse('Not found', { status: 404 })
     }
     if (decision.kind === 'unknown') return new NextResponse('Unknown shop', { status: 404 })
@@ -33,7 +36,15 @@ export async function proxy(req: NextRequest) {
       if (pathname.startsWith('/suspended') || pathname.startsWith('/api/health')) {
         return NextResponse.next({ request: { headers: requestHeaders } })
       }
-      return NextResponse.rewrite(new URL('/suspended', req.url))
+      // API calls from a still-open till get a machine-readable answer,
+      // not a rewritten HTML lock screen.
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json(
+          { error: 'This shop is currently unavailable', code: 'SHOP_UNAVAILABLE' },
+          { status: 403 },
+        )
+      }
+      return NextResponse.rewrite(new URL(`/suspended?reason=${decision.status}`, req.url))
     }
     for (const [k, v] of Object.entries(decision.headers)) requestHeaders.set(k, v)
     resolvedTenantId = decision.headers['x-tenant-id']

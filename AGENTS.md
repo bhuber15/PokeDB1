@@ -43,6 +43,11 @@ PokeDB is a point-of-sale and inventory system for a UK Pokémon card shop: sell
   (separate journal in `lib/platform/migrations/`).
 - New tenant locally: `scripts/create-tenant.ts`; per-shop single-tenant deploys:
   `docs/runbooks/wizard-of-oz-shop-deploy.md`.
+- Billing/provisioning (Phase 2): Stripe Checkout + webhooks (`app/api/platform/stripe`,
+  idempotent via `stripe_events`) drive the tenant lifecycle; `provisionTenant`
+  (`lib/platform/provision.ts`) is idempotent by slug; plan gating via `lib/plan.ts` +
+  `getEntitlements()`. Env + dashboard setup and the test-clock walkthrough:
+  `docs/runbooks/stripe-billing-setup.md`.
 
 ## Domain rules (do not violate)
 

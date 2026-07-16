@@ -40,6 +40,14 @@ export async function currentTenantId(): Promise<string | undefined> {
   return (await headers()).get('x-tenant-id') ?? undefined
 }
 
+// Billing status of the current tenant, from proxy-injected headers
+// (multi mode only) — drives the past-due banner.
+export async function currentTenantStatus(): Promise<string | undefined> {
+  if (process.env.TENANCY_MODE !== 'multi') return undefined
+  const { headers } = await import('next/headers')
+  return (await headers()).get('x-tenant-status') ?? undefined
+}
+
 // Device unlocked (owner password) — pre-PIN surfaces like the PIN pad's staff list.
 export function requireOwner(session: SessionData): SessionData {
   if (!session.isOwnerLoggedIn) throw new DomainError('UNAUTHORIZED', 'Login required')
@@ -57,4 +65,13 @@ export function requireAdmin(session: SessionData): SessionData & { staffId: num
   const s = requireStaff(session)
   if (s.staffRole !== 'admin') throw new DomainError('FORBIDDEN', 'Admin only')
   return s
+}
+
+// Owner (device unlocked) or admin PIN — billing surfaces are the owner's
+// business, reachable before any staff PIN is entered.
+export function requireOwnerOrAdmin(session: SessionData): SessionData {
+  if (!session.isOwnerLoggedIn && session.staffRole !== 'admin') {
+    throw new DomainError('UNAUTHORIZED', 'Login required')
+  }
+  return session
 }
