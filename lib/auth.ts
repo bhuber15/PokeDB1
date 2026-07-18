@@ -8,6 +8,7 @@ export interface SessionData {
   staffRole?: 'admin' | 'staff'
   staffName?: string
   tenantId?: string
+  impersonated?: boolean   // platform-support session minted via /api/auth/impersonate
 }
 
 export const sessionOptions: SessionOptions = {
