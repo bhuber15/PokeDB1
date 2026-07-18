@@ -196,6 +196,26 @@ export const authLockouts = sqliteTable('auth_lockouts', {
   lockedUntil: integer('locked_until'),
 })
 
+// End-of-day till close. One record per calendar day (UTC). The cash-movement
+// columns snapshot getCashUpSummary at close time so the record stays stable
+// even if a late transaction lands after closing.
+//   expectedCash = openingFloat + cashSales − cashRefunds − cashBuyPayouts
+//   variance     = countedCash − expectedCash  (negative = short, positive = over)
+export const cashUps = sqliteTable('cash_ups', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  day: text('day').notNull().unique(), // YYYY-MM-DD
+  staffId: integer('staff_id').references(() => staff.id),
+  openingFloat: integer('opening_float').notNull(),
+  cashSales: integer('cash_sales').notNull(),
+  cashRefunds: integer('cash_refunds').notNull(),
+  cashBuyPayouts: integer('cash_buy_payouts').notNull(),
+  expectedCash: integer('expected_cash').notNull(),
+  countedCash: integer('counted_cash').notNull(),
+  variance: integer('variance').notNull(),
+  notes: text('notes'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
 export const wantList = sqliteTable('want_list', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   customerId: integer('customer_id').notNull().references(() => customers.id),
@@ -221,4 +241,5 @@ export type WantListItem = typeof wantList.$inferSelect
 export type AuthLockout = typeof authLockouts.$inferSelect
 export type StockAdjustment = typeof stockAdjustments.$inferSelect
 export type Refund = typeof refunds.$inferSelect
+export type CashUp = typeof cashUps.$inferSelect
 export type RefundItem = typeof refundItems.$inferSelect
