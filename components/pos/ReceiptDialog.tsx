@@ -1,68 +1,46 @@
 'use client'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { formatGBP } from '@/lib/pricing'
+import { receiptHtml, type ReceiptData } from '@/lib/receipt-html'
 
-export interface ReceiptData {
-  saleId: number
-  at: string // ISO
-  shopName: string
-  lines: { name: string; condition: string; quantity: number; price: number }[]
-  subtotal: number
-  discount: number
-  vatAmount: number
-  vatScheme: 'none' | 'standard' | 'margin'
-  total: number
-  paymentMethod: string
-  // Split tender: one line per method. Single-method sales may omit this.
-  payments?: { method: string; amount: number }[]
-  cashReceived?: number
-  changeDue?: number
-}
-
-const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-
-function receiptHtml(r: ReceiptData): string {
-  const when = new Date(r.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-  const row = (label: string, value: string, bold = false) =>
-    `<tr${bold ? ' class="b"' : ''}><td>${esc(label)}</td><td class="r">${esc(value)}</td></tr>`
-  return `<!DOCTYPE html><html><head><title>Receipt #${r.saleId}</title>
-<style>
-  body { font: 12px/1.5 ui-monospace, Menlo, monospace; color: #000; width: 260px; margin: 12px auto; }
-  h1 { font-size: 14px; text-align: center; margin: 0 0 2px; }
-  p { text-align: center; margin: 0 0 10px; }
-  table { width: 100%; border-collapse: collapse; }
-  td { padding: 1px 0; vertical-align: top; }
-  .r { text-align: right; white-space: nowrap; }
-  .b td { font-weight: 700; font-size: 13px; padding-top: 4px; }
-  hr { border: 0; border-top: 1px dashed #000; margin: 8px 0; }
-</style></head><body>
-<h1>${esc(r.shopName)}</h1>
-<p>Sale #${r.saleId} · ${esc(when)}</p>
-<table>
-${r.lines.map(l => row(`${l.quantity}× ${l.name} (${l.condition})`, formatGBP(l.price * l.quantity))).join('\n')}
-</table>
-<hr/>
-<table>
-${row('Subtotal', formatGBP(r.subtotal))}
-${r.discount > 0 ? row('Discount', `-${formatGBP(r.discount)}`) : ''}
-${r.vatScheme === 'standard' && r.vatAmount > 0 ? row('VAT (20%)', formatGBP(r.vatAmount)) : ''}
-${row('Total', formatGBP(r.total), true)}
-${r.payments && r.payments.length > 1
-    ? r.payments.map(p => row(`Paid — ${p.method.replace('_', ' ')}`, formatGBP(p.amount))).join('\n')
-    : row('Paid', r.paymentMethod.replace('_', ' '))}
-${r.cashReceived != null ? row('Cash', formatGBP(r.cashReceived)) : ''}
-${r.changeDue != null && r.changeDue > 0 ? row('Change', formatGBP(r.changeDue)) : ''}
-</table>
-${r.vatScheme === 'margin' ? '<p style="margin:6px 0 0;font-size:11px;">Sold under the VAT Margin Scheme</p>' : ''}
-<hr/>
-<p>Thank you!</p>
-</body></html>`
-}
+// Re-export so existing imports (pos/page.tsx) keep working.
+export type { ReceiptData }
 
 export function ReceiptDialog({ receipt, onClose }: { receipt: ReceiptData | null; onClose: () => void }) {
+  const [email, setEmail] = useState('')
+  const [sending, setSending] = useState(false)
+
+  async function sendByEmail() {
+    if (!receipt || sending) return
+    setSending(true)
+    try {
+      const res = await fetch(`/api/sales/${receipt.saleId}/receipt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // Blank input → server falls back to the sale's customer email
+        body: JSON.stringify(email.trim() ? { email: email.trim() } : {}),
+      })
+      const data = await res.json().catch(() => null)
+      if (res.ok && data?.ok) {
+        toast.success(`Receipt emailed to ${data.to}`)
+        setEmail('')
+      } else if (res.ok && data?.skipped) {
+        toast.info('Email sending is not configured (RESEND_API_KEY) — receipt not sent')
+      } else {
+        toast.error(data?.error ?? 'Failed to send receipt')
+      }
+    } catch {
+      toast.error('Network error — receipt not sent')
+    } finally {
+      setSending(false)
+    }
+  }
+
   function print() {
     if (!receipt) return
     const win = window.open('', '_blank')
@@ -100,6 +78,20 @@ export function ReceiptDialog({ receipt, onClose }: { receipt: ReceiptData | nul
                 <div className="flex justify-between font-semibold text-emerald-400"><span>Change given</span><span>{formatGBP(receipt.changeDue)}</span></div>
               )}
             </div>
+          </div>
+        )}
+        {receipt && (
+          <div className="flex gap-2">
+            <Input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="Email (blank = customer's)"
+              aria-label="Email receipt to"
+            />
+            <Button variant="outline" onClick={sendByEmail} disabled={sending}>
+              {sending ? 'Sending…' : 'Email'}
+            </Button>
           </div>
         )}
         <DialogFooter className="gap-2">

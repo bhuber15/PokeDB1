@@ -9,6 +9,9 @@ import { RefundDialog } from '@/components/reports/RefundDialog'
 import { VoidSaleDialog } from '@/components/reports/VoidSaleDialog'
 import { CashUpSection } from '@/components/reports/CashUpSection'
 import { StockSection } from '@/components/reports/StockSection'
+import { Input } from '@/components/ui/input'
+import { toast } from 'sonner'
+import { ReceiptDialog, type ReceiptData } from '@/components/pos/ReceiptDialog'
 
 interface TodayStats {
   totalRevenue: number
@@ -20,6 +23,7 @@ interface TodayStats {
 interface RecentSale {
   sale: { id: number; total: number; paymentMethod: string; discountAmount: number; createdAt: string; voidedAt: string | null }
   staffName: string | null
+  customerName?: string | null // present on search results
   itemsSummary: string
 }
 
@@ -54,6 +58,38 @@ export default function ReportsPage() {
   const [summary, setSummary] = useState<RangeSummary | null>(null)
   const [refundSaleId, setRefundSaleId] = useState<number | null>(null)
   const [voidSaleId, setVoidSaleId] = useState<number | null>(null)
+  const [searchQ, setSearchQ] = useState('')
+  const [searchResults, setSearchResults] = useState<RecentSale[] | null>(null)
+  const [receipt, setReceipt] = useState<ReceiptData | null>(null)
+
+  async function runSearch() {
+    const q = searchQ.trim()
+    if (!q) { setSearchResults(null); return }
+    const res = await fetch(`/api/sales/search?q=${encodeURIComponent(q)}`)
+    if (!res.ok) {
+      const body = await res.json().catch(() => null)
+      toast.error(body?.error ?? 'Search failed')
+      return
+    }
+    const { results } = await res.json()
+    setSearchResults(results)
+  }
+
+  async function openReceipt(saleId: number) {
+    const res = await fetch(`/api/sales/${saleId}/receipt`)
+    if (!res.ok) {
+      const body = await res.json().catch(() => null)
+      toast.error(body?.error ?? 'Could not load receipt')
+      return
+    }
+    const data = await res.json()
+    setReceipt(data.receipt)
+  }
+
+  function refreshLists() {
+    fetch('/api/sales/history').then(r => r.json()).then(setData)
+    if (searchResults) runSearch()
+  }
 
   useEffect(() => {
     fetch(`/api/reports/sales?from=${range.from}&to=${range.to}`)
@@ -159,12 +195,37 @@ export default function ReportsPage() {
       <StockSection />
 
       <div>
-        <h2 className="text-lg font-semibold mb-3">Recent Sales</h2>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <h2 className="text-lg font-semibold shrink-0">
+            {searchResults ? `Search results (${searchResults.length})` : 'Recent Sales'}
+          </h2>
+          <form
+            className="flex gap-2 flex-1 max-w-sm"
+            onSubmit={e => { e.preventDefault(); runSearch() }}
+          >
+            <Input
+              value={searchQ}
+              onChange={e => setSearchQ(e.target.value)}
+              placeholder="Receipt #, card or customer…"
+              aria-label="Search sales"
+              className="h-8"
+            />
+            <Button type="submit" size="sm" variant="outline">Search</Button>
+            {searchResults && (
+              <Button type="button" size="sm" variant="ghost"
+                onClick={() => { setSearchQ(''); setSearchResults(null) }}>
+                Clear
+              </Button>
+            )}
+          </form>
+        </div>
         <div className="border rounded-lg divide-y">
-          {recentSales.length === 0 && (
-            <p className="p-4 text-sm text-muted-foreground">No sales yet</p>
+          {(searchResults ?? recentSales).length === 0 && (
+            <p className="p-4 text-sm text-muted-foreground">
+              {searchResults ? 'No sales match' : 'No sales yet'}
+            </p>
           )}
-          {recentSales.map(({ sale, staffName, itemsSummary }) => (
+          {(searchResults ?? recentSales).map(({ sale, staffName, customerName, itemsSummary }) => (
             <div key={sale.id} className={`flex items-center justify-between p-3 ${sale.voidedAt ? 'opacity-60' : ''}`}>
               <div className="flex items-center gap-3 min-w-0">
                 <span className={`font-semibold shrink-0 ${sale.voidedAt ? 'line-through' : ''}`}>{formatGBP(sale.total)}</span>
@@ -177,7 +238,9 @@ export default function ReportsPage() {
               </div>
               <div className="flex items-center gap-3">
                 <div className="text-right text-sm">
-                  <div className="text-muted-foreground">{staffName ?? 'Unknown'}</div>
+                  <div className="text-muted-foreground">
+                    {staffName ?? 'Unknown'}{customerName ? ` → ${customerName}` : ''}
+                  </div>
                   <div className="text-xs text-muted-foreground">
                     {new Date(sale.createdAt).toLocaleString('en-GB', {
                       day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
@@ -186,6 +249,7 @@ export default function ReportsPage() {
                 </div>
                 {!sale.voidedAt && (
                   <>
+                    <Button size="sm" variant="ghost" onClick={() => openReceipt(sale.id)}>Receipt</Button>
                     {sale.createdAt.slice(0, 10) === todayISO && (
                       <Button size="sm" variant="outline" onClick={() => setVoidSaleId(sale.id)}>Void</Button>
                     )}
@@ -202,15 +266,17 @@ export default function ReportsPage() {
         saleId={refundSaleId}
         open={refundSaleId !== null}
         onClose={() => setRefundSaleId(null)}
-        onDone={() => fetch('/api/sales/history').then(r => r.json()).then(setData)}
+        onDone={refreshLists}
       />
 
       <VoidSaleDialog
         saleId={voidSaleId}
         open={voidSaleId !== null}
         onClose={() => setVoidSaleId(null)}
-        onDone={() => fetch('/api/sales/history').then(r => r.json()).then(setData)}
+        onDone={refreshLists}
       />
+
+      <ReceiptDialog receipt={receipt} onClose={() => setReceipt(null)} />
     </div>
   )
 }
