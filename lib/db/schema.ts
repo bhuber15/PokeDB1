@@ -80,6 +80,12 @@ export const sales = sqliteTable('sales', {
   vatScheme: text('vat_scheme').notNull().default('none'), // 'standard' | 'margin' | 'none'
   total: integer('total').notNull(),
   paymentMethod: text('payment_method').notNull(), // 'cash' | 'card' | 'store_credit' | 'other'
+  // Same-day full reversal for staff mis-rings (distinct from a customer
+  // refund). A voided sale keeps its rows for the audit trail but is excluded
+  // from every report aggregate (WHERE voided_at IS NULL).
+  voidedAt: text('voided_at'),
+  voidedByStaffId: integer('voided_by_staff_id').references(() => staff.id),
+  voidReason: text('void_reason'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
@@ -144,7 +150,7 @@ export const creditLedger = sqliteTable('credit_ledger', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   customerId: integer('customer_id').notNull().references(() => customers.id),
   delta: integer('delta').notNull(), // +credit issued, -credit spent
-  reason: text('reason').notNull(), // 'buylist' | 'sale' | 'adjustment' | 'refund'
+  reason: text('reason').notNull(), // 'buylist' | 'sale' | 'adjustment' | 'refund' | 'void'
   refType: text('ref_type'), // 'buy' | 'sale' | null
   refId: integer('ref_id'),
   staffId: integer('staff_id').references(() => staff.id),

@@ -118,3 +118,14 @@ test('validation and not-found errors', async () => {
     domainCode('INVALID_INPUT'),
   )
 })
+
+test('cannot refund a voided sale', async () => {
+  await dbc.update(schema.sales)
+    .set({ voidedAt: '2026-07-06 12:00:00', voidedByStaffId: 1 })
+    .where(eq(schema.sales.id, saleId))
+
+  await assert.rejects(
+    createRefund({ staffId: 1, saleId, method: 'cash', items: [{ saleItemId, quantity: 1 }] }, dbc),
+    domainCode('SALE_VOIDED'),
+  )
+})

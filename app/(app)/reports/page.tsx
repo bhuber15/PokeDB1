@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { formatGBP } from '@/lib/pricing'
 import { DateRangePicker } from '@/components/reports/DateRangePicker'
 import { RefundDialog } from '@/components/reports/RefundDialog'
+import { VoidSaleDialog } from '@/components/reports/VoidSaleDialog'
 import { CashUpSection } from '@/components/reports/CashUpSection'
 import { StockSection } from '@/components/reports/StockSection'
 
@@ -17,7 +18,7 @@ interface TodayStats {
 }
 
 interface RecentSale {
-  sale: { id: number; total: number; paymentMethod: string; discountAmount: number; createdAt: string }
+  sale: { id: number; total: number; paymentMethod: string; discountAmount: number; createdAt: string; voidedAt: string | null }
   staffName: string | null
   itemsSummary: string
 }
@@ -52,6 +53,7 @@ export default function ReportsPage() {
   const [range, setRange] = useState({ from: todayISO, to: todayISO })
   const [summary, setSummary] = useState<RangeSummary | null>(null)
   const [refundSaleId, setRefundSaleId] = useState<number | null>(null)
+  const [voidSaleId, setVoidSaleId] = useState<number | null>(null)
 
   useEffect(() => {
     fetch(`/api/reports/sales?from=${range.from}&to=${range.to}`)
@@ -163,10 +165,11 @@ export default function ReportsPage() {
             <p className="p-4 text-sm text-muted-foreground">No sales yet</p>
           )}
           {recentSales.map(({ sale, staffName, itemsSummary }) => (
-            <div key={sale.id} className="flex items-center justify-between p-3">
+            <div key={sale.id} className={`flex items-center justify-between p-3 ${sale.voidedAt ? 'opacity-60' : ''}`}>
               <div className="flex items-center gap-3 min-w-0">
-                <span className="font-semibold shrink-0">{formatGBP(sale.total)}</span>
+                <span className={`font-semibold shrink-0 ${sale.voidedAt ? 'line-through' : ''}`}>{formatGBP(sale.total)}</span>
                 <Badge variant="outline" className="shrink-0">{sale.paymentMethod}</Badge>
+                {sale.voidedAt && <Badge variant="destructive" className="shrink-0">Voided</Badge>}
                 {sale.discountAmount > 0 && (
                   <span className="text-xs text-muted-foreground shrink-0">-{formatGBP(sale.discountAmount)} disc.</span>
                 )}
@@ -181,7 +184,14 @@ export default function ReportsPage() {
                     })}
                   </div>
                 </div>
-                <Button size="sm" variant="outline" onClick={() => setRefundSaleId(sale.id)}>Refund</Button>
+                {!sale.voidedAt && (
+                  <>
+                    {sale.createdAt.slice(0, 10) === todayISO && (
+                      <Button size="sm" variant="outline" onClick={() => setVoidSaleId(sale.id)}>Void</Button>
+                    )}
+                    <Button size="sm" variant="outline" onClick={() => setRefundSaleId(sale.id)}>Refund</Button>
+                  </>
+                )}
               </div>
             </div>
           ))}
@@ -192,6 +202,13 @@ export default function ReportsPage() {
         saleId={refundSaleId}
         open={refundSaleId !== null}
         onClose={() => setRefundSaleId(null)}
+        onDone={() => fetch('/api/sales/history').then(r => r.json()).then(setData)}
+      />
+
+      <VoidSaleDialog
+        saleId={voidSaleId}
+        open={voidSaleId !== null}
+        onClose={() => setVoidSaleId(null)}
         onDone={() => fetch('/api/sales/history').then(r => r.json()).then(setData)}
       />
     </div>

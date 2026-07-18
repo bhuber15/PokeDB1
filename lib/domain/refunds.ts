@@ -32,6 +32,7 @@ export async function createRefund(
 
   const [sale] = await dbc.select().from(sales).where(eq(sales.id, input.saleId)).limit(1)
   if (!sale) throw new DomainError('NOT_FOUND', 'Sale not found')
+  if (sale.voidedAt) throw new DomainError('SALE_VOIDED', 'Sale is voided — nothing to refund')
 
   if (input.method === 'store_credit') {
     const [customer] = await dbc.select().from(customers).where(eq(customers.id, input.customerId!)).limit(1)
