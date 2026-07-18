@@ -5,7 +5,7 @@ import { sales, saleItems, inventoryItems, cards } from '@/lib/db/schema'
 import { and, gte, lt, eq, sql, isNotNull } from 'drizzle-orm'
 import { getSession, requireAdmin, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
-import { getSalesByStaff } from '@/lib/domain/reports'
+import { getSalesByStaff, getMarginByStaff } from '@/lib/domain/reports'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -67,6 +67,19 @@ export const GET = guarded(async (req: NextRequest) => {
     .orderBy(sql`SUM(${saleItems.quantity}) DESC`)
     .limit(10)
 
+  // Per-staff revenue and margin come from different grains (sales vs sale
+  // lines), so they're two grouped queries merged by staffId here.
+  const [staffSales, staffMargins] = await Promise.all([
+    getSalesByStaff(from, to, db),
+    getMarginByStaff(from, to, db),
+  ])
+  const marginByStaffId = new Map(staffMargins.map(m => [m.staffId, m]))
+  const byStaff = staffSales.map(s => ({
+    ...s,
+    margin: marginByStaffId.get(s.staffId)?.margin ?? 0,
+    noCostLines: marginByStaffId.get(s.staffId)?.noCostLines ?? 0,
+  }))
+
   // All money values are SUMs of integer pence — already exact, no rounding
   return NextResponse.json({
     range: { from, to },
@@ -77,7 +90,7 @@ export const GET = guarded(async (req: NextRequest) => {
     grossMargin: marginRow.revenue - marginRow.cost,
     saleCount: totals.saleCount,
     byPaymentMethod,
-    byStaff: await getSalesByStaff(from, to, db),
+    byStaff,
     topCards: topCardsRaw
       .map(r => ({ cardId: r.cardId!, name: r.name ?? 'Unknown', quantitySold: r.quantitySold, revenue: r.revenue })),
   })

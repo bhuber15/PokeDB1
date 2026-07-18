@@ -6,10 +6,12 @@
 //   expectedDrawer = openingFloat + cashSales − cashRefunds − cashBuyPayouts
 // All values are integer pence (GBP).
 
-import { and, gte, lt, sql, eq } from 'drizzle-orm'
+import { and, gt, gte, lt, or, isNull, sql, eq, asc, desc } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
-import { sales, refunds, buyTransactions, staff, saleItems, inventoryItems, cards } from '@/lib/db/schema'
-import { MARGIN_VAT_DIVISOR } from '@/lib/pricing'
+import { sales, refunds, buyTransactions, staff, saleItems, inventoryItems, cards, priceCache, customers, buyItems } from '@/lib/db/schema'
+import { MARGIN_VAT_DIVISOR, pickMarketPrice } from '@/lib/pricing'
+import { getSettings } from '@/lib/settings'
+import { DomainError } from './errors'
 
 // ---------------------------------------------------------------------------
 // getCashUpSummary
@@ -186,4 +188,218 @@ export async function getMarginStockBook(from: string, to: string, dbc: Db = db)
       noCostBasis,
     }
   })
+}
+
+// ---------------------------------------------------------------------------
+// getInventoryValuation
+// ---------------------------------------------------------------------------
+
+export interface InventoryValuation {
+  totalUnits: number        // Σ quantity over active, in-stock items
+  distinctItems: number     // number of those inventory rows
+  costValue: number         // Σ quantity × costPrice, rows with a cost
+  unitsWithoutCost: number  // Σ quantity of rows with no cost price
+  marketValue: number       // Σ quantity × market price (primaryPriceSource, raw — no margin multiplier / overrides)
+  unitsWithoutMarket: number
+}
+
+/**
+ * Stock-on-hand valuation over active items with quantity > 0. Market prices
+ * come from price_cache via pickMarketPrice with the shop's primary source,
+ * mirroring how sale prices are derived (before margin/overrides).
+ */
+export async function getInventoryValuation(dbc: Db = db): Promise<InventoryValuation> {
+  const settings = await getSettings(dbc)
+  const rows = await dbc
+    .select({ quantity: inventoryItems.quantity, costPrice: inventoryItems.costPrice, prices: priceCache })
+    .from(inventoryItems)
+    .leftJoin(priceCache, eq(priceCache.cardId, inventoryItems.cardId))
+    .where(and(eq(inventoryItems.isActive, true), gt(inventoryItems.quantity, 0)))
+
+  const v: InventoryValuation = {
+    totalUnits: 0, distinctItems: 0, costValue: 0,
+    unitsWithoutCost: 0, marketValue: 0, unitsWithoutMarket: 0,
+  }
+  for (const row of rows) {
+    v.totalUnits += row.quantity
+    v.distinctItems += 1
+    if (row.costPrice != null) v.costValue += row.quantity * row.costPrice
+    else v.unitsWithoutCost += row.quantity
+    const market = pickMarketPrice(row.prices, settings.primaryPriceSource)
+    if (market != null) v.marketValue += row.quantity * market
+    else v.unitsWithoutMarket += row.quantity
+  }
+  return v
+}
+
+// ---------------------------------------------------------------------------
+// getAgedStock
+// ---------------------------------------------------------------------------
+
+export interface AgedStockRow {
+  inventoryItemId: number
+  cardName: string | null
+  setName: string | null
+  condition: string
+  quantity: number
+  costPrice: number | null
+  createdAt: string
+  lastSoldAt: string | null // null = never sold
+}
+
+/**
+ * Dead-stock report: active in-stock items added more than `olderThanDays`
+ * ago whose last sale (if any) is also older than the cutoff. Ordered by
+ * least-recent activity (last sale, else intake date), capped at 100 rows.
+ */
+export async function getAgedStock(olderThanDays: number, dbc: Db = db): Promise<AgedStockRow[]> {
+  if (!Number.isInteger(olderThanDays) || olderThanDays < 1) {
+    throw new DomainError('INVALID_INPUT', 'olderThanDays must be a positive integer')
+  }
+  const cutoff = new Date(Date.now() - olderThanDays * 24 * 3600 * 1000)
+    .toISOString().slice(0, 19).replace('T', ' ')
+
+  const lastSold = dbc
+    .select({
+      inventoryItemId: saleItems.inventoryItemId,
+      lastSoldAt: sql<string>`MAX(${sales.createdAt})`.as('last_sold_at'),
+    })
+    .from(saleItems)
+    .innerJoin(sales, eq(saleItems.saleId, sales.id))
+    .groupBy(saleItems.inventoryItemId)
+    .as('last_sold')
+
+  const rows = await dbc
+    .select({
+      inventoryItemId: inventoryItems.id,
+      cardName: cards.name,
+      setName: cards.setName,
+      condition: inventoryItems.condition,
+      quantity: inventoryItems.quantity,
+      costPrice: inventoryItems.costPrice,
+      createdAt: inventoryItems.createdAt,
+      lastSoldAt: lastSold.lastSoldAt,
+    })
+    .from(inventoryItems)
+    .leftJoin(cards, eq(inventoryItems.cardId, cards.id))
+    .leftJoin(lastSold, eq(lastSold.inventoryItemId, inventoryItems.id))
+    .where(and(
+      eq(inventoryItems.isActive, true),
+      gt(inventoryItems.quantity, 0),
+      lt(inventoryItems.createdAt, cutoff),
+      or(isNull(lastSold.lastSoldAt), lt(lastSold.lastSoldAt, cutoff)),
+    ))
+    .orderBy(asc(sql`COALESCE(${lastSold.lastSoldAt}, ${inventoryItems.createdAt})`))
+    .limit(100)
+
+  return rows.map(r => ({ ...r, lastSoldAt: r.lastSoldAt ?? null }))
+}
+
+// ---------------------------------------------------------------------------
+// getLowStock
+// ---------------------------------------------------------------------------
+
+export interface LowStockRow {
+  inventoryItemId: number
+  cardName: string | null
+  setName: string | null
+  condition: string
+  quantity: number
+  lowStockThreshold: number
+  location: string | null
+}
+
+/** Reorder list: active items at or below their low-stock threshold, emptiest first. */
+export async function getLowStock(dbc: Db = db): Promise<LowStockRow[]> {
+  return dbc
+    .select({
+      inventoryItemId: inventoryItems.id,
+      cardName: cards.name,
+      setName: cards.setName,
+      condition: inventoryItems.condition,
+      quantity: inventoryItems.quantity,
+      lowStockThreshold: inventoryItems.lowStockThreshold,
+      location: inventoryItems.location,
+    })
+    .from(inventoryItems)
+    .leftJoin(cards, eq(inventoryItems.cardId, cards.id))
+    .where(and(
+      eq(inventoryItems.isActive, true),
+      sql`${inventoryItems.quantity} <= ${inventoryItems.lowStockThreshold}`,
+    ))
+    .orderBy(asc(inventoryItems.quantity), asc(cards.name))
+    .limit(100)
+}
+
+// ---------------------------------------------------------------------------
+// getMarginByStaff
+// ---------------------------------------------------------------------------
+
+export interface StaffMargin {
+  staffId: number | null
+  margin: number      // Σ (priceAtSale − costAtSale) × qty over lines WITH a cost snapshot
+  noCostLines: number // lines excluded from margin for lack of a cost basis
+}
+
+/**
+ * Gross margin per staff member over [from, to]. Mirrors the sales-report
+ * convention: margin uses the sale-time cost snapshot (sale_items.cost_at_sale)
+ * and lines with no captured cost are excluded (and counted separately).
+ */
+export async function getMarginByStaff(from: string, to: string, dbc: Db = db): Promise<StaffMargin[]> {
+  const fromTs = `${from} 00:00:00`
+  const toExcl = sql<string>`datetime(${to}, '+1 day')`
+
+  return dbc
+    .select({
+      staffId: sales.staffId,
+      margin: sql<number>`COALESCE(SUM(CASE WHEN ${saleItems.costAtSale} IS NOT NULL THEN (${saleItems.priceAtSale} - ${saleItems.costAtSale}) * ${saleItems.quantity} ELSE 0 END), 0)`,
+      noCostLines: sql<number>`COALESCE(SUM(CASE WHEN ${saleItems.costAtSale} IS NULL THEN 1 ELSE 0 END), 0)`,
+    })
+    .from(saleItems)
+    .innerJoin(sales, eq(saleItems.saleId, sales.id))
+    .where(and(gte(sales.createdAt, fromTs), lt(sales.createdAt, toExcl)))
+    .groupBy(sales.staffId)
+}
+
+// ---------------------------------------------------------------------------
+// getBuyExportRows
+// ---------------------------------------------------------------------------
+
+export interface BuyExportRow {
+  buyId: number
+  createdAt: string
+  staffName: string | null
+  customerName: string | null
+  method: string
+  txnTotal: number
+  cardName: string | null
+  condition: string
+  quantity: number
+  payPrice: number
+  marketAtBuy: number | null
+}
+
+/** Buy-transaction CSV feed: one row per buy line with its parent txn columns. */
+export async function getBuyExportRows(dbc: Db = db): Promise<BuyExportRow[]> {
+  return dbc
+    .select({
+      buyId: buyTransactions.id,
+      createdAt: buyTransactions.createdAt,
+      staffName: staff.name,
+      customerName: customers.name,
+      method: buyTransactions.method,
+      txnTotal: buyTransactions.total,
+      cardName: cards.name,
+      condition: buyItems.condition,
+      quantity: buyItems.quantity,
+      payPrice: buyItems.payPrice,
+      marketAtBuy: buyItems.marketAtBuy,
+    })
+    .from(buyItems)
+    .innerJoin(buyTransactions, eq(buyItems.buyId, buyTransactions.id))
+    .leftJoin(staff, eq(buyTransactions.staffId, staff.id))
+    .leftJoin(customers, eq(buyTransactions.customerId, customers.id))
+    .leftJoin(cards, eq(buyItems.cardId, cards.id))
+    .orderBy(desc(buyTransactions.createdAt), asc(buyItems.id))
 }
