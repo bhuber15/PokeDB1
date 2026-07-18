@@ -3,7 +3,7 @@ import { db, type Db } from '@/lib/db'
 import { sales, saleItems, inventoryItems, priceCache, creditLedger, customers } from '@/lib/db/schema'
 import { calculateSellPrice, pickMarketPrice, computeSaleTotals, computeMarginVat } from '@/lib/pricing'
 import { getSettings } from '@/lib/settings'
-import { DomainError } from './errors'
+import { DomainError, isUniqueViolation } from './errors'
 
 export interface CreateSaleInput {
   staffId: number
@@ -153,7 +153,7 @@ export async function createSale(
   }).catch(async (e: unknown) => {
     // Two replays of the same queued sale racing: the loser's insert hits the
     // unique index — hand back the winner's sale instead of erroring.
-    if (input.clientUuid && e instanceof Error && e.message.includes('UNIQUE constraint failed: sales.client_uuid')) {
+    if (input.clientUuid && isUniqueViolation(e, 'sales.client_uuid')) {
       const [existing] = await dbc.select().from(sales)
         .where(eq(sales.clientUuid, input.clientUuid)).limit(1)
       if (existing) return existing.id

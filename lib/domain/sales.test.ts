@@ -191,6 +191,37 @@ test('different clientUuid creates a separate sale', async () => {
   assert.equal(allSales.length, 2)
 })
 
+test('replay race: UNIQUE hit inside the transaction returns the winner\'s sale', async () => {
+  const clientUuid = '44444444-4444-4444-8444-444444444444'
+  // The winner of the race: a concurrent replay of the same queued sale
+  // committed between this call's pre-check and its transaction insert.
+  const [winner] = await dbc.insert(schema.sales).values({
+    clientUuid, staffId: 1, subtotal: 1700, total: 1700, paymentMethod: 'cash',
+  }).returning()
+
+  // The loser's pre-check ran before the winner committed, so it saw nothing:
+  // fake only the first select() (the pre-check) as empty — settings, pricing,
+  // the transaction and the recovery re-select all run for real, so the
+  // insert genuinely trips the unique index on client_uuid.
+  let preCheckDone = false
+  const racingDb = new Proxy(dbc, {
+    get(target, prop) {
+      if (prop === 'select' && !preCheckDone) {
+        preCheckDone = true
+        return () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) })
+      }
+      const value = Reflect.get(target, prop)
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  })
+
+  const result = await createSale({ ...base, clientUuid }, racingDb)
+  assert.equal(result.saleId, winner.id)
+  assert.equal(await stockOf(1), 5) // loser's decrement rolled back with its transaction
+  const allSales = await dbc.select().from(schema.sales)
+  assert.equal(allSales.length, 1)
+})
+
 test('replay works even after stock has run out', async () => {
   const withUuid = { ...base, items: [{ inventoryItemId: 1, quantity: 5 }], expectedTotal: 4250, clientUuid: '33333333-3333-4333-8333-333333333333' }
   const first = await createSale(withUuid, dbc)

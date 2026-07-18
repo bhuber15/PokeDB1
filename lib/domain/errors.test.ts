@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { DomainError, toHttpError } from './errors'
+import { DomainError, toHttpError, isUniqueViolation } from './errors'
 import { requireOwner, requireStaff, requireAdmin, type SessionData } from '../auth'
 
 // assert.throws/rejects predicates take `unknown` — narrow via instanceof
@@ -24,6 +24,19 @@ test('toHttpError passes message, code and meta through; null for non-domain err
   assert.deepEqual(mapped.body, { error: 'no stock', code: 'INSUFFICIENT_STOCK', meta: { inventoryItemId: 7 } })
   assert.equal(toHttpError(new Error('boom')), null)
   assert.equal(toHttpError('boom'), null)
+})
+
+test('isUniqueViolation matches the constraint text anywhere on the cause chain', () => {
+  const driver = new Error('SQLITE_CONSTRAINT: UNIQUE constraint failed: sales.client_uuid')
+  // drizzle's DrizzleQueryError: .message is the failed SQL, driver error on .cause
+  const wrapped = new Error('Failed query: insert into "sales" (…) values (…)', { cause: driver })
+  assert.equal(isUniqueViolation(driver, 'sales.client_uuid'), true)
+  assert.equal(isUniqueViolation(wrapped, 'sales.client_uuid'), true)
+  assert.equal(isUniqueViolation(new Error('re-wrapped', { cause: wrapped }), 'sales.client_uuid'), true)
+  assert.equal(isUniqueViolation(wrapped, 'cash_ups.day'), false)
+  assert.equal(isUniqueViolation(new Error('boom'), 'sales.client_uuid'), false)
+  assert.equal(isUniqueViolation('boom', 'sales.client_uuid'), false)
+  assert.equal(isUniqueViolation(undefined, 'sales.client_uuid'), false)
 })
 
 test('requireStaff / requireAdmin / requireOwner', () => {

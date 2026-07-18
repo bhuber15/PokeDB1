@@ -31,6 +31,18 @@ const STATUS: Record<DomainErrorCode, number> = {
   PLAN_LIMIT: 403,
 }
 
+// True when `e` is a SQLite unique-index violation on the given constraint
+// (the `table.column` text SQLite reports). drizzle wraps driver errors in
+// DrizzleQueryError whose .message is the failed SQL — the SQLITE_CONSTRAINT
+// text lives on .cause — so walk the cause chain rather than the top message.
+export function isUniqueViolation(e: unknown, constraint: string): boolean {
+  const needle = `UNIQUE constraint failed: ${constraint}`
+  for (let cur: unknown = e, depth = 0; cur instanceof Error && depth < 5; cur = cur.cause, depth++) {
+    if (cur.message.includes(needle)) return true
+  }
+  return false
+}
+
 // Framework-free mapping so domain tests never import next/server.
 export function toHttpError(e: unknown):
   | { status: number; body: { error: string; code: DomainErrorCode; meta?: Record<string, unknown> } }
