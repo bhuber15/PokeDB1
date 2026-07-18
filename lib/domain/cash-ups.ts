@@ -9,7 +9,7 @@ import { desc, eq } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
 import { cashUps, staff, type CashUp } from '@/lib/db/schema'
 import { getCashUpSummary } from './reports'
-import { DomainError } from './errors'
+import { DomainError, isUniqueViolation } from './errors'
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -50,12 +50,7 @@ export async function closeCashUp(input: CloseCashUpInput, dbc: Db = db): Promis
     return record
   } catch (e) {
     // The unique index is the race-safe guard; map it to a domain error.
-    // Drizzle wraps the SQLITE_CONSTRAINT error, so check the cause chain too.
-    const messages = [
-      e instanceof Error ? e.message : '',
-      e instanceof Error && e.cause instanceof Error ? e.cause.message : '',
-    ]
-    if (messages.some(m => m.includes('UNIQUE constraint failed: cash_ups.day'))) {
+    if (isUniqueViolation(e, 'cash_ups.day')) {
       throw new DomainError('CASH_UP_EXISTS', `Day ${input.day} is already closed`, { day: input.day })
     }
     throw e
