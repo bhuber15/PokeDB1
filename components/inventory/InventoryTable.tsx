@@ -8,6 +8,7 @@ import { ADJUSTMENT_REASONS, type AdjustmentReason } from '@/lib/adjustment-reas
 import { calculateSellPrice, formatGBP, pickMarketPrice } from '@/lib/pricing'
 import { CardZoomModal, type CardZoomData } from '@/components/shared/CardZoomModal'
 import { useSettings } from '@/components/shared/SettingsProvider'
+import { useStaffRole } from '@/components/shared/SessionProvider'
 import type { Card, InventoryItem, PriceCache } from '@/lib/db/schema'
 
 export interface InventoryRow {
@@ -122,6 +123,8 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [zoomCard, setZoomCard] = useState<CardZoomData | null>(null)
   const { marginMultiplier, primaryPriceSource } = useSettings()
+  // Cost basis is admin-only (server already redacts it; this hides the cell)
+  const isAdmin = useStaffRole() === 'admin'
 
   const groups = groupRows(rows)
 
@@ -259,7 +262,7 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
                       <td className="px-4 py-2 pl-16 text-muted-foreground">
                         {item.location ? item.location : 'no location'}{item.defectNotes ? ` · ${item.defectNotes}` : ''}
                       </td>
-                      <td className="px-4 py-2 text-muted-foreground">cost {formatGBP(item.costPrice)}</td>
+                      <td className="px-4 py-2 text-muted-foreground">{isAdmin ? `cost ${formatGBP(item.costPrice)}` : ''}</td>
                       <td className="px-4 py-2"><StockCell item={item} editId={editId} draft={draft}
                         setDraft={setDraft} startEdit={startEdit} saveEdit={saveEdit} cancelEdit={cancelEdit} /></td>
                       <td className="px-4 py-2" />

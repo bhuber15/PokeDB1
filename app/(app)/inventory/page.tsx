@@ -9,11 +9,13 @@ import { QRLabel } from '@/components/inventory/QRLabel'
 import { ImportDialog } from '@/components/inventory/ImportDialog'
 import { calculateSellPrice, formatGBP, pickMarketPrice } from '@/lib/pricing'
 import { useSettings } from '@/components/shared/SettingsProvider'
+import { useStaffRole } from '@/components/shared/SessionProvider'
 import { toast } from 'sonner'
 import type { AdjustmentReason } from '@/lib/adjustment-reasons'
 
 export default function InventoryPage() {
   const { primaryPriceSource, marginMultiplier } = useSettings()
+  const isAdmin = useStaffRole() === 'admin' // Export CSV includes cost — admin-only (F8)
   const [rows, setRows] = useState<InventoryRow[]>([])
   const [loading, setLoading] = useState(true)
   const [qrModal, setQrModal] = useState<{
@@ -69,8 +71,12 @@ export default function InventoryPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Inventory</h1>
         <div className="flex items-center gap-2">
-          {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- API-route file download, not a page navigation */}
-          <a href="/api/inventory/export"><Button variant="outline">Export CSV</Button></a>
+          {isAdmin && (
+            <>
+              {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- API-route file download, not a page navigation */}
+              <a href="/api/inventory/export"><Button variant="outline">Export CSV</Button></a>
+            </>
+          )}
           <Button variant="outline" onClick={() => setImportOpen(true)}>Import CSV</Button>
           <Link href="/inventory/add" className={buttonVariants()}>+ Add Item</Link>
         </div>

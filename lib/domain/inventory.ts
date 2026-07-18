@@ -57,3 +57,18 @@ export async function applyInventoryPatch(
     return updated
   })
 }
+
+// ---------------------------------------------------------------------------
+// redactInventoryCosts (F8)
+// ---------------------------------------------------------------------------
+
+// Cost price is admin-only: staff browsing inventory (or the POS search,
+// which shares the endpoint) must not see the shop's cost basis. Applied at
+// the API edge so the data never leaves the server for non-admins.
+export function redactInventoryCosts<T extends { item: { costPrice: number | null } }>(
+  rows: T[],
+  role: 'admin' | 'staff' | undefined,
+): T[] {
+  if (role === 'admin') return rows
+  return rows.map(r => ({ ...r, item: { ...r.item, costPrice: null } }))
+}
