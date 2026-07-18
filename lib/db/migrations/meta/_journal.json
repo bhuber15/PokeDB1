@@ -134,6 +134,13 @@
       "when": 1784376744690,
       "tag": "0018_sale-voids",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1784377224526,
+      "tag": "0019_sale-payments",
+      "breakpoints": true
     }
   ]
 }

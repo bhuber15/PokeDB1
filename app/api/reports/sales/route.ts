@@ -5,7 +5,7 @@ import { sales, saleItems, inventoryItems, cards } from '@/lib/db/schema'
 import { and, gte, lt, eq, sql, isNotNull, isNull } from 'drizzle-orm'
 import { getSession, requireAdmin, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
-import { getSalesByStaff, getMarginByStaff } from '@/lib/domain/reports'
+import { getSalesByStaff, getMarginByStaff, getSalesByPaymentMethod } from '@/lib/domain/reports'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -36,10 +36,9 @@ export const GET = guarded(async (req: NextRequest) => {
     saleCount: sql<number>`COUNT(*)`,
   }).from(sales).where(rangeWhere)
 
-  const byPaymentMethod = await db.select({
-    paymentMethod: sales.paymentMethod,
-    total: sql<number>`COALESCE(SUM(total), 0)`,
-  }).from(sales).where(rangeWhere).groupBy(sales.paymentMethod)
+  // Per-method money comes from sale_payments so split tenders land in their
+  // component methods rather than a 'split' bucket.
+  const byPaymentMethod = await getSalesByPaymentMethod(from, to, db)
 
   // Gross margin uses the cost snapshot taken at sale time (sale_items.cost_at_sale),
   // NOT the live inventory_items.cost_price — otherwise re-buying a card at a new

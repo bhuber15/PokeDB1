@@ -4,7 +4,10 @@
 
 export interface QueuedSaleBody {
   items: { inventoryItemId: number; quantity: number }[]
-  paymentMethod: string
+  // Exactly one of the two, mirroring POST /api/sales: single tender, or
+  // split-tender lines (F6). Old queued entries always have paymentMethod.
+  paymentMethod?: string
+  payments?: { method: string; amount: number }[]
   discountAmount: number
   expectedTotal: number
   customerId?: number

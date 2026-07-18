@@ -89,6 +89,18 @@ export const sales = sqliteTable('sales', {
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
+// Per-method tender for a sale (split payments). Every sale has ≥ 1 row
+// (legacy rows backfilled from payment_method/total by migration 0019);
+// sales.payment_method stays as the display summary — the single method, or
+// 'split' when there are several. Amounts are what the till keeps: Σ amount
+// always equals sales.total.
+export const salePayments = sqliteTable('sale_payments', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  saleId: integer('sale_id').notNull().references(() => sales.id),
+  method: text('method').notNull(), // 'cash' | 'card' | 'store_credit' | 'other'
+  amount: integer('amount').notNull(), // pence, > 0
+})
+
 export const saleItems = sqliteTable('sale_items', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   saleId: integer('sale_id').notNull().references(() => sales.id),
@@ -248,4 +260,5 @@ export type AuthLockout = typeof authLockouts.$inferSelect
 export type StockAdjustment = typeof stockAdjustments.$inferSelect
 export type Refund = typeof refunds.$inferSelect
 export type CashUp = typeof cashUps.$inferSelect
+export type SalePayment = typeof salePayments.$inferSelect
 export type RefundItem = typeof refundItems.$inferSelect

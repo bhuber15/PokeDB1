@@ -5,6 +5,7 @@ import { CardResult, InventoryOption } from '@/components/pos/CardResult'
 import { Cart, CartItem } from '@/components/pos/Cart'
 import { CheckoutDialog } from '@/components/pos/CheckoutDialog'
 import { ReceiptDialog, type ReceiptData } from '@/components/pos/ReceiptDialog'
+import type { CheckoutConfirmOptions } from '@/components/pos/CheckoutDialog'
 import { SaleQueue } from '@/components/pos/SaleQueue'
 import { useSettings } from '@/components/shared/SettingsProvider'
 import { toast } from 'sonner'
@@ -150,10 +151,11 @@ export default function POSPage() {
     // Keep the search results so several different cards can be rung up from one search.
   }
 
-  async function handleCheckoutConfirm(paymentMethod: string, discountAmount: number, expectedTotal: number, customerId?: number, cashReceived?: number) {
+  async function handleCheckoutConfirm(opts: CheckoutConfirmOptions) {
+    const { paymentMethod, payments, discountAmount, expectedTotal, customerId, cashReceived } = opts
     const body = {
       items: cart.map(i => ({ inventoryItemId: i.inventoryItemId, quantity: i.quantity })),
-      paymentMethod,
+      ...(payments ? { payments } : { paymentMethod }),
       discountAmount,
       expectedTotal,
       ...(customerId != null ? { customerId } : {}),
@@ -192,7 +194,8 @@ export default function POSPage() {
         vatAmount: computeSaleTotals(subtotal, discountAmount, vatScheme).vatAmount,
         vatScheme,
         total,
-        paymentMethod,
+        paymentMethod: paymentMethod ?? 'split',
+        payments,
         cashReceived,
         changeDue,
       }
