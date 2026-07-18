@@ -140,6 +140,29 @@ export default function POSPage() {
     setLoading(false)
   }
 
+  // Live single-card price refresh (F10): re-fetch Cardmarket for this card
+  // via the on-demand endpoint from the buylist flow, then swap the updated
+  // price_cache row into the search results in place.
+  async function handleRefreshPrice(cardId: number) {
+    try {
+      const res = await fetch(`/api/prices/cardmarket?cardId=${cardId}`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        toast.error(body?.error ?? 'Price refresh failed')
+        return
+      }
+      const { prices } = await res.json()
+      if (!prices) {
+        toast.info('No Cardmarket price available for this card')
+        return
+      }
+      setResults(prev => prev.map(r => (r.card.id === cardId ? { ...r, prices } : r)))
+      toast.success('Price refreshed')
+    } catch {
+      toast.error('Network error — price not refreshed')
+    }
+  }
+
   function handleAddToCart(itemId: number, name: string, condition: string, price: number, qty: number) {
     setCart(prev => {
       const existing = prev.find(i => i.inventoryItemId === itemId)
@@ -240,7 +263,7 @@ export default function POSPage() {
             prices={r.prices}
             inventoryOptions={r.inventoryOptions}
             onAddToCart={handleAddToCart}
-            onRefreshPrice={() => toast.info('Live price refresh coming in Phase 4')}
+            onRefreshPrice={() => handleRefreshPrice(r.card.id)}
           />
         ))}
       </div>
