@@ -8,7 +8,7 @@
 
 import { and, gt, gte, lt, or, isNull, sql, eq, asc, desc } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
-import { sales, refunds, buyTransactions, staff, saleItems, inventoryItems, cards, priceCache, customers, buyItems } from '@/lib/db/schema'
+import { sales, salePayments, refunds, buyTransactions, staff, saleItems, inventoryItems, cards, priceCache, customers, buyItems } from '@/lib/db/schema'
 import { MARGIN_VAT_DIVISOR, pickMarketPrice } from '@/lib/pricing'
 import { getSettings } from '@/lib/settings'
 import { DomainError } from './errors'
@@ -18,7 +18,7 @@ import { DomainError } from './errors'
 // ---------------------------------------------------------------------------
 
 export interface CashUpSummary {
-  cashSales: number      // SUM(sales.total) where paymentMethod = 'cash', that day
+  cashSales: number      // SUM(sale_payments.amount) where method = 'cash', non-voided sales that day
   cashRefunds: number    // SUM(refunds.amount) where method = 'cash', that day
   cashBuyPayouts: number // SUM(buy_transactions.total) where method = 'cash', that day
 }
@@ -32,12 +32,15 @@ export async function getCashUpSummary(day: string, dbc: Db = db): Promise<CashU
   const from = `${day} 00:00:00`
   const toExcl = sql<string>`datetime(${day}, '+1 day')`
 
+  // Cash arriving through sale_payments so a split tender contributes only
+  // its cash portion (every sale has payment rows — see migration 0019).
   const [salesRow] = await dbc
-    .select({ total: sql<number>`COALESCE(SUM(total), 0)` })
-    .from(sales)
+    .select({ total: sql<number>`COALESCE(SUM(${salePayments.amount}), 0)` })
+    .from(salePayments)
+    .innerJoin(sales, eq(salePayments.saleId, sales.id))
     .where(
       and(
-        eq(sales.paymentMethod, 'cash'),
+        eq(salePayments.method, 'cash'),
         isNull(sales.voidedAt),
         gte(sales.createdAt, from),
         lt(sales.createdAt, toExcl),
@@ -404,4 +407,33 @@ export async function getBuyExportRows(dbc: Db = db): Promise<BuyExportRow[]> {
     .leftJoin(customers, eq(buyTransactions.customerId, customers.id))
     .leftJoin(cards, eq(buyItems.cardId, cards.id))
     .orderBy(desc(buyTransactions.createdAt), asc(buyItems.id))
+}
+
+// ---------------------------------------------------------------------------
+// getSalesByPaymentMethod
+// ---------------------------------------------------------------------------
+
+export interface PaymentMethodTotal {
+  paymentMethod: string
+  total: number
+}
+
+/**
+ * Money taken per tender method over [from, to], summed from sale_payments so
+ * split sales contribute each portion to its own method ('split' never
+ * appears). Voided sales are excluded.
+ */
+export async function getSalesByPaymentMethod(from: string, to: string, dbc: Db = db): Promise<PaymentMethodTotal[]> {
+  const fromTs = `${from} 00:00:00`
+  const toExcl = sql<string>`datetime(${to}, '+1 day')`
+
+  return dbc
+    .select({
+      paymentMethod: salePayments.method,
+      total: sql<number>`COALESCE(SUM(${salePayments.amount}), 0)`,
+    })
+    .from(salePayments)
+    .innerJoin(sales, eq(salePayments.saleId, sales.id))
+    .where(and(isNull(sales.voidedAt), gte(sales.createdAt, fromTs), lt(sales.createdAt, toExcl)))
+    .groupBy(salePayments.method)
 }

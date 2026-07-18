@@ -16,6 +16,8 @@ export interface ReceiptData {
   vatScheme: 'none' | 'standard' | 'margin'
   total: number
   paymentMethod: string
+  // Split tender: one line per method. Single-method sales may omit this.
+  payments?: { method: string; amount: number }[]
   cashReceived?: number
   changeDue?: number
 }
@@ -48,7 +50,9 @@ ${row('Subtotal', formatGBP(r.subtotal))}
 ${r.discount > 0 ? row('Discount', `-${formatGBP(r.discount)}`) : ''}
 ${r.vatScheme === 'standard' && r.vatAmount > 0 ? row('VAT (20%)', formatGBP(r.vatAmount)) : ''}
 ${row('Total', formatGBP(r.total), true)}
-${row('Paid', r.paymentMethod.replace('_', ' '))}
+${r.payments && r.payments.length > 1
+    ? r.payments.map(p => row(`Paid — ${p.method.replace('_', ' ')}`, formatGBP(p.amount))).join('\n')
+    : row('Paid', r.paymentMethod.replace('_', ' '))}
 ${r.cashReceived != null ? row('Cash', formatGBP(r.cashReceived)) : ''}
 ${r.changeDue != null && r.changeDue > 0 ? row('Change', formatGBP(r.changeDue)) : ''}
 </table>

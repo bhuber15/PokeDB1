@@ -15,12 +15,16 @@ beforeEach(async () => {
 
 const DAY = '2026-07-06'
 
-/** Seed one cash sale, one cash refund, one cash buy payout on DAY. */
+/**
+ * Seed one cash sale, one cash refund, one cash buy payout on DAY.
+ * Sales get their sale_payments rows (the invariant createSale maintains).
+ */
 async function seedCashMovements(): Promise<void> {
   const [sale] = await dbc.insert(schema.sales).values({
     staffId: 1, subtotal: 5000, total: 5000, paymentMethod: 'cash',
     createdAt: `${DAY} 10:00:00`,
   }).returning()
+  await dbc.insert(schema.salePayments).values({ saleId: sale.id, method: 'cash', amount: 5000 })
   await dbc.insert(schema.refunds).values({
     saleId: sale.id, method: 'cash', amount: 700, createdAt: `${DAY} 11:00:00`,
   })
@@ -28,10 +32,11 @@ async function seedCashMovements(): Promise<void> {
     method: 'cash', total: 1200, createdAt: `${DAY} 12:00:00`,
   })
   // Non-cash rows must not affect the drawer
-  await dbc.insert(schema.sales).values({
+  const [cardSale] = await dbc.insert(schema.sales).values({
     staffId: 1, subtotal: 9999, total: 9999, paymentMethod: 'card',
     createdAt: `${DAY} 13:00:00`,
-  })
+  }).returning()
+  await dbc.insert(schema.salePayments).values({ saleId: cardSale.id, method: 'card', amount: 9999 })
 }
 
 // ---------------------------------------------------------------------------

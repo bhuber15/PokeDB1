@@ -1,14 +1,19 @@
 import { and, eq, gte, inArray, sql } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
-import { sales, saleItems, inventoryItems, priceCache, creditLedger, customers } from '@/lib/db/schema'
+import { sales, saleItems, salePayments, inventoryItems, priceCache, creditLedger, customers } from '@/lib/db/schema'
 import { calculateSellPrice, pickMarketPrice, computeSaleTotals, computeMarginVat } from '@/lib/pricing'
 import { getSettings } from '@/lib/settings'
 import { DomainError } from './errors'
 
+export type PaymentMethod = 'cash' | 'card' | 'store_credit' | 'other'
+
 export interface CreateSaleInput {
   staffId: number
   items: { inventoryItemId: number; quantity: number }[]
-  paymentMethod: 'cash' | 'card' | 'store_credit' | 'other'
+  // Exactly one of paymentMethod (single tender, amount = total — the shape
+  // the POS offline queue replays) or payments (split tender) must be given.
+  paymentMethod?: PaymentMethod
+  payments?: { method: PaymentMethod; amount: number }[]
   discount: number
   customerId?: number
   expectedTotal: number
@@ -16,19 +21,47 @@ export interface CreateSaleInput {
 }
 
 const PAYMENT_METHODS = new Set(['cash', 'card', 'store_credit', 'other'])
+const MAX_PAYMENT_LINES = 4
 
 export async function createSale(
   input: CreateSaleInput,
   dbc: Db = db,
 ): Promise<{ saleId: number; total: number; marginNoCostCount: number }> {
   if (!input.items?.length) throw new DomainError('INVALID_INPUT', 'No items')
-  if (!PAYMENT_METHODS.has(input.paymentMethod)) throw new DomainError('INVALID_INPUT', 'Invalid payment method')
+  if ((input.paymentMethod == null) === (input.payments == null)) {
+    throw new DomainError('INVALID_INPUT', 'Provide exactly one of paymentMethod or payments')
+  }
+  if (input.paymentMethod != null && !PAYMENT_METHODS.has(input.paymentMethod)) {
+    throw new DomainError('INVALID_INPUT', 'Invalid payment method')
+  }
+  if (input.payments != null) {
+    if (input.payments.length < 1 || input.payments.length > MAX_PAYMENT_LINES) {
+      throw new DomainError('INVALID_INPUT', `payments must have 1–${MAX_PAYMENT_LINES} lines`)
+    }
+    for (const p of input.payments) {
+      if (!PAYMENT_METHODS.has(p.method)) throw new DomainError('INVALID_INPUT', 'Invalid payment method')
+      if (!Number.isInteger(p.amount) || p.amount < 1) {
+        throw new DomainError('INVALID_INPUT', 'Payment amounts must be positive integers (pence)')
+      }
+    }
+    if (input.payments.filter(p => p.method === 'store_credit').length > 1) {
+      throw new DomainError('INVALID_INPUT', 'At most one store-credit payment per sale')
+    }
+  }
   for (const item of input.items) {
     if (!Number.isInteger(item.quantity) || item.quantity < 1) {
       throw new DomainError('INVALID_INPUT', 'Invalid quantity')
     }
   }
-  if (input.paymentMethod === 'store_credit' && !input.customerId) {
+  // The credit portion: the whole total on a single store-credit tender, or
+  // the store-credit line of a split. 0 = no credit involved.
+  const creditAmountOf = (total: number): number => {
+    if (input.paymentMethod === 'store_credit') return total
+    return input.payments?.find(p => p.method === 'store_credit')?.amount ?? 0
+  }
+  const usesStoreCredit = input.paymentMethod === 'store_credit'
+    || (input.payments?.some(p => p.method === 'store_credit') ?? false)
+  if (usesStoreCredit && !input.customerId) {
     throw new DomainError('INVALID_INPUT', 'customerId required for store credit')
   }
 
@@ -86,7 +119,20 @@ export async function createSale(
     throw new DomainError('PRICE_CHANGED', `Prices changed: server total is ${total}`, { total, expectedTotal: input.expectedTotal })
   }
 
-  if (input.paymentMethod === 'store_credit') {
+  // After the expectedTotal check so genuine price drift reports PRICE_CHANGED.
+  if (input.payments != null) {
+    const paymentsSum = input.payments.reduce((s, p) => s + p.amount, 0)
+    if (paymentsSum !== total) {
+      throw new DomainError('INVALID_INPUT', `Payments (${paymentsSum}) must sum to the total (${total})`)
+    }
+  }
+
+  // Resolved tender lines: canonical per-method record, split or not.
+  const paymentLines = input.payments ?? [{ method: input.paymentMethod!, amount: total }]
+  const summaryMethod = paymentLines.length === 1 ? paymentLines[0].method : 'split'
+  const creditAmount = creditAmountOf(total)
+
+  if (usesStoreCredit) {
     const [customer] = await dbc.select().from(customers).where(eq(customers.id, input.customerId!)).limit(1)
     if (!customer) throw new DomainError('NOT_FOUND', 'Customer not found')
   }
@@ -106,13 +152,15 @@ export async function createSale(
       }
     }
 
-    // Balance check inside the transaction so concurrent spends can't overdraw.
-    if (input.paymentMethod === 'store_credit') {
+    // Balance check inside the transaction so concurrent spends can't
+    // overdraw. Compares against the credit portion — on a split tender the
+    // rest of the total arrives by other means.
+    if (creditAmount > 0) {
       const [{ balance }] = await tx.select({ balance: sql<number>`COALESCE(SUM(delta), 0)` })
         .from(creditLedger)
         .where(eq(creditLedger.customerId, input.customerId!))
-      if (balance < total) {
-        throw new DomainError('INSUFFICIENT_CREDIT', 'Insufficient store credit', { balance, total })
+      if (balance < creditAmount) {
+        throw new DomainError('INSUFFICIENT_CREDIT', 'Insufficient store credit', { balance, creditAmount })
       }
     }
 
@@ -125,8 +173,12 @@ export async function createSale(
       vatAmount,
       vatScheme: settings.vatScheme,
       total,
-      paymentMethod: input.paymentMethod,
+      paymentMethod: summaryMethod,
     }).returning()
+
+    for (const line of paymentLines) {
+      await tx.insert(salePayments).values({ saleId: sale.id, method: line.method, amount: line.amount })
+    }
 
     for (const line of lines) {
       await tx.insert(saleItems).values({
@@ -138,10 +190,10 @@ export async function createSale(
       })
     }
 
-    if (input.paymentMethod === 'store_credit') {
+    if (creditAmount > 0) {
       await tx.insert(creditLedger).values({
         customerId: input.customerId!,
-        delta: -total,
+        delta: -creditAmount,
         reason: 'sale',
         refType: 'sale',
         refId: sale.id,

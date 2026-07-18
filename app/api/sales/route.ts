@@ -9,12 +9,21 @@ import { guarded } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
 import { createSale } from '@/lib/domain/sales'
 
+const paymentMethodEnum = z.enum(['cash', 'card', 'store_credit', 'other'])
+
 const createSaleBody = z.object({
   items: z.array(z.object({
     inventoryItemId: z.number().int(),
     quantity: z.number().int(),
   })).default([]),
-  paymentMethod: z.enum(['cash', 'card', 'store_credit', 'other']),
+  // Exactly one of paymentMethod (single tender — also the shape old queued
+  // offline sales replay with) or payments (split tender). createSale
+  // enforces the XOR and the sum-to-total rule.
+  paymentMethod: paymentMethodEnum.optional(),
+  payments: z.array(z.object({
+    method: paymentMethodEnum,
+    amount: z.number().int().positive(), // pence
+  })).max(4).optional(),
   discountAmount: z.number().int().nonnegative().optional(), // pence
   customerId: z.number().int().optional(),
   expectedTotal: z.number().int(), // pence
@@ -29,6 +38,7 @@ export const POST = guarded(async (req: NextRequest) => {
     staffId: session.staffId,
     items: body.items,
     paymentMethod: body.paymentMethod,
+    payments: body.payments,
     discount: body.discountAmount ?? 0,
     customerId: body.customerId,
     expectedTotal: body.expectedTotal,

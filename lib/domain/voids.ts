@@ -6,9 +6,9 @@
 // store-credit charge is returned via the ledger. Sales with refunds, or
 // from a previous day, must go through the refund path instead.
 
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
-import { sales, saleItems, inventoryItems, refunds, creditLedger } from '@/lib/db/schema'
+import { sales, saleItems, salePayments, inventoryItems, refunds, creditLedger } from '@/lib/db/schema'
 import { DomainError } from './errors'
 
 export interface VoidSaleInput {
@@ -64,15 +64,25 @@ export async function voidSale(
       }
     }
 
-    if (sale.paymentMethod === 'store_credit' && sale.customerId) {
-      await tx.insert(creditLedger).values({
-        customerId: sale.customerId,
-        delta: sale.total,
-        reason: 'void',
-        refType: 'sale',
-        refId: sale.id,
-        staffId: input.staffId,
-      })
+    // Return the store-credit portion (whole total on a plain store-credit
+    // sale, the credit line of a split — from sale_payments either way).
+    if (sale.customerId) {
+      const [{ creditPaid }] = await tx.select({
+        creditPaid: sql<number>`COALESCE(SUM(${salePayments.amount}), 0)`,
+      }).from(salePayments).where(and(
+        eq(salePayments.saleId, sale.id),
+        eq(salePayments.method, 'store_credit'),
+      ))
+      if (creditPaid > 0) {
+        await tx.insert(creditLedger).values({
+          customerId: sale.customerId,
+          delta: creditPaid,
+          reason: 'void',
+          refType: 'sale',
+          refId: sale.id,
+          staffId: input.staffId,
+        })
+      }
     }
   })
 

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { XIcon } from 'lucide-react'
 import { formatGBP, parsePounds, computeSaleTotals } from '@/lib/pricing'
 import { CustomerPicker } from '@/components/shared/CustomerPicker'
 import { useSettings } from '@/components/shared/SettingsProvider'
@@ -18,18 +19,39 @@ const PAYMENT_METHODS = [
   { value: 'other', label: 'Other' },
 ]
 
+const MAX_SPLIT_LINES = 4
+
+export interface CheckoutConfirmOptions {
+  paymentMethod?: string
+  payments?: { method: string; amount: number }[]
+  discountAmount: number
+  expectedTotal: number
+  customerId?: number
+  cashReceived?: number
+}
+
 interface CheckoutDialogProps {
   open: boolean
   items: CartItem[]
   onClose: () => void
-  onConfirm: (paymentMethod: string, discountAmount: number, expectedTotal: number, customerId?: number, cashReceived?: number) => Promise<void>
+  onConfirm: (opts: CheckoutConfirmOptions) => Promise<void>
 }
 
 const QUICK_TENDER = [500, 1000, 2000, 5000] // pence: £5 £10 £20 £50
 
+interface SplitRow {
+  method: string
+  amount: string // pounds, as typed
+}
+
 export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDialogProps) {
   const { vatScheme } = useSettings()
   const [method, setMethod] = useState('cash')
+  const [splitMode, setSplitMode] = useState(false)
+  const [splitRows, setSplitRows] = useState<SplitRow[]>([
+    { method: 'cash', amount: '' },
+    { method: 'card', amount: '' },
+  ])
   const [discount, setDiscount] = useState('')
   const [received, setReceived] = useState('')
   const [loading, setLoading] = useState(false)
@@ -40,15 +62,33 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
   // Same arithmetic as createSale — keeps expectedTotal in agreement with the server
   const { discount: discountAmount, vatAmount, total } = computeSaleTotals(subtotal, parsePounds(discount), vatScheme)
 
-  const isCash = method === 'cash'
+  const isCash = !splitMode && method === 'cash'
   // Blank tender = exact amount; otherwise change is due (or the tender is short)
   const receivedPence = isCash && received ? parsePounds(received) : null
   const changeDue = receivedPence != null ? receivedPence - total : null
   const tenderShort = changeDue != null && changeDue < 0
 
-  const isStoreCredit = method === 'store_credit'
-  const insufficientBalance = isStoreCredit && customer !== null && customerBalance !== null && customerBalance < total
-  const confirmDisabled = loading || (isStoreCredit && !customer) || insufficientBalance || tenderShort
+  // Split-tender state: pence per row, remaining due, credit portion
+  const splitPence = splitRows.map(r => (r.amount ? parsePounds(r.amount) : 0))
+  const splitSum = splitPence.reduce((s, p) => s + p, 0)
+  const splitRemaining = total - splitSum
+  const splitInvalidRow = splitRows.some((r, i) => r.amount !== '' && splitPence[i] <= 0)
+  const splitIncomplete = splitRows.some(r => r.amount === '')
+  const creditPortion = splitMode
+    ? splitRows.reduce((s, r, i) => s + (r.method === 'store_credit' ? splitPence[i] : 0), 0)
+    : (method === 'store_credit' ? total : 0)
+
+  const usesStoreCredit = creditPortion > 0 || (!splitMode && method === 'store_credit')
+    || (splitMode && splitRows.some(r => r.method === 'store_credit'))
+  const insufficientBalance = usesStoreCredit && customer !== null && customerBalance !== null
+    && customerBalance < (splitMode ? creditPortion : total)
+
+  const splitBlocked = splitMode && (splitRemaining !== 0 || splitInvalidRow || splitIncomplete)
+  const confirmDisabled = loading
+    || (usesStoreCredit && !customer)
+    || insufficientBalance
+    || tenderShort
+    || splitBlocked
 
   // When CustomerPicker calls onSelect, also fetch the balance so we can
   // access it here for the balance guard. CustomerPicker shows the balance
@@ -64,19 +104,48 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
     }
   }
 
+  function setSplitRow(i: number, patch: Partial<SplitRow>) {
+    setSplitRows(rows => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
+  }
+
+  function fillRemainder(i: number) {
+    const others = splitPence.reduce((s, p, idx) => (idx === i ? s : s + p), 0)
+    const rest = total - others
+    setSplitRow(i, { amount: rest > 0 ? (rest / 100).toFixed(2) : '' })
+  }
+
+  function resetState() {
+    setDiscount('')
+    setReceived('')
+    setMethod('cash')
+    setSplitMode(false)
+    setSplitRows([{ method: 'cash', amount: '' }, { method: 'card', amount: '' }])
+    setCustomer(null)
+    setCustomerBalance(null)
+  }
+
   async function confirm() {
     setLoading(true)
     try {
       // Attribute the sale to the selected customer for any payment method.
-      await onConfirm(method, discountAmount, total, customer?.id, receivedPence ?? undefined)
+      await onConfirm(splitMode
+        ? {
+            payments: splitRows.map((r, i) => ({ method: r.method, amount: splitPence[i] })),
+            discountAmount,
+            expectedTotal: total,
+            customerId: customer?.id,
+          }
+        : {
+            paymentMethod: method,
+            discountAmount,
+            expectedTotal: total,
+            customerId: customer?.id,
+            cashReceived: receivedPence ?? undefined,
+          })
     } finally {
       setLoading(false)
     }
-    setDiscount('')
-    setReceived('')
-    setMethod('cash')
-    setCustomer(null)
-    setCustomerBalance(null)
+    resetState()
   }
 
   function handleClose() {
@@ -113,19 +182,88 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
             />
           </div>
           <div>
-            <Label className="mb-2 block">Payment Method</Label>
-            <div className="flex flex-wrap gap-2">
-              {PAYMENT_METHODS.map(m => (
-                <Button
-                  key={m.value}
-                  variant={method === m.value ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setMethod(m.value)}
-                >
-                  {m.label}
-                </Button>
-              ))}
+            <div className="flex items-center justify-between mb-2">
+              <Label>Payment Method</Label>
+              <Button
+                type="button"
+                variant={splitMode ? 'default' : 'outline'}
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setSplitMode(s => !s)}
+              >
+                Split payment
+              </Button>
             </div>
+            {!splitMode ? (
+              <div className="flex flex-wrap gap-2">
+                {PAYMENT_METHODS.map(m => (
+                  <Button
+                    key={m.value}
+                    variant={method === m.value ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setMethod(m.value)}
+                  >
+                    {m.label}
+                  </Button>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {splitRows.map((row, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <select
+                      value={row.method}
+                      onChange={e => setSplitRow(i, { method: e.target.value })}
+                      className="h-9 rounded-md border bg-transparent px-2 text-sm flex-1"
+                      aria-label={`Payment method ${i + 1}`}
+                    >
+                      {PAYMENT_METHODS.map(m => (
+                        // One store-credit line max: hide the option elsewhere once used
+                        (m.value !== 'store_credit' || row.method === 'store_credit'
+                          || !splitRows.some(r => r.method === 'store_credit')) && (
+                          <option key={m.value} value={m.value}>{m.label}</option>
+                        )
+                      ))}
+                    </select>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      min="0"
+                      value={row.amount}
+                      onChange={e => setSplitRow(i, { amount: e.target.value })}
+                      placeholder="0.00"
+                      className="w-24 text-right"
+                      aria-label={`Amount ${i + 1} (£)`}
+                    />
+                    <Button type="button" variant="outline" size="sm" className="h-9 text-xs px-2"
+                      onClick={() => fillRemainder(i)}>
+                      Rest
+                    </Button>
+                    {splitRows.length > 2 && (
+                      <Button type="button" variant="ghost" size="sm" className="h-9 px-2"
+                        onClick={() => setSplitRows(rows => rows.filter((_, idx) => idx !== i))}
+                        aria-label={`Remove payment ${i + 1}`}>
+                        <XIcon className="size-4" aria-hidden="true" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                <div className="flex items-center justify-between">
+                  {splitRows.length < MAX_SPLIT_LINES ? (
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-xs"
+                      onClick={() => setSplitRows(rows => [...rows, { method: 'cash', amount: '' }])}>
+                      + Add method
+                    </Button>
+                  ) : <span />}
+                  <span className={`text-sm font-medium ${splitRemaining === 0 && !splitInvalidRow ? 'text-emerald-400' : 'text-destructive'}`}>
+                    {splitRemaining === 0 ? 'Fully allocated' : splitRemaining > 0
+                      ? `${formatGBP(splitRemaining)} left`
+                      : `${formatGBP(-splitRemaining)} over`}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           {isCash && (
@@ -158,17 +296,19 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
           )}
 
           <div className="space-y-2">
-            <Label>Customer {isStoreCredit ? '' : <span className="text-muted-foreground font-normal">(optional)</span>}</Label>
+            <Label>Customer {usesStoreCredit ? '' : <span className="text-muted-foreground font-normal">(optional)</span>}</Label>
             <CustomerPicker onSelect={handleCustomerSelect} selected={customer} />
-            {isStoreCredit && !customer && (
+            {usesStoreCredit && !customer && (
               <p className="text-xs text-muted-foreground">Select a customer to pay with their store credit.</p>
             )}
-            {!isStoreCredit && !customer && (
+            {!usesStoreCredit && !customer && (
               <p className="text-xs text-muted-foreground">Attach a customer to record this sale in their purchase history.</p>
             )}
             {insufficientBalance && (
               <p className="text-xs text-destructive font-medium">
-                Insufficient balance ({formatGBP(customerBalance ?? 0)}) — total is {formatGBP(total)}.
+                Insufficient balance ({formatGBP(customerBalance ?? 0)}) — {splitMode
+                  ? `credit portion is ${formatGBP(creditPortion)}`
+                  : `total is ${formatGBP(total)}`}.
               </p>
             )}
           </div>

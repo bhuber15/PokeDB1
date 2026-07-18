@@ -1,10 +1,12 @@
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
+import { eq } from 'drizzle-orm'
 import { createTestDb, seedBase } from '../db/test-helpers'
 import * as schema from '../db/schema'
 import {
   getCashUpSummary, getSalesByStaff, getMarginStockBook,
   getInventoryValuation, getAgedStock, getLowStock, getMarginByStaff, getBuyExportRows,
+  getSalesByPaymentMethod,
 } from './reports'
 import type { Db } from '../db'
 
@@ -21,12 +23,17 @@ beforeEach(async () => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Insert a bare-minimum sale row; returns the inserted id. */
+/**
+ * Insert a bare-minimum sale row plus its sale_payments rows (every sale has
+ * payment rows — createSale writes them, migration 0019 backfilled the rest).
+ * Defaults to a single payment of the full total in `paymentMethod`.
+ */
 async function insertSale(opts: {
   staffId?: number | null
   paymentMethod: string
   total: number
   createdAt: string
+  payments?: { method: string; amount: number }[]
 }): Promise<number> {
   const [row] = await dbc
     .insert(schema.sales)
@@ -38,6 +45,10 @@ async function insertSale(opts: {
       createdAt: opts.createdAt,
     })
     .returning({ id: schema.sales.id })
+  const payments = opts.payments ?? [{ method: opts.paymentMethod, amount: opts.total }]
+  for (const p of payments) {
+    await dbc.insert(schema.salePayments).values({ saleId: row.id, method: p.method, amount: p.amount })
+  }
   return row.id
 }
 
@@ -459,4 +470,48 @@ test('getBuyExportRows flattens buys to one row per item with parent txn columns
   assert.equal(rows[0].payPrice, 250)
   assert.equal(rows[0].marketAtBuy, 500)
   assert.equal(rows[1].cardName, null)
+})
+
+// ---------------------------------------------------------------------------
+// Split tender (F6): per-method money comes from sale_payments
+// ---------------------------------------------------------------------------
+
+test('cash-up counts only the cash portion of a split sale', async () => {
+  const DAY = '2026-07-06'
+  await insertSale({
+    paymentMethod: 'split', total: 5000, createdAt: `${DAY} 10:00:00`,
+    payments: [{ method: 'cash', amount: 3000 }, { method: 'card', amount: 2000 }],
+  })
+  await insertSale({ paymentMethod: 'cash', total: 700, createdAt: `${DAY} 11:00:00` })
+
+  const summary = await getCashUpSummary(DAY, dbc)
+  assert.equal(summary.cashSales, 3700) // 3000 split-cash + 700 plain cash
+})
+
+test('getSalesByPaymentMethod groups sale_payments by method, never split', async () => {
+  const DAY = '2026-07-06'
+  await insertSale({
+    paymentMethod: 'split', total: 5000, createdAt: `${DAY} 10:00:00`,
+    payments: [{ method: 'cash', amount: 3000 }, { method: 'card', amount: 2000 }],
+  })
+  await insertSale({ paymentMethod: 'card', total: 1000, createdAt: `${DAY} 11:00:00` })
+  // outside range — excluded
+  await insertSale({ paymentMethod: 'cash', total: 9999, createdAt: '2026-07-01 10:00:00' })
+
+  const rows = await getSalesByPaymentMethod(DAY, DAY, dbc)
+  const byMethod = Object.fromEntries(rows.map(r => [r.paymentMethod, r.total]))
+  assert.equal(byMethod.cash, 3000)
+  assert.equal(byMethod.card, 3000) // 2000 split + 1000 plain
+  assert.equal(rows.some(r => r.paymentMethod === 'split'), false)
+})
+
+test('getSalesByPaymentMethod excludes voided sales', async () => {
+  const DAY = '2026-07-06'
+  const saleId = await insertSale({ paymentMethod: 'cash', total: 800, createdAt: `${DAY} 10:00:00` })
+  await dbc.update(schema.sales)
+    .set({ voidedAt: `${DAY} 11:00:00` })
+    .where(eq(schema.sales.id, saleId))
+
+  const rows = await getSalesByPaymentMethod(DAY, DAY, dbc)
+  assert.equal(rows.length, 0)
 })

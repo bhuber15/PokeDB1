@@ -21,25 +21,34 @@ beforeEach(async () => {
   })
 })
 
-/** Insert a sale with one line of 2 units from inventory item 1. */
+/**
+ * Insert a sale with one line of 2 units from inventory item 1, plus its
+ * sale_payments rows (default: the full total in paymentMethod — the
+ * invariant createSale writes and migration 0019 backfilled).
+ */
 async function insertSale(opts: {
   paymentMethod?: string
   createdAt?: string
   customerId?: number
   total?: number
+  payments?: { method: string; amount: number }[]
 }): Promise<number> {
   const total = opts.total ?? 1000
+  const method = opts.paymentMethod ?? 'cash'
   const [sale] = await dbc.insert(schema.sales).values({
     staffId: 1,
     customerId: opts.customerId ?? null,
     subtotal: total,
     total,
-    paymentMethod: opts.paymentMethod ?? 'cash',
+    paymentMethod: method,
     createdAt: opts.createdAt ?? `${todayUTC()} 10:00:00`,
   }).returning()
   await dbc.insert(schema.saleItems).values({
     saleId: sale.id, inventoryItemId: 1, quantity: 2, priceAtSale: total / 2, costAtSale: 200,
   })
+  for (const p of opts.payments ?? [{ method, amount: total }]) {
+    await dbc.insert(schema.salePayments).values({ saleId: sale.id, method: p.method, amount: p.amount })
+  }
   return sale.id
 }
 
@@ -148,4 +157,24 @@ test('voided sales disappear from cash-up and by-staff aggregates', async () => 
   assert.equal(byStaff[0].saleCount, 1)
   assert.equal(byStaff[0].revenue, 600)
   assert.ok(keptId !== voidedId)
+})
+
+test('voidSale on a split sale returns only the store-credit portion via the ledger', async () => {
+  await dbc.insert(schema.customers).values({ id: 2, name: 'Riley' })
+  const saleId = await insertSale({
+    paymentMethod: 'split', customerId: 2, total: 1000,
+    payments: [{ method: 'store_credit', amount: 300 }, { method: 'cash', amount: 700 }],
+  })
+  await dbc.insert(schema.creditLedger).values({
+    customerId: 2, delta: -300, reason: 'sale', refType: 'sale', refId: saleId, staffId: 1,
+  })
+
+  await voidSale({ staffId: 1, saleId }, dbc)
+
+  const entries = await dbc.select().from(schema.creditLedger)
+    .where(eq(schema.creditLedger.customerId, 2))
+  const voidEntry = entries.find(e => e.reason === 'void')
+  assert.ok(voidEntry, 'void ledger entry written')
+  assert.equal(voidEntry.delta, 300) // credit portion only, not the full 1000
+  assert.equal(entries.reduce((s, e) => s + e.delta, 0), 0)
 })

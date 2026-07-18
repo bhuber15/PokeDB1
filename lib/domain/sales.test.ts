@@ -235,3 +235,132 @@ test('VAT scheme "margin" with block: no-cost line rejects the sale, nothing wri
   assert.equal(await stockOf(1), 5) // untouched
   assert.deepEqual(await dbc.select().from(schema.sales), [])
 })
+
+// ---------------------------------------------------------------------------
+// Split tender (F6)
+// ---------------------------------------------------------------------------
+
+async function paymentsOf(saleId: number) {
+  return dbc.select().from(schema.salePayments).where(eq(schema.salePayments.saleId, saleId))
+}
+
+test('single-method sale writes one sale_payments row and keeps its method', async () => {
+  const { saleId } = await createSale(base, dbc)
+  const [sale] = await dbc.select().from(schema.sales).where(eq(schema.sales.id, saleId))
+  assert.equal(sale.paymentMethod, 'cash')
+  const rows = await paymentsOf(saleId)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].method, 'cash')
+  assert.equal(rows[0].amount, 1700)
+})
+
+test('split cash+card: payment rows written, summary method is split', async () => {
+  const { saleId, total } = await createSale({
+    ...base,
+    paymentMethod: undefined,
+    payments: [{ method: 'cash', amount: 1000 }, { method: 'card', amount: 700 }],
+  }, dbc)
+  assert.equal(total, 1700)
+
+  const [sale] = await dbc.select().from(schema.sales).where(eq(schema.sales.id, saleId))
+  assert.equal(sale.paymentMethod, 'split')
+
+  const rows = await paymentsOf(saleId)
+  assert.deepEqual(
+    rows.map(r => ({ method: r.method, amount: r.amount })).sort((a, b) => a.method.localeCompare(b.method)),
+    [{ method: 'card', amount: 700 }, { method: 'cash', amount: 1000 }],
+  )
+})
+
+test('a single payments[] line keeps its own method as the summary', async () => {
+  const { saleId } = await createSale({
+    ...base,
+    paymentMethod: undefined,
+    payments: [{ method: 'card', amount: 1700 }],
+  }, dbc)
+  const [sale] = await dbc.select().from(schema.sales).where(eq(schema.sales.id, saleId))
+  assert.equal(sale.paymentMethod, 'card')
+})
+
+test('payments that do not sum to the total are rejected', async () => {
+  await assert.rejects(
+    createSale({
+      ...base,
+      paymentMethod: undefined,
+      payments: [{ method: 'cash', amount: 1000 }, { method: 'card', amount: 600 }],
+    }, dbc),
+    domainCode('INVALID_INPUT'),
+  )
+  assert.equal(await stockOf(1), 5) // nothing decremented
+})
+
+test('providing both or neither of paymentMethod/payments is rejected', async () => {
+  await assert.rejects(
+    createSale({
+      ...base,
+      payments: [{ method: 'cash', amount: 1700 }],
+    }, dbc),
+    domainCode('INVALID_INPUT'),
+  )
+  await assert.rejects(
+    createSale({ ...base, paymentMethod: undefined }, dbc),
+    domainCode('INVALID_INPUT'),
+  )
+})
+
+test('split with store credit debits only the credit portion from the ledger', async () => {
+  await dbc.insert(schema.customers).values({ id: 1, name: 'Casey' })
+  await dbc.insert(schema.creditLedger).values({ customerId: 1, delta: 500, reason: 'adjustment' })
+
+  // balance (500) < total (1700) but covers the credit portion
+  const { saleId } = await createSale({
+    ...base,
+    paymentMethod: undefined,
+    payments: [{ method: 'store_credit', amount: 500 }, { method: 'cash', amount: 1200 }],
+    customerId: 1,
+  }, dbc)
+
+  const entries = await dbc.select().from(schema.creditLedger)
+    .where(eq(schema.creditLedger.customerId, 1))
+  const debit = entries.find(e => e.reason === 'sale')
+  assert.ok(debit, 'sale debit written')
+  assert.equal(debit.delta, -500)
+  assert.equal(debit.refId, saleId)
+})
+
+test('split store-credit portion above the balance is rejected', async () => {
+  await dbc.insert(schema.customers).values({ id: 1, name: 'Casey' })
+  await dbc.insert(schema.creditLedger).values({ customerId: 1, delta: 400, reason: 'adjustment' })
+
+  await assert.rejects(
+    createSale({
+      ...base,
+      paymentMethod: undefined,
+      payments: [{ method: 'store_credit', amount: 500 }, { method: 'cash', amount: 1200 }],
+      customerId: 1,
+    }, dbc),
+    domainCode('INSUFFICIENT_CREDIT'),
+  )
+  assert.equal(await stockOf(1), 5) // transaction rolled back
+})
+
+test('split payment validation: bad amounts, too many lines, dup store credit, missing customer', async () => {
+  const bad = (payments: { method: string; amount: number }[], customerId?: number) =>
+    assert.rejects(
+      createSale({ ...base, paymentMethod: undefined, payments: payments as never, customerId }, dbc),
+      domainCode('INVALID_INPUT'),
+    )
+
+  await bad([{ method: 'cash', amount: 0 }, { method: 'card', amount: 1700 }])
+  await bad([{ method: 'cash', amount: -100 }, { method: 'card', amount: 1800 }])
+  await bad([{ method: 'cash', amount: 850.5 }, { method: 'card', amount: 849.5 }])
+  await bad([{ method: 'cheque', amount: 1700 }])
+  await bad([
+    { method: 'cash', amount: 400 }, { method: 'card', amount: 400 },
+    { method: 'other', amount: 400 }, { method: 'cash', amount: 250 }, { method: 'card', amount: 250 },
+  ])
+  // two store-credit lines
+  await bad([{ method: 'store_credit', amount: 800 }, { method: 'store_credit', amount: 900 }], 1)
+  // store-credit line without a customer
+  await bad([{ method: 'store_credit', amount: 500 }, { method: 'cash', amount: 1200 }])
+})
