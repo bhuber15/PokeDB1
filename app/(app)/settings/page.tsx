@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import { SettingsForm } from '@/components/settings/SettingsForm'
 import { StaffSection } from '@/components/settings/StaffSection'
 import { BillingCard } from '@/components/settings/BillingCard'
+import { DataExportCard } from '@/components/settings/DataExportCard'
 
 export default async function SettingsPage() {
   const session = await getSession()
@@ -12,6 +13,7 @@ export default async function SettingsPage() {
       <SettingsForm />
       <StaffSection />
       {process.env.TENANCY_MODE === 'multi' && <BillingCard />}
+      <DataExportCard />
     </div>
   )
 }
