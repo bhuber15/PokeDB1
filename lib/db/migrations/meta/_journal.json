@@ -120,6 +120,13 @@
       "when": 1783884764515,
       "tag": "0016_onboarding-state",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1784374899331,
+      "tag": "0017_cash-ups",
+      "breakpoints": true
     }
   ]
 }
