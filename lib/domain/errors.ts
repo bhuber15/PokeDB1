@@ -45,3 +45,17 @@ export function toHttpError(e: unknown):
     body: { error: e.message, code: e.code, ...(e.meta ? { meta: e.meta } : {}) },
   }
 }
+
+// True when `e` is a SQLite UNIQUE-constraint violation on the given
+// "table.column" constraint. Drizzle wraps driver errors (DrizzleQueryError
+// puts the failed SQL in .message and the SQLITE_CONSTRAINT text on the
+// cause), so the whole cause chain is checked, not just the top message.
+export function isUniqueViolation(e: unknown, constraint: string): boolean {
+  const needle = `UNIQUE constraint failed: ${constraint}`
+  let current: unknown = e
+  for (let depth = 0; current instanceof Error && depth < 5; depth++) {
+    if (current.message.includes(needle)) return true
+    current = current.cause
+  }
+  return false
+}

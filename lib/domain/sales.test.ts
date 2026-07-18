@@ -364,3 +364,47 @@ test('split payment validation: bad amounts, too many lines, dup store credit, m
   // store-credit line without a customer
   await bad([{ method: 'store_credit', amount: 500 }, { method: 'cash', amount: 1200 }])
 })
+
+// ---------------------------------------------------------------------------
+// Offline-replay race: two concurrent submissions of the same queued sale
+// ---------------------------------------------------------------------------
+
+test('replay race: loser of the client_uuid unique index gets the winner sale back', async () => {
+  const input: CreateSaleInput = { ...base, clientUuid: '7a4c5f9e-1b2d-4c3e-8f6a-0d9e8c7b6a5f' }
+
+  // Deterministic re-creation of the race: the loser (B) runs its idempotency
+  // pre-check while the DB is still empty, then parks right before its
+  // transaction; the winner (A) commits in the gap; B then resumes and its
+  // insert hits the sales.client_uuid unique index inside the transaction.
+  // The recovery path must hand back A's sale, not throw.
+  let releaseB!: () => void
+  const gate = new Promise<void>(r => { releaseB = r })
+  let signalReached!: () => void
+  const reachedGate = new Promise<void>(r => { signalReached = r })
+  const gatedDbc = new Proxy(dbc, {
+    get(target, prop) {
+      const v = Reflect.get(target, prop, target)
+      if (prop === 'transaction' && typeof v === 'function') {
+        return async (...args: unknown[]) => {
+          signalReached()
+          await gate
+          return (v as (...a: unknown[]) => unknown).apply(target, args)
+        }
+      }
+      return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(target) : v
+    },
+  }) as Db
+
+  const loser = createSale(input, gatedDbc)
+  await reachedGate                          // B passed its pre-check, parked pre-transaction
+  const winner = await createSale(input, dbc) // A commits the sale
+  releaseB()
+  const replay = await loser
+
+  assert.equal(replay.saleId, winner.saleId)
+  assert.equal(winner.total, 1700)
+
+  const allSales = await dbc.select().from(schema.sales)
+  assert.equal(allSales.length, 1)
+  assert.equal(await stockOf(1), 3) // decremented exactly once (5 − 2)
+})

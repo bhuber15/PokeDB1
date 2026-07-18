@@ -44,3 +44,20 @@ test('requireStaff / requireAdmin / requireOwner', () => {
   assert.throws(() => requireAdmin(ownerOnly), domainCode('UNAUTHORIZED'))
   assert.throws(() => requireAdmin(staff), domainCode('FORBIDDEN'))
 })
+
+test('isUniqueViolation matches the constraint on the error or anywhere in its cause chain', async () => {
+  const { isUniqueViolation } = await import('./errors')
+
+  const direct = new Error('SQLITE_CONSTRAINT: UNIQUE constraint failed: sales.client_uuid')
+  assert.equal(isUniqueViolation(direct, 'sales.client_uuid'), true)
+
+  // Drizzle shape: failed SQL on top, SQLITE text on the cause
+  const wrapped = new Error('Failed query: insert into "sales" ...', {
+    cause: new Error('SQLITE_CONSTRAINT: UNIQUE constraint failed: sales.client_uuid'),
+  })
+  assert.equal(isUniqueViolation(wrapped, 'sales.client_uuid'), true)
+  assert.equal(isUniqueViolation(wrapped, 'cash_ups.day'), false)
+
+  assert.equal(isUniqueViolation(new Error('SQLITE_BUSY: database is locked'), 'sales.client_uuid'), false)
+  assert.equal(isUniqueViolation('not an error', 'sales.client_uuid'), false)
+})
