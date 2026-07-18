@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getIronSession } from 'iron-session'
 import { SessionData, sessionOptions } from '@/lib/auth'
 import { parseTenantSlug, getTenantBySlug } from '@/lib/platform/tenants'
-import { decideTenantRouting } from '@/lib/platform/routing'
+import { decideTenantRouting, decideAdminRouting, isAdminHost } from '@/lib/platform/routing'
+import { adminSessionOptions, type AdminSessionData } from '@/lib/platform/admin-session'
 
-const PUBLIC_PATHS = ['/login', '/pin', '/api/auth/owner', '/api/auth/staff-pin', '/api/cron/', '/api/health', '/suspended', '/signup', '/api/platform/', '/setup', '/api/setup']
+const PUBLIC_PATHS = ['/login', '/pin', '/api/auth/owner', '/api/auth/staff-pin', '/api/auth/impersonate', '/api/cron/', '/api/health', '/suspended', '/signup', '/api/platform/', '/setup', '/api/setup']
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
@@ -18,6 +19,24 @@ export async function proxy(req: NextRequest) {
   if (process.env.TENANCY_MODE === 'multi') {
     const baseHost = process.env.PLATFORM_BASE_HOST
     if (!baseHost) return new NextResponse('Platform misconfigured', { status: 500 })
+
+    // Founders' dashboard host: its own cookie, its own routing table.
+    if (isAdminHost(req.headers.get('host') ?? '', baseHost)) {
+      const res = NextResponse.next({ request: { headers: requestHeaders } })
+      const adminSession = await getIronSession<AdminSessionData>(req, res, adminSessionOptions)
+      const decision = decideAdminRouting(pathname, adminSession.isPlatformAdmin === true)
+      switch (decision.kind) {
+        case 'pass': return res
+        case 'redirect-login': return NextResponse.redirect(new URL('/admin/login', req.url))
+        case 'rewrite': return NextResponse.rewrite(new URL(decision.path, req.url), { request: { headers: requestHeaders } })
+        case 'not-found': return new NextResponse('Not found', { status: 404 })
+      }
+    }
+    // The dashboard exists only on the admin host.
+    if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+      return new NextResponse('Not found', { status: 404 })
+    }
+
     const slug = parseTenantSlug(req.headers.get('host') ?? '', baseHost)
     const tenant = slug ? await getTenantBySlug(slug) : null
     const decision = decideTenantRouting({ slug, tenant })

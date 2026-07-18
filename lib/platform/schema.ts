@@ -38,6 +38,18 @@ export const tenantSyncState = sqliteTable('tenant_sync_state', {
   lastBackupAt: integer('last_backup_at'),
 })
 
+// One-time impersonation grants (spec §3.4): the admin dashboard mints a
+// short-lived single-use token; the shop-host consume endpoint burns it and
+// mints the tenant session. Only the sha256 of the token is stored.
+export const impersonationGrants = sqliteTable('impersonation_grants', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  tokenHash: text('token_hash').notNull(),
+  tenantId: integer('tenant_id').notNull().references(() => tenants.id),
+  expiresAt: integer('expires_at').notNull(),      // epoch seconds
+  usedAt: integer('used_at'),                      // set exactly once (single-use)
+  createdAt: integer('created_at').notNull().default(sql`(unixepoch())`),
+}, (t) => [uniqueIndex('impersonation_grants_token_hash_unique').on(t.tokenHash)])
+
 export const platformAudit = sqliteTable('platform_audit', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   actor: text('actor').notNull(),          // 'platform_admin' | 'system' | 'stripe'

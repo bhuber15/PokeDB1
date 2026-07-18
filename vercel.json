@@ -1,5 +1,7 @@
 {
   "crons": [
-    { "path": "/api/cron/sync-prices", "schedule": "0 3 * * *" }
+    { "path": "/api/cron/sync-prices", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/sync-tenants", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/backup-tenants", "schedule": "30 * * * *" }
   ]
 }

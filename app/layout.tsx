@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import { CrispChat } from "@/components/shared/CrispChat";
 import { BRAND } from "@/lib/brand";
 import "./globals.css";
 
@@ -39,6 +40,7 @@ export default function RootLayout({
         {children}
         {/* App is permanently dark; force the toast theme to match instead of relying on next-themes context. */}
         <Toaster theme="dark" />
+        <CrispChat />
       </body>
     </html>
   );

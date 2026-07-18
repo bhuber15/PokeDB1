@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert'
 import { eq } from 'drizzle-orm'
 import { createTestPlatformDb } from './test-helpers'
-import { tenants, stripeEvents } from './schema'
+import { tenants, stripeEvents, impersonationGrants } from './schema'
 
 test('registry stores and retrieves a tenant by slug', async () => {
   const pdb = await createTestPlatformDb()
@@ -36,4 +36,15 @@ test('tenants.email round-trips', async () => {
     .values({ slug: 'email-shop', name: 'Email Shop', dbUrl: 'file:x.db', email: 'owner@example.com' })
     .returning()
   assert.equal(row.email, 'owner@example.com')
+})
+
+test('impersonation grants: token hashes are unique, used_at starts null', async () => {
+  const pdb = await createTestPlatformDb()
+  const [t] = await pdb.insert(tenants).values({ slug: 'imp', name: 'Imp', dbUrl: 'file:x.db' }).returning()
+  const [g] = await pdb.insert(impersonationGrants)
+    .values({ tokenHash: 'abc', tenantId: t.id, expiresAt: 1000 }).returning()
+  assert.equal(g.usedAt, null)
+  await assert.rejects(
+    pdb.insert(impersonationGrants).values({ tokenHash: 'abc', tenantId: t.id, expiresAt: 2000 }),
+  )
 })

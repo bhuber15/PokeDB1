@@ -30,3 +30,25 @@ export function decideTenantRouting(input: {
     },
   }
 }
+
+// Admin host (spec §3.4): founders' dashboard on admin.<base>.
+export function isAdminHost(host: string, baseHost: string): boolean {
+  return host.trim().toLowerCase().split(':')[0] === `admin.${baseHost.toLowerCase()}`
+}
+
+export type AdminRouting =
+  | { kind: 'pass' }
+  | { kind: 'redirect-login' }
+  | { kind: 'rewrite'; path: string }
+  | { kind: 'not-found' }
+
+export function decideAdminRouting(pathname: string, hasAdminSession: boolean): AdminRouting {
+  // API handlers enforce the admin session themselves (requirePlatformAdmin);
+  // shop APIs called on this host have no tenant headers and 401 in getTenantDb.
+  if (pathname.startsWith('/api/')) return { kind: 'pass' }
+  if (pathname === '/admin/login') return { kind: 'pass' }
+  if (!hasAdminSession) return { kind: 'redirect-login' }
+  if (pathname === '/') return { kind: 'rewrite', path: '/admin' }
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) return { kind: 'pass' }
+  return { kind: 'not-found' }   // shop paths don't exist on the admin host
+}

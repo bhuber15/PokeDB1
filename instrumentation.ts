@@ -6,7 +6,9 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     Sentry.init({
       dsn: process.env.SENTRY_DSN,
-      tracesSampleRate: 0, // errors only — no performance tracing spend
+      environment: process.env.SENTRY_ENVIRONMENT ?? process.env.VERCEL_ENV ?? process.env.NODE_ENV,
+      // errors only by default — no performance tracing spend
+      tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? '0'),
     })
   }
 }
