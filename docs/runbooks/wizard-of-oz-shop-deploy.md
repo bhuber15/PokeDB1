@@ -45,12 +45,20 @@ New Vercel project from this repo (one per shop), then set env vars
 | `CRON_SECRET` | `openssl rand -hex 24` (unique per shop) |
 | `PRICE_USD_TO_GBP` / `PRICE_EUR_TO_GBP` | current rates, e.g. `0.79` / `0.86` |
 | `NEXT_PUBLIC_BRAND_NAME` | the (post-rename) brand name |
+| `RESEND_API_KEY` (optional) | Resend key for email receipts (`lib/email.ts`); unset = sending is a logged no-op |
+| `EMAIL_FROM` (optional) | verified sender, e.g. `Shop Name <receipts@shop.co.uk>`; default is Resend's onboarding address |
+| `NEXT_PUBLIC_BRAND_SUPPORT_EMAIL` (optional) | support address shown on branded pages/emails (default `support@example.com`) |
+| `BLOB_READ_WRITE_TOKEN` (optional) | create a **private** Blob store on the project (token auto-added); enables the hourly backup cron, which dumps this DB to `backups/single-tenant/` (see platform-ops-setup.md + backup-restore-drill.md) |
+| `BACKUP_RETENTION_DAYS` (optional) | backup retention, default `14` |
 
 **Gotcha:** this Next version's env parser expands `$` in values — escape as
 `\$` (see `.env.test` for the precedent).
 
-Add the price-sync cron in the Vercel project (Settings → Cron Jobs):
-`GET /api/cron/sync-prices`, daily, header `Authorization: Bearer <CRON_SECRET>`.
+Crons deploy automatically from `vercel.json` — nothing to add in Vercel
+settings: daily `sync-prices`, plus sub-daily `sync-tenants` (no-ops
+`{skipped}` on single-tenant) and `backup-tenants` (backs up the DB when the
+Blob token is set). The sub-daily schedules need Vercel Pro. Vercel attaches
+`Authorization: Bearer <CRON_SECRET>` automatically once that env var exists.
 
 Assign the domain: `<slug>.<base-domain>` → this project.
 
@@ -61,7 +69,7 @@ Assign the domain: `<slug>.<base-domain>` → this project.
 - [ ] Shop name + margins configured in Settings
 - [ ] Search a card at the POS, sell it, refund it
 - [ ] Buylist: price a card, complete a buy
-- [ ] Trigger the cron once manually and confirm prices populate
+- [ ] Trigger `sync-prices` once manually and confirm prices populate
 
 ## 6. Onboarding (from the ops report)
 
