@@ -22,6 +22,12 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     '/api/platform/stripe': ['./lib/db/migrations/**/*'],
   },
+  // Pin the workspace root: in a git worktree Next would otherwise walk up,
+  // find the parent checkout's lockfile, and scan the whole parent tree —
+  // slow enough to flake the e2e's first-compile assertions.
+  turbopack: {
+    root: __dirname,
+  },
 };
 
 export default nextConfig;
