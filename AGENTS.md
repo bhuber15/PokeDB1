@@ -48,6 +48,13 @@ PokeDB is a point-of-sale and inventory system for a UK Pokémon card shop: sell
   (`lib/platform/provision.ts`) is idempotent by slug; plan gating via `lib/plan.ts` +
   `getEntitlements()`. Env + dashboard setup and the test-clock walkthrough:
   `docs/runbooks/stripe-billing-setup.md`.
+- Platform ops (Phase 3): admin dashboard on `admin.<base>` (env
+  `PLATFORM_ADMIN_PASSWORD_HASH`, audited single-use impersonation); cursor-staggered
+  crons `sync-tenants` (15-min) + `backup-tenants` (hourly) built on
+  `lib/platform/fanout.ts`; full-shop zip export at `/api/settings/full-export`;
+  Sentry/PostHog/Crisp are env-gated no-ops by default. Setup + env vars:
+  `docs/runbooks/platform-ops-setup.md`; backups/restore drill:
+  `docs/runbooks/backup-restore-drill.md`.
 
 ## Domain rules (do not violate)
 
