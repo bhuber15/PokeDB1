@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert'
-import { decideTenantRouting } from './routing'
+import { decideTenantRouting, decideAdminRouting, isAdminHost } from './routing'
 
 const tenant = (status: string) => ({
   id: 7, dbUrl: 'file:/tmp/t.db', status, plan: 'starter', entitlementOverrides: null,
@@ -53,4 +53,31 @@ test('an unrecognised plan value falls back to growth entitlements', () => {
   })
   if (d.kind !== 'serve') assert.fail('expected serve')
   assert.equal(d.headers['x-tenant-plan'], 'growth')
+})
+
+test('isAdminHost matches only the admin subdomain of the base host', () => {
+  assert.equal(isAdminHost('admin.example-brand.co.uk', 'example-brand.co.uk'), true)
+  assert.equal(isAdminHost('ADMIN.Example-Brand.co.uk:3000', 'example-brand.co.uk'), true)
+  assert.equal(isAdminHost('admin.evil.com', 'example-brand.co.uk'), false)
+  assert.equal(isAdminHost('shop.example-brand.co.uk', 'example-brand.co.uk'), false)
+  assert.equal(isAdminHost('example-brand.co.uk', 'example-brand.co.uk'), false)
+})
+
+test('admin routing: APIs pass (handlers self-gate); login page always reachable', () => {
+  assert.deepEqual(decideAdminRouting('/api/platform/admin/login', false), { kind: 'pass' })
+  assert.deepEqual(decideAdminRouting('/api/health', false), { kind: 'pass' })
+  assert.deepEqual(decideAdminRouting('/admin/login', false), { kind: 'pass' })
+})
+
+test('admin routing: pages gate on the session', () => {
+  assert.deepEqual(decideAdminRouting('/admin', false), { kind: 'redirect-login' })
+  assert.deepEqual(decideAdminRouting('/', false), { kind: 'redirect-login' })
+  assert.deepEqual(decideAdminRouting('/admin', true), { kind: 'pass' })
+  assert.deepEqual(decideAdminRouting('/admin/audit', true), { kind: 'pass' })
+  assert.deepEqual(decideAdminRouting('/', true), { kind: 'rewrite', path: '/admin' })
+})
+
+test('admin routing: shop paths do not exist on the admin host', () => {
+  assert.deepEqual(decideAdminRouting('/pos', true), { kind: 'not-found' })
+  assert.deepEqual(decideAdminRouting('/login', false), { kind: 'redirect-login' })
 })
