@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantDb } from '@/lib/db'
 import { sales, saleItems, inventoryItems, cards } from '@/lib/db/schema'
-import { and, gte, lt, eq, sql, isNotNull } from 'drizzle-orm'
+import { and, gte, lt, eq, sql, isNotNull, isNull } from 'drizzle-orm'
 import { getSession, requireAdmin, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { getSalesByStaff, getMarginByStaff } from '@/lib/domain/reports'
@@ -25,7 +25,8 @@ export const GET = guarded(async (req: NextRequest) => {
   // createdAt is "YYYY-MM-DD HH:MM:SS" text (UTC). Range is [from 00:00:00, to+1day 00:00:00).
   const fromTs = `${from} 00:00:00`
   const toTs = sql<string>`datetime(${to}, '+1 day')`
-  const rangeWhere = and(gte(sales.createdAt, fromTs), lt(sales.createdAt, toTs))
+  // Voided sales are excluded from every aggregate (they were mis-rings).
+  const rangeWhere = and(isNull(sales.voidedAt), gte(sales.createdAt, fromTs), lt(sales.createdAt, toTs))
 
   const [totals] = await db.select({
     revenue: sql<number>`COALESCE(SUM(total), 0)`,

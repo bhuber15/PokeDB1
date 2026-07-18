@@ -38,6 +38,7 @@ export async function getCashUpSummary(day: string, dbc: Db = db): Promise<CashU
     .where(
       and(
         eq(sales.paymentMethod, 'cash'),
+        isNull(sales.voidedAt),
         gte(sales.createdAt, from),
         lt(sales.createdAt, toExcl),
       ),
@@ -102,7 +103,7 @@ export async function getSalesByStaff(from: string, to: string, dbc: Db = db): P
     })
     .from(sales)
     .leftJoin(staff, eq(sales.staffId, staff.id))
-    .where(and(gte(sales.createdAt, fromTs), lt(sales.createdAt, toExcl)))
+    .where(and(isNull(sales.voidedAt), gte(sales.createdAt, fromTs), lt(sales.createdAt, toExcl)))
     .groupBy(sales.staffId)
     .orderBy(sql`SUM(${sales.total}) DESC`)
 
@@ -156,6 +157,7 @@ export async function getMarginStockBook(from: string, to: string, dbc: Db = db)
     .leftJoin(cards, eq(inventoryItems.cardId, cards.id))
     .where(and(
       eq(sales.vatScheme, 'margin'),
+      isNull(sales.voidedAt),
       gte(sales.createdAt, fromTs),
       lt(sales.createdAt, toExcl),
     ))
@@ -358,7 +360,7 @@ export async function getMarginByStaff(from: string, to: string, dbc: Db = db): 
     })
     .from(saleItems)
     .innerJoin(sales, eq(saleItems.saleId, sales.id))
-    .where(and(gte(sales.createdAt, fromTs), lt(sales.createdAt, toExcl)))
+    .where(and(isNull(sales.voidedAt), gte(sales.createdAt, fromTs), lt(sales.createdAt, toExcl)))
     .groupBy(sales.staffId)
 }
 

@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server'
 import { getTenantDb } from '@/lib/db'
 import { sales, saleItems, inventoryItems, cards, staff } from '@/lib/db/schema'
-import { eq, sql, gte, inArray } from 'drizzle-orm'
+import { and, eq, sql, gte, inArray, isNull } from 'drizzle-orm'
 import { getSession, requireAdmin, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 
@@ -18,7 +18,7 @@ export const GET = guarded(async () => {
     saleCount: sql<number>`COUNT(*)`,
     cashTotal: sql<number>`COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END), 0)`,
     cardTotal: sql<number>`COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0)`,
-  }).from(sales).where(gte(sales.createdAt, sql`datetime('now','start of day')`))
+  }).from(sales).where(and(isNull(sales.voidedAt), gte(sales.createdAt, sql`datetime('now','start of day')`)))
 
   const recent = await db
     .select({ sale: sales, staffName: staff.name })

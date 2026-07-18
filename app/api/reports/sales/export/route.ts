@@ -12,13 +12,15 @@ export const GET = guarded(async () => {
   const rows = await db.select({ sale: sales, staffName: staff.name })
     .from(sales).leftJoin(staff, eq(sales.staffId, staff.id))
     .orderBy(desc(sales.createdAt))
+  // Voided sales stay in the export (bookkeeping visibility) but are flagged.
   const csv = toCSV(
-    ['sale_id', 'datetime', 'staff', 'payment_method', 'subtotal', 'discount', 'vat', 'total'],
+    ['sale_id', 'datetime', 'staff', 'payment_method', 'subtotal', 'discount', 'vat', 'total', 'voided'],
     // CSV money columns are pounds (human-facing, opened in Excel)
     rows.map(({ sale, staffName }) => [
       sale.id, sale.createdAt, staffName ?? '', sale.paymentMethod,
       (sale.subtotal / 100).toFixed(2), (sale.discountAmount / 100).toFixed(2),
       (sale.vatAmount / 100).toFixed(2), (sale.total / 100).toFixed(2),
+      sale.voidedAt ? 'yes' : '',
     ]),
   )
   const date = new Date().toISOString().slice(0, 10)
