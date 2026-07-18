@@ -8,10 +8,18 @@ import { getSession, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
 import { assertNotLocked, recordFailedAttempt, clearLockout } from '@/lib/domain/auth-lockout'
+import { DomainError } from '@/lib/domain/errors'
+import { rateLimit } from '@/lib/platform/rate-limit'
 
 const pinLoginBody = z.object({ pin: z.string().regex(/^\d{4}$/, 'Invalid PIN format') })
 
 export const POST = guarded(async (req: NextRequest) => {
+  // Per-IP endpoint limit (spec §3.9), sized for busy-shop PIN churn — the
+  // per-shop DB lockout below is the real brute-force guard.
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  if (!rateLimit(`staff-pin:${ip}`, 120, 10 * 60_000)) {
+    throw new DomainError('RATE_LIMITED', 'Too many attempts — try again in a few minutes')
+  }
   const db = await getTenantDb()
   await assertNotLocked('staff-pin', db)
   const { pin } = await parseBody(req, pinLoginBody)
