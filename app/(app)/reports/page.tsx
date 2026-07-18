@@ -7,6 +7,7 @@ import { formatGBP } from '@/lib/pricing'
 import { DateRangePicker } from '@/components/reports/DateRangePicker'
 import { RefundDialog } from '@/components/reports/RefundDialog'
 import { CashUpSection } from '@/components/reports/CashUpSection'
+import { StockSection } from '@/components/reports/StockSection'
 
 interface TodayStats {
   totalRevenue: number
@@ -30,7 +31,7 @@ interface RangeSummary {
   grossMargin: number
   saleCount: number
   byPaymentMethod: { paymentMethod: string; total: number }[]
-  byStaff: { staffId: number | null; staffName: string | null; saleCount: number; revenue: number }[]
+  byStaff: { staffId: number | null; staffName: string | null; saleCount: number; revenue: number; margin: number; noCostLines: number }[]
   topCards: { cardId: number; name: string; quantitySold: number; revenue: number }[]
 }
 
@@ -66,7 +67,11 @@ export default function ReportsPage() {
     <div className="space-y-6 max-w-3xl">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Reports</h1>
-        <a href="/api/reports/sales/export"><Button variant="outline">Export CSV</Button></a>
+        <div className="flex gap-2">
+          <a href="/api/reports/sales/export"><Button variant="outline">Export Sales CSV</Button></a>
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- API-route file download, not a page navigation */}
+          <a href="/api/buys/export"><Button variant="outline">Export Buys CSV</Button></a>
+        </div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
@@ -115,7 +120,7 @@ export default function ReportsPage() {
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/30">
                 <tr>
-                  {['Staff', 'Sales', 'Revenue'].map(h => (
+                  {['Staff', 'Sales', 'Revenue', 'Margin'].map(h => (
                     <th key={h} className="text-left px-3 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide last:text-right">{h}</th>
                   ))}
                 </tr>
@@ -125,7 +130,10 @@ export default function ReportsPage() {
                   <tr key={s.staffId ?? `null-${i}`}>
                     <td className="px-3 py-2">{s.staffName ?? 'Unassigned'}</td>
                     <td className="px-3 py-2 tabular-nums">{s.saleCount}</td>
-                    <td className="px-3 py-2 tabular-nums text-right">{formatGBP(s.revenue)}</td>
+                    <td className="px-3 py-2 tabular-nums">{formatGBP(s.revenue)}</td>
+                    <td className="px-3 py-2 tabular-nums text-right" title={s.noCostLines > 0 ? `${s.noCostLines} line(s) had no cost basis and are excluded` : undefined}>
+                      {formatGBP(s.margin)}{s.noCostLines > 0 && <span className="text-muted-foreground">*</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -145,6 +153,8 @@ export default function ReportsPage() {
       </div>
 
       <CashUpSection />
+
+      <StockSection />
 
       <div>
         <h2 className="text-lg font-semibold mb-3">Recent Sales</h2>
