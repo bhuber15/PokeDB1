@@ -67,3 +67,24 @@ test('empty patch and missing item map to the right errors', async () => {
   await assert.rejects(applyInventoryPatch(1, 1, {}, undefined, dbc), domainCode('INVALID_INPUT'))
   await assert.rejects(applyInventoryPatch(99, 1, { quantity: 1 }, 'recount', dbc), domainCode('NOT_FOUND'))
 })
+
+// ---------------------------------------------------------------------------
+// redactInventoryCosts (F8: cost is admin-only)
+// ---------------------------------------------------------------------------
+
+test('redactInventoryCosts nulls costPrice for non-admins, passes through for admins', async () => {
+  const { redactInventoryCosts } = await import('./inventory')
+  const rows = [
+    { item: { id: 1, costPrice: 400, quantity: 2 }, card: { name: 'Pikachu' } },
+    { item: { id: 2, costPrice: null, quantity: 1 }, card: null },
+  ]
+
+  const staffView = redactInventoryCosts(rows, 'staff')
+  assert.equal(staffView[0].item.costPrice, null)
+  assert.equal(staffView[1].item.costPrice, null)
+  assert.equal(staffView[0].item.quantity, 2) // everything else untouched
+  assert.equal(rows[0].item.costPrice, 400)   // input not mutated
+
+  const adminView = redactInventoryCosts(rows, 'admin')
+  assert.equal(adminView[0].item.costPrice, 400)
+})

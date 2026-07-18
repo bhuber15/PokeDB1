@@ -2,13 +2,13 @@ import { NextResponse } from 'next/server'
 import { getTenantDb } from '@/lib/db'
 import { inventoryItems, cards } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
-import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
+import { getSession, requireAdmin, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { toCSV } from '@/lib/csv'
 
 export const GET = guarded(async () => {
   const db = await getTenantDb()
-  requireStaff(await getSession(await currentTenantId()))
+  requireAdmin(await getSession(await currentTenantId()))
 
   const rows = await db.select({ item: inventoryItems, card: cards })
     .from(inventoryItems)

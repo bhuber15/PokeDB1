@@ -7,6 +7,7 @@ import { generateQRId } from '@/lib/qr'
 import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody, parseIdParam } from '@/lib/validation'
+import { redactInventoryCosts } from '@/lib/domain/inventory'
 
 const createInventoryBody = z.object({
   cardId: z.number().int(),
@@ -20,7 +21,10 @@ const createInventoryBody = z.object({
 
 export const GET = guarded(async (req: NextRequest) => {
   const db = await getTenantDb()
-  requireStaff(await getSession(await currentTenantId()))
+  const session = requireStaff(await getSession(await currentTenantId()))
+  // Cost basis is admin-only (F8): redact before the rows leave the server.
+  const respond = <T extends { item: { costPrice: number | null } }>(rows: T[]) =>
+    NextResponse.json(redactInventoryCosts(rows, session.staffRole))
 
   const cardId = req.nextUrl.searchParams.get('cardId')
   const qrCode = req.nextUrl.searchParams.get('qrCode')
@@ -33,25 +37,25 @@ export const GET = guarded(async (req: NextRequest) => {
     .leftJoin(priceCache, eq(cards.id, priceCache.cardId))
 
   if (cardId) {
-    return NextResponse.json(await base.where(and(
+    return respond(await base.where(and(
       eq(inventoryItems.cardId, parseIdParam(cardId, 'cardId')),
       eq(inventoryItems.isActive, true),
     )))
   }
   if (qrCode) {
-    return NextResponse.json(await base.where(and(
+    return respond(await base.where(and(
       eq(inventoryItems.qrCode, qrCode),
       eq(inventoryItems.isActive, true),
     )))
   }
   if (q) {
     // In-stock name search (used by the POS) — active items whose card name matches.
-    return NextResponse.json(await base.where(and(
+    return respond(await base.where(and(
       eq(inventoryItems.isActive, true),
       like(cards.name, `%${q}%`),
     )))
   }
-  return NextResponse.json(await base.where(eq(inventoryItems.isActive, true)))
+  return respond(await base.where(eq(inventoryItems.isActive, true)))
 })
 
 export const POST = guarded(async (req: NextRequest) => {

@@ -6,6 +6,7 @@ import { countInStockWants } from '@/lib/domain/wants'
 import { getOnboarding } from '@/lib/domain/onboarding'
 import { Nav } from '@/components/layout/Nav'
 import { SettingsProvider } from '@/components/shared/SettingsProvider'
+import { SessionProvider } from '@/components/shared/SessionProvider'
 import { OnboardingChecklist } from '@/components/onboarding/OnboardingChecklist'
 import { BillingBanner } from '@/components/shared/BillingBanner'
 
@@ -21,6 +22,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const tenantStatus = await currentTenantStatus()
   return (
     <SettingsProvider value={settings}>
+      <SessionProvider value={{ staffRole: session.staffRole }}>
       <div className="min-h-screen bg-background">
         <Nav
           shopName={settings.shopName}
@@ -32,6 +34,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {onboarding.enabled && <OnboardingChecklist initial={onboarding} />}
         <main className="container mx-auto px-4 py-6">{children}</main>
       </div>
+      </SessionProvider>
     </SettingsProvider>
   )
 }
