@@ -96,7 +96,7 @@ export async function createSale(
     if (unitPrice == null) {
       throw new DomainError('NO_PRICE', `No price for item ${item.inventoryItemId} — set a price override`, { inventoryItemId: item.inventoryItemId })
     }
-    return { ...item, unitPrice, costAtSale: row.item.costPrice }
+    return { ...item, unitPrice, costAtSale: row.item.costPrice, standardRated: row.item.productId != null }
   })
 
   const subtotal = lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)

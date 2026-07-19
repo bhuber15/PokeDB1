@@ -104,7 +104,7 @@ export function computeSaleTotals(
 // - Lines with no cost basis (costAtSale null) can't be in the scheme: they
 //   contribute 0 VAT and are counted so the caller can warn/block.
 export function computeMarginVat(
-  lines: { unitPrice: number; quantity: number; costAtSale: number | null }[],
+  lines: { unitPrice: number; quantity: number; costAtSale: number | null; standardRated?: boolean }[],
   discountPence: number,
 ): { vatAmount: number; noCostLineCount: number } {
   const values = lines.map(l => l.unitPrice * l.quantity)
@@ -125,8 +125,12 @@ export function computeMarginVat(
   let vatAmount = 0
   let noCostLineCount = 0
   lines.forEach((l, i) => {
-    if (l.costAtSale == null) { noCostLineCount++; return }
     const effLineValue = values[i] - alloc[i]
+    // Standard-rated lines (new retail products) are never margin-scheme
+    // goods: they owe inclusive VAT on the full effective value, and a
+    // missing cost basis is irrelevant to the scheme.
+    if (l.standardRated) { vatAmount += Math.round(effLineValue / MARGIN_VAT_DIVISOR); return }
+    if (l.costAtSale == null) { noCostLineCount++; return }
     const margin = Math.max(0, effLineValue - l.costAtSale * l.quantity)
     vatAmount += Math.round(margin / MARGIN_VAT_DIVISOR)
   })
