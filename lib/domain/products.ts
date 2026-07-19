@@ -38,12 +38,17 @@ export async function createProduct(
   dbc: Db = db,
 ): Promise<{ product: Product; item: InventoryItem }> {
   validateCommon(input)
-  if (input.name.trim().length === 0) throw new DomainError('INVALID_INPUT', 'Name is required')
   if (!Number.isInteger(input.sellPrice) || input.sellPrice < 1) {
     throw new DomainError('INVALID_INPUT', 'Sell price must be a positive integer (pence)')
   }
   if (!Number.isInteger(input.quantity) || input.quantity < 0) {
     throw new DomainError('INVALID_INPUT', 'Invalid quantity')
+  }
+  if (input.costPrice != null && (!Number.isInteger(input.costPrice) || input.costPrice < 0)) {
+    throw new DomainError('INVALID_INPUT', 'Cost price must be a non-negative integer (pence)')
+  }
+  if (input.lowStockThreshold != null && (!Number.isInteger(input.lowStockThreshold) || input.lowStockThreshold < 0)) {
+    throw new DomainError('INVALID_INPUT', 'Low-stock threshold must be a non-negative integer')
   }
 
   return dbc.transaction(async (tx) => {
@@ -95,6 +100,13 @@ export async function createProduct(
       qrCode: generateQRId(),
     }).returning()
     return { product, item }
+  }).catch((e: unknown) => {
+    // Concurrent createProduct with the same new EAN: the loser's insert hits
+    // products.ean's unique index — surface the clean duplicate error instead.
+    if (input.ean && isUniqueViolation(e, 'products.ean')) {
+      throw new DomainError('DUPLICATE_EAN', 'A product with this barcode already exists')
+    }
+    throw e
   })
 }
 

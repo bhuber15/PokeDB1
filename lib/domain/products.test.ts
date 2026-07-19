@@ -53,9 +53,50 @@ test('validation: bad category, bad EAN, non-positive price, negative quantity',
     { ...base, ean: 'abc123' },
     { ...base, sellPrice: 0 },
     { ...base, quantity: -1 },
+    { ...base, costPrice: -1 },
   ]) {
     await assert.rejects(createProduct(bad, dbc), (e: DomainError) => e.code === 'INVALID_INPUT')
   }
+})
+
+test('concurrent createProduct with the same new EAN: one wins, loser gets DUPLICATE_EAN', async () => {
+  // Deterministic re-creation of the race (cf. the sales.test.ts replay race):
+  // truly concurrent transactions on the in-memory driver fail with
+  // SQLITE_BUSY before either reaches the unique index. Instead the loser's
+  // in-transaction EAN pre-check is blinded to the winner's committed row —
+  // exactly what an unluckily-interleaved read sees — so its insert hits
+  // products.ean's unique index and must surface DUPLICATE_EAN, not a raw
+  // driver error.
+  const emptySelect = {
+    from() { return this },
+    leftJoin() { return this },
+    where() { return this },
+    limit() { return this },
+    then(resolve: (rows: never[]) => void) { resolve([]) },
+  }
+  const blindDbc = new Proxy(dbc, {
+    get(target, prop) {
+      const v = Reflect.get(target, prop, target)
+      if (prop === 'transaction' && typeof v === 'function') {
+        return (fn: (tx: object) => unknown) =>
+          (v as (cb: (tx: object) => unknown) => Promise<unknown>).call(target, (tx: object) =>
+            fn(new Proxy(tx, {
+              get(t, p) {
+                if (p === 'select') return () => emptySelect
+                const inner = Reflect.get(t, p, t)
+                return typeof inner === 'function' ? (inner as (...a: unknown[]) => unknown).bind(t) : inner
+              },
+            })))
+      }
+      return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(target) : v
+    },
+  }) as Db
+
+  const winner = await createProduct(base, dbc)
+  assert.ok(winner.product.id)
+  await assert.rejects(createProduct(base, blindDbc), (e: DomainError) => e.code === 'DUPLICATE_EAN')
+  const all = await dbc.select().from(schema.products)
+  assert.equal(all.length, 1) // one wins — no duplicate identity row
 })
 
 test('EAN is optional', async () => {
