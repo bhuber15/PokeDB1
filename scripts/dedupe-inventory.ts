@@ -12,6 +12,7 @@ async function main() {
   const rows = await db.select().from(inventoryItems).where(eq(inventoryItems.isActive, true))
   const groups = new Map<string, typeof rows>()
   for (const r of rows) {
+    if (r.productId != null) continue // product rows are one-per-product by unique index — never merge
     const key = `${r.cardId ?? 'x'}|${r.condition}`
     const arr = groups.get(key) ?? []
     arr.push(r)
