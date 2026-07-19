@@ -1,5 +1,5 @@
 // lib/db/schema.ts
-import { sqliteTable, text, integer, real, unique } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, real, unique, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
 
 export const staff = sqliteTable('staff', {
@@ -25,9 +25,23 @@ export const cards = sqliteTable('cards', {
   imageUrlLarge: text('image_url_large'),
 })
 
+// Non-card SKUs (sealed, accessories, snacks…). Identity only — stock, price
+// and deactivation live on the product's single inventory_items row.
+export const products = sqliteTable('products', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  category: text('category').notNull(), // ProductCategory — lib/product-categories.ts
+  ean: text('ean').unique(), // manufacturer barcode; nullable (SQLite: NULLs never collide)
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
 export const inventoryItems = sqliteTable('inventory_items', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   cardId: integer('card_id').references(() => cards.id),
+  // Exactly one of cardId/productId is set — enforced at the creation choke
+  // points (inventory POST is card-only; createProduct is the only productId
+  // writer), not by a CHECK (adding one would rebuild the table on SQLite).
+  productId: integer('product_id').references(() => products.id),
   condition: text('condition').notNull(), // NM | LP | MP | HP | DMG
   quantity: integer('quantity').notNull().default(0),
   costPrice: integer('cost_price'),
@@ -38,7 +52,7 @@ export const inventoryItems = sqliteTable('inventory_items', {
   lowStockThreshold: integer('low_stock_threshold').notNull().default(1),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
-})
+}, t => [uniqueIndex('inventory_items_product_id_unique').on(t.productId).where(sql`product_id IS NOT NULL`)])
 
 // Daily price snapshots (pence). Only recorded for in-stock or high-value
 // cards; pruned after 90 days by the sync cron.
@@ -246,6 +260,7 @@ export const wantList = sqliteTable('want_list', {
 
 export type Staff = typeof staff.$inferSelect
 export type Card = typeof cards.$inferSelect
+export type Product = typeof products.$inferSelect
 export type InventoryItem = typeof inventoryItems.$inferSelect
 export type PriceCache = typeof priceCache.$inferSelect
 export type Sale = typeof sales.$inferSelect
