@@ -5,6 +5,7 @@ import { sales, saleItems, inventoryItems, cards, products, refundItems } from '
 import { eq, sql } from 'drizzle-orm'
 import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
+import { PRODUCT_CONDITION } from '@/lib/product-categories'
 
 export const GET = guarded(async (_req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const db = await getTenantDb()
@@ -39,6 +40,6 @@ export const GET = guarded(async (_req: Request, { params }: { params: Promise<{
       subtotal: sale.subtotal, vatScheme: sale.vatScheme,
       paymentMethod: sale.paymentMethod, createdAt: sale.createdAt,
     },
-    items: rows.map(r => ({ ...r, name: r.name ?? 'Unknown card', condition: r.condition ?? null })),
+    items: rows.map(r => ({ ...r, name: r.name ?? 'Unknown card', condition: r.condition === PRODUCT_CONDITION ? null : (r.condition ?? null) })),
   })
 })
