@@ -1,7 +1,8 @@
-import { eq } from 'drizzle-orm'
+import { eq, or, like, and } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
-import { inventoryItems, stockAdjustments } from '@/lib/db/schema'
+import { inventoryItems, stockAdjustments, cards, products, priceCache } from '@/lib/db/schema'
 import { DomainError } from './errors'
+import { EAN_RE } from '@/lib/product-categories'
 import type { AdjustmentReason } from '@/lib/adjustment-reasons'
 
 export { ADJUSTMENT_REASONS, type AdjustmentReason } from '@/lib/adjustment-reasons'
@@ -56,6 +57,30 @@ export async function applyInventoryPatch(
       .returning()
     return updated
   })
+}
+
+// ---------------------------------------------------------------------------
+// searchSellables (POS search)
+// ---------------------------------------------------------------------------
+
+// POS search: active stock whose card OR product name matches; an all-digits
+// query tries the product barcode first so a USB scanner (types digits +
+// Enter) lands its item instantly and exactly.
+export async function searchSellables(q: string, dbc: Db = db) {
+  const base = () => dbc
+    .select({ item: inventoryItems, card: cards, product: products, prices: priceCache })
+    .from(inventoryItems)
+    .leftJoin(cards, eq(inventoryItems.cardId, cards.id))
+    .leftJoin(products, eq(inventoryItems.productId, products.id))
+    .leftJoin(priceCache, eq(cards.id, priceCache.cardId))
+  if (EAN_RE.test(q)) {
+    const exact = await base().where(and(eq(inventoryItems.isActive, true), eq(products.ean, q)))
+    if (exact.length > 0) return exact
+  }
+  return base().where(and(
+    eq(inventoryItems.isActive, true),
+    or(like(cards.name, `%${q}%`), like(products.name, `%${q}%`)),
+  ))
 }
 
 // ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 import { createTestDb, seedBase } from '../db/test-helpers'
 import * as schema from '../db/schema'
 import { createSale, type CreateSaleInput } from './sales'
+import { createRefund } from './refunds'
 import { DomainError } from './errors'
 import type { Db } from '../db'
 
@@ -407,4 +408,69 @@ test('replay race: loser of the client_uuid unique index gets the winner sale ba
   const allSales = await dbc.select().from(schema.sales)
   assert.equal(allSales.length, 1)
   assert.equal(await stockOf(1), 3) // decremented exactly once (5 − 2)
+})
+
+// ---------------------------------------------------------------------------
+// Products (non-card SKUs): standard-rated under the margin scheme
+// ---------------------------------------------------------------------------
+
+async function seedProduct(dbc: Db, over: Partial<{ costPrice: number | null }> = {}) {
+  await dbc.insert(schema.products).values({ id: 1, name: 'SV Booster', category: 'sealed', ean: '5060000000017' })
+  await dbc.insert(schema.inventoryItems).values({
+    id: 2, productId: 1, condition: 'NA', quantity: 10,
+    costPrice: over.costPrice === undefined ? 250 : over.costPrice,
+    sellPriceOverride: 600, qrCode: 'qr-p1',
+  })
+}
+
+test('margin scheme: product lines are standard-rated (inclusive), cards keep margin VAT', async () => {
+  await dbc.update(schema.settings).set({ vatScheme: 'margin' }).where(eq(schema.settings.id, 1))
+  await seedProduct(dbc)
+  // card margin VAT round((850-300)/6)=92 ; product VAT round(600/6)=100 ; total inclusive
+  const { total, marginNoCostCount } = await createSale({
+    ...base,
+    items: [{ inventoryItemId: 1, quantity: 1 }, { inventoryItemId: 2, quantity: 1 }],
+    expectedTotal: 1450,
+  }, dbc)
+  assert.equal(total, 1450)
+  assert.equal(marginNoCostCount, 0)
+  const [sale] = await dbc.select().from(schema.sales)
+  assert.equal(sale.vatAmount, 192)
+})
+
+test('margin scheme: a product with no cost never triggers marginNoCostHandling=block', async () => {
+  await dbc.update(schema.settings)
+    .set({ vatScheme: 'margin', marginNoCostHandling: 'block' })
+    .where(eq(schema.settings.id, 1))
+  await seedProduct(dbc, { costPrice: null })
+  const { total, marginNoCostCount } = await createSale({
+    ...base, items: [{ inventoryItemId: 2, quantity: 1 }], expectedTotal: 600,
+  }, dbc)
+  assert.equal(total, 600)
+  assert.equal(marginNoCostCount, 0)
+  const [sale] = await dbc.select().from(schema.sales)
+  assert.equal(sale.vatAmount, 100)
+})
+
+test('standard scheme: products get 20% on top like everything else', async () => {
+  await dbc.update(schema.settings).set({ vatScheme: 'standard' }).where(eq(schema.settings.id, 1))
+  await seedProduct(dbc)
+  const { total } = await createSale({
+    ...base, items: [{ inventoryItemId: 2, quantity: 1 }], expectedTotal: 720, // 600 + 120 VAT
+  }, dbc)
+  assert.equal(total, 720)
+})
+
+test('refunding a product line restocks it and refunds what was paid', async () => {
+  await seedProduct(dbc)
+  const { saleId } = await createSale({
+    ...base, items: [{ inventoryItemId: 2, quantity: 2 }], expectedTotal: 1200,
+  }, dbc)
+  const [saleItem] = await dbc.select().from(schema.saleItems)
+  const { amount } = await createRefund({
+    staffId: 1, saleId, method: 'cash', items: [{ saleItemId: saleItem.id, quantity: 1 }],
+  }, dbc)
+  assert.equal(amount, 600)
+  const [item] = await dbc.select().from(schema.inventoryItems).where(eq(schema.inventoryItems.id, 2))
+  assert.equal(item.quantity, 9) // 10 − 2 sold + 1 restocked
 })

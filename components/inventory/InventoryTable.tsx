@@ -9,11 +9,13 @@ import { calculateSellPrice, formatGBP, pickMarketPrice } from '@/lib/pricing'
 import { CardZoomModal, type CardZoomData } from '@/components/shared/CardZoomModal'
 import { useSettings } from '@/components/shared/SettingsProvider'
 import { useStaffRole } from '@/components/shared/SessionProvider'
-import type { Card, InventoryItem, PriceCache } from '@/lib/db/schema'
+import { PRODUCT_CATEGORY_LABELS, PRODUCT_CONDITION, type ProductCategory } from '@/lib/product-categories'
+import type { Card, InventoryItem, PriceCache, Product } from '@/lib/db/schema'
 
 export interface InventoryRow {
   item: InventoryItem
   card: Card | null
+  product: Product | null
   prices: PriceCache | null
 }
 
@@ -41,6 +43,7 @@ const CONDITION_BADGE: Record<string, string> = {
 interface Group {
   key: string
   card: Card | null
+  product: Product | null
   condition: string
   prices: PriceCache | null
   items: InventoryRow[]
@@ -49,13 +52,15 @@ interface Group {
 
 // Group identical card + condition into one display row (each physical item is kept
 // underneath, expandable, so per-item QR/cost/location are still accessible).
+// Products all share condition 'NA', so they're namespaced by productId to
+// keep distinct products from merging into the same group.
 function groupRows(rows: InventoryRow[]): Group[] {
   const map = new Map<string, Group>()
   for (const row of rows) {
-    const key = `${row.item.cardId ?? 'x'}|${row.item.condition}`
+    const key = `${row.item.cardId != null ? `c${row.item.cardId}` : `p${row.item.productId}`}|${row.item.condition}`
     let g = map.get(key)
     if (!g) {
-      g = { key, card: row.card, condition: row.item.condition, prices: row.prices, items: [], totalQty: 0 }
+      g = { key, card: row.card, product: row.product, condition: row.item.condition, prices: row.prices, items: [], totalQty: 0 }
       map.set(key, g)
     }
     g.items.push(row)
@@ -184,7 +189,7 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
           </thead>
           <tbody>
             {groups.map(group => {
-              const { card, prices } = group
+              const { card, product, prices } = group
               const sellPrice = calculateSellPrice(pickMarketPrice(prices, primaryPriceSource), group.items[0].item.sellPriceOverride, marginMultiplier)
               const multi = group.items.length > 1
               const isOpen = expanded.has(group.key)
@@ -215,16 +220,26 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
                               {card.name}
                             </button>
                           ) : (
-                            <div className="font-medium">—</div>
+                            <div className="font-medium">{product?.name ?? '—'}</div>
                           )}
-                          <div className="text-xs text-muted-foreground">{card?.setName} · #{card?.setNumber}</div>
+                          {card && (
+                            <div className="text-xs text-muted-foreground">{card.setName} · #{card.setNumber}</div>
+                          )}
                           {card?.variant && <div className="text-xs text-accent">{card.variant}</div>}
+                          {product && (
+                            <div className="text-xs text-muted-foreground">
+                              {PRODUCT_CATEGORY_LABELS[product.category as ProductCategory] ?? product.category}
+                              {product.ean ? ` · ${product.ean}` : ''}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${CONDITION_BADGE[group.condition] ?? 'border-border text-muted-foreground'}`}>
-                        {group.condition}
+                        {group.condition === PRODUCT_CONDITION && product
+                          ? (PRODUCT_CATEGORY_LABELS[product.category as ProductCategory] ?? product.category)
+                          : group.condition}
                       </span>
                     </td>
                     <td className="px-4 py-3">

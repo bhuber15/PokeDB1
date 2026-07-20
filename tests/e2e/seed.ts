@@ -32,6 +32,14 @@ async function seed() {
     costPrice: 200, sellPriceOverride: 500, // £5.00 sell price, pence
     qrCode: 'e2e-0000-qr',
   })
+  await db.insert(schema.products).values({
+    id: 1, name: 'SV Booster Pack', category: 'sealed', ean: '5060000000017',
+  })
+  await db.insert(schema.inventoryItems).values({
+    id: 2, productId: 1, condition: 'NA', quantity: 4,
+    costPrice: 250, sellPriceOverride: 450, // £4.50
+    qrCode: 'e2e-0001-qr',
+  })
 
   client.close()
   console.log(`e2e database seeded at ${E2E_DB_PATH}`)

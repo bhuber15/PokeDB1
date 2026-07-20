@@ -53,8 +53,8 @@ export function SearchBar({ onSearch, onQRDetected, loading }: SearchBarProps) {
         value={value}
         onChange={e => setValue(e.target.value)}
         onKeyDown={e => e.key === 'Enter' && submit()}
-        placeholder="Scan QR label or type card name / set number…"
-        aria-label="Search cards or scan QR label"
+        placeholder="Scan barcode / QR label or type a name…"
+        aria-label="Search inventory or scan a barcode"
         className="h-12 text-base"
         disabled={loading}
       />

@@ -7,7 +7,7 @@
 
 import { and, desc, eq, exists, gte, inArray, like, lt, or, sql } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
-import { sales, saleItems, inventoryItems, cards, staff, customers } from '@/lib/db/schema'
+import { sales, saleItems, inventoryItems, cards, products, staff, customers } from '@/lib/db/schema'
 import { DomainError } from './errors'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -93,10 +93,15 @@ export async function searchSales(filters: SaleSearchFilters, dbc: Db = db): Pro
   // One query for all line items across the matches → "2× Pikachu, 1× Charizard"
   const saleIds = matched.map(r => r.sale.id)
   const lines = saleIds.length > 0
-    ? await dbc.select({ saleId: saleItems.saleId, quantity: saleItems.quantity, name: cards.name })
+    ? await dbc.select({
+        saleId: saleItems.saleId,
+        quantity: saleItems.quantity,
+        name: sql<string | null>`COALESCE(${cards.name}, ${products.name})`,
+      })
         .from(saleItems)
         .leftJoin(inventoryItems, eq(saleItems.inventoryItemId, inventoryItems.id))
         .leftJoin(cards, eq(inventoryItems.cardId, cards.id))
+        .leftJoin(products, eq(inventoryItems.productId, products.id))
         .where(inArray(saleItems.saleId, saleIds))
     : []
   const itemsBySale = new Map<number, string[]>()

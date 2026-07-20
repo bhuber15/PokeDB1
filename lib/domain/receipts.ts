@@ -5,12 +5,13 @@
 // it through lib/email — which is a logged no-op without RESEND_API_KEY, so
 // nothing here blocks when no provider is configured.
 
-import { asc, eq } from 'drizzle-orm'
+import { asc, eq, sql } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
-import { sales, saleItems, salePayments, inventoryItems, cards, customers } from '@/lib/db/schema'
+import { sales, saleItems, salePayments, inventoryItems, cards, products, customers } from '@/lib/db/schema'
 import { getSettings } from '@/lib/settings'
 import { sendEmail, type SendResult } from '@/lib/email'
 import { receiptHtml, receiptText, type ReceiptData } from '@/lib/receipt-html'
+import { PRODUCT_CONDITION } from '@/lib/product-categories'
 import { DomainError } from './errors'
 
 // Deliberately loose: catches till typos, not RFC 5322.
@@ -28,7 +29,7 @@ export async function buildReceiptData(
 
   const lineRows = await dbc
     .select({
-      name: cards.name,
+      name: sql<string | null>`COALESCE(${cards.name}, ${products.name})`,
       condition: inventoryItems.condition,
       quantity: saleItems.quantity,
       price: saleItems.priceAtSale,
@@ -36,6 +37,7 @@ export async function buildReceiptData(
     .from(saleItems)
     .leftJoin(inventoryItems, eq(saleItems.inventoryItemId, inventoryItems.id))
     .leftJoin(cards, eq(inventoryItems.cardId, cards.id))
+    .leftJoin(products, eq(inventoryItems.productId, products.id))
     .where(eq(saleItems.saleId, saleId))
     .orderBy(asc(saleItems.id))
 
@@ -56,8 +58,8 @@ export async function buildReceiptData(
     at: sale.createdAt.replace(' ', 'T') + 'Z', // stored as UTC "YYYY-MM-DD HH:MM:SS"
     shopName: settings.shopName,
     lines: lineRows.map(l => ({
-      name: l.name ?? 'Unknown card',
-      condition: l.condition ?? '',
+      name: l.name ?? 'Unknown item',
+      condition: l.condition === PRODUCT_CONDITION ? '' : (l.condition ?? ''),
       quantity: l.quantity,
       price: l.price,
     })),

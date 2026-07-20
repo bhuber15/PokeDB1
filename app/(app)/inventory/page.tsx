@@ -52,7 +52,7 @@ export default function InventoryPage() {
       const { dataUrl } = await res.json()
       setQrModal({
         dataUrl,
-        cardName: row.card?.name ?? 'Unknown',
+        cardName: row.card?.name ?? row.product?.name ?? 'Unknown',
         condition: row.item.condition,
         // Match the sell price shown in the table: primary price source × margin.
         sellPrice: formatGBP(calculateSellPrice(

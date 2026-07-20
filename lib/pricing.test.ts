@@ -153,3 +153,28 @@ test('computeMarginVat: discount clamped to [0, subtotal]', () => {
     { vatAmount: 0, noCostLineCount: 0 },
   )
 })
+
+test('computeMarginVat: standardRated line owes inclusive VAT on full effective value', () => {
+  // product £6.00 (cost irrelevant), no discount → VAT = round(600/6) = 100
+  const { vatAmount, noCostLineCount } = computeMarginVat(
+    [{ unitPrice: 600, quantity: 1, costAtSale: 250, standardRated: true }], 0)
+  assert.equal(vatAmount, 100)
+  assert.equal(noCostLineCount, 0)
+})
+
+test('computeMarginVat: standardRated line with null cost is NOT a no-cost line', () => {
+  const { vatAmount, noCostLineCount } = computeMarginVat(
+    [{ unitPrice: 600, quantity: 1, costAtSale: null, standardRated: true }], 0)
+  assert.equal(vatAmount, 100)
+  assert.equal(noCostLineCount, 0)
+})
+
+test('computeMarginVat: mixed margin + standardRated lines share the discount allocation', () => {
+  // card 850 (cost 300) + product 600, discount 145 → allocations 85/60
+  // card: margin (850-85) - 300 = 465 → VAT 78 ; product: (600-60)/6 = 90
+  const { vatAmount } = computeMarginVat([
+    { unitPrice: 850, quantity: 1, costAtSale: 300 },
+    { unitPrice: 600, quantity: 1, costAtSale: 250, standardRated: true },
+  ], 145)
+  assert.equal(vatAmount, 78 + 90)
+})

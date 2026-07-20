@@ -78,6 +78,22 @@ test('searchSales includes voided sales (flagged via sale.voidedAt)', async () =
   assert.ok(rows[0].sale.voidedAt)
 })
 
+test('searchSales itemsSummary names product lines (non-card SKUs)', async () => {
+  await dbc.insert(schema.products).values({ id: 1, name: 'SV Booster', category: 'sealed' })
+  await dbc.insert(schema.inventoryItems).values({
+    id: 3, productId: 1, condition: 'NA', quantity: 5, qrCode: 's3',
+  })
+  const [s3] = await dbc.insert(schema.sales).values({
+    staffId: 1, subtotal: 600, total: 600, paymentMethod: 'cash',
+    createdAt: '2026-07-12 09:00:00',
+  }).returning()
+  await dbc.insert(schema.saleItems).values({ saleId: s3.id, inventoryItemId: 3, quantity: 1, priceAtSale: 600 })
+
+  const rows = await searchSales({ q: String(s3.id) }, dbc)
+  assert.equal(rows.length, 1)
+  assert.match(rows[0].itemsSummary, /SV Booster/)
+})
+
 test('searchSales validates input: empty filters and bad dates rejected', async () => {
   const bad = (filters: Record<string, unknown>) =>
     assert.rejects(

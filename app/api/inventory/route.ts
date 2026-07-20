@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getTenantDb } from '@/lib/db'
-import { inventoryItems, cards, priceCache } from '@/lib/db/schema'
-import { eq, and, like } from 'drizzle-orm'
+import { inventoryItems, cards, priceCache, products } from '@/lib/db/schema'
+import { eq, and } from 'drizzle-orm'
 import { generateQRId } from '@/lib/qr'
 import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody, parseIdParam } from '@/lib/validation'
-import { redactInventoryCosts } from '@/lib/domain/inventory'
+import { redactInventoryCosts, searchSellables } from '@/lib/domain/inventory'
 
 const createInventoryBody = z.object({
   cardId: z.number().int(),
@@ -31,9 +31,10 @@ export const GET = guarded(async (req: NextRequest) => {
   const q = req.nextUrl.searchParams.get('q')?.trim()
 
   const base = db
-    .select({ item: inventoryItems, card: cards, prices: priceCache })
+    .select({ item: inventoryItems, card: cards, product: products, prices: priceCache })
     .from(inventoryItems)
     .leftJoin(cards, eq(inventoryItems.cardId, cards.id))
+    .leftJoin(products, eq(inventoryItems.productId, products.id))
     .leftJoin(priceCache, eq(cards.id, priceCache.cardId))
 
   if (cardId) {
@@ -49,11 +50,8 @@ export const GET = guarded(async (req: NextRequest) => {
     )))
   }
   if (q) {
-    // In-stock name search (used by the POS) — active items whose card name matches.
-    return respond(await base.where(and(
-      eq(inventoryItems.isActive, true),
-      like(cards.name, `%${q}%`),
-    )))
+    // POS search (cards + products + barcode fast-path) — logic in the domain.
+    return respond(await searchSellables(q, db))
   }
   return respond(await base.where(eq(inventoryItems.isActive, true)))
 })

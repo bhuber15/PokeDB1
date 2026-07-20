@@ -12,6 +12,7 @@ import { StockSection } from '@/components/reports/StockSection'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
 import { ReceiptDialog, type ReceiptData } from '@/components/pos/ReceiptDialog'
+import { PRODUCT_CATEGORY_LABELS, type ProductCategory } from '@/lib/product-categories'
 
 interface TodayStats {
   totalRevenue: number
@@ -36,6 +37,7 @@ interface RangeSummary {
   grossMargin: number
   saleCount: number
   byPaymentMethod: { paymentMethod: string; total: number }[]
+  byCategory: { category: string; quantitySold: number; revenue: number }[]
   byStaff: { staffId: number | null; staffName: string | null; saleCount: number; revenue: number; margin: number; noCostLines: number }[]
   topCards: { cardId: number; name: string; quantitySold: number; revenue: number }[]
 }
@@ -186,6 +188,29 @@ export default function ReportsPage() {
                 <span className="text-muted-foreground">{c.quantitySold} sold · {formatGBP(c.revenue)}</span>
               </div>
             ))}
+          </div>
+        )}
+        {summary && summary.byCategory.length > 1 && (
+          <div className="border rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="border-b bg-muted/30">
+                <tr>
+                  {['Category', 'Items sold', 'Revenue'].map(h => (
+                    <th key={h} className="text-left px-3 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide last:text-right">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {summary.byCategory.map(c => (
+                  <tr key={c.category}>
+                    <td className="px-3 py-2">{c.category === 'singles' ? 'Singles'
+                      : PRODUCT_CATEGORY_LABELS[c.category as ProductCategory] ?? c.category}</td>
+                    <td className="px-3 py-2 tabular-nums">{c.quantitySold}</td>
+                    <td className="px-3 py-2 tabular-nums text-right">{formatGBP(c.revenue)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
