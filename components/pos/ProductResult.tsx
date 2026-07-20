@@ -2,7 +2,6 @@
 import { useState } from 'react'
 import { MinusIcon, PlusIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { formatGBP } from '@/lib/pricing'
 import { PRODUCT_CATEGORY_LABELS, type ProductCategory } from '@/lib/product-categories'
 import type { Product } from '@/lib/db/schema'
@@ -28,7 +27,6 @@ export function ProductResult({ product, itemId, quantity, price, onAddToCart }:
             {label}{product.ean ? ` · ${product.ean}` : ''} · {quantity} in stock
           </p>
         </div>
-        <Badge variant="secondary" className="shrink-0">{label}</Badge>
       </div>
       <div className="flex items-center gap-3 pt-1 border-t">
         <span className="text-2xl font-bold">{formatGBP(price)}</span>

@@ -20,6 +20,7 @@ export function AddProductForm() {
     if (ean && !EAN_RE.test(ean)) { toast.error('Barcode must be 8–14 digits'); return }
     const sellPrice = parsePounds(form.sellPrice)
     if (sellPrice < 1) { toast.error('Sell price is required'); return }
+    const cost = parsePounds(form.costPrice)
     setSaving(true)
     try {
       const res = await fetch('/api/products', {
@@ -30,7 +31,7 @@ export function AddProductForm() {
           category: form.category,
           ean: ean || null,
           sellPrice,
-          costPrice: form.costPrice.trim() ? parsePounds(form.costPrice) : null,
+          costPrice: form.costPrice.trim() && cost > 0 ? cost : null,
           quantity: Math.max(0, parseInt(form.quantity, 10) || 0),
           lowStockThreshold: Math.max(0, parseInt(form.lowStockThreshold, 10) || 0),
         }),
