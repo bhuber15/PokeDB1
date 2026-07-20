@@ -8,6 +8,7 @@ import {
   getInventoryValuation, getAgedStock, getLowStock, getMarginByStaff, getBuyExportRows,
   getSalesByPaymentMethod,
 } from './reports'
+import { createSale } from './sales'
 import type { Db } from '../db'
 
 let dbc: Db
@@ -279,6 +280,28 @@ test('getMarginStockBook: qty>1 line — all money columns are line totals and r
   assert.equal(rows[0].noCostBasis, false)
   // Full reconciliation check: Sale − Cost === Margin
   assert.equal(rows[0].salePence - (rows[0].costPence as number), rows[0].marginPence)
+})
+
+// Self-contained: seeds its own rows with explicit overrides so it does not
+// depend on this file's beforeEach pricing. Add imports if missing:
+// createSale from './sales'.
+test('margin stock book excludes standard-rated product lines', async () => {
+  await dbc.update(schema.settings).set({ vatScheme: 'margin' }).where(eq(schema.settings.id, 1))
+  await dbc.insert(schema.inventoryItems).values({
+    id: 51, cardId: 1, condition: 'NM', quantity: 5, costPrice: 300, sellPriceOverride: 850, qrCode: 'qr-t51',
+  })
+  await dbc.insert(schema.products).values({ id: 61, name: 'SV Booster', category: 'sealed' })
+  await dbc.insert(schema.inventoryItems).values({
+    id: 52, productId: 61, condition: 'NA', quantity: 5, costPrice: 250, sellPriceOverride: 600, qrCode: 'qr-t52',
+  })
+  await createSale({
+    staffId: 1, items: [{ inventoryItemId: 51, quantity: 1 }, { inventoryItemId: 52, quantity: 1 }],
+    paymentMethod: 'cash', discount: 0, expectedTotal: 1450,
+  }, dbc)
+  const book = await getMarginStockBook('2020-01-01', '2099-01-01', dbc)
+  const productLines = book.filter(r => r.cardName == null)
+  assert.equal(productLines.length, 0) // no standard-rated product lines in the book
+  assert.ok(book.some(r => r.salePence === 850)) // the card line is present
 })
 
 // ---------------------------------------------------------------------------

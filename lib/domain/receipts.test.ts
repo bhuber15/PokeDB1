@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 import { createTestDb, seedBase } from '../db/test-helpers'
 import * as schema from '../db/schema'
 import { buildReceiptData, emailReceipt } from './receipts'
+import { createSale } from './sales'
 import { DomainError } from './errors'
 import type { Db } from '../db'
 
@@ -113,4 +114,24 @@ test('emailReceipt rejects an invalid explicit address', async () => {
     emailReceipt({ saleId, email: 'not-an-email' }, dbc),
     (e: unknown) => e instanceof DomainError && e.code === 'INVALID_INPUT',
   )
+})
+
+// ---------------------------------------------------------------------------
+// Product lines (non-card SKUs)
+// ---------------------------------------------------------------------------
+
+// Self-contained high ids so it cannot collide with this file's beforeEach
+// seeding. Add imports if missing: createSale from './sales'.
+test('receipt lines name products and blank the NA condition', async () => {
+  await dbc.insert(schema.products).values({ id: 71, name: 'SV Booster', category: 'sealed' })
+  await dbc.insert(schema.inventoryItems).values({
+    id: 71, productId: 71, condition: 'NA', quantity: 5, sellPriceOverride: 450, qrCode: 'qr-t71',
+  })
+  const { saleId } = await createSale({
+    staffId: 1, items: [{ inventoryItemId: 71, quantity: 1 }],
+    paymentMethod: 'cash', discount: 0, expectedTotal: 450,
+  }, dbc)
+  const { receipt } = await buildReceiptData(saleId, dbc)
+  assert.equal(receipt.lines[0].name, 'SV Booster')
+  assert.equal(receipt.lines[0].condition, '')
 })

@@ -1,7 +1,7 @@
 // app/api/sales/history/route.ts
 import { NextResponse } from 'next/server'
 import { getTenantDb } from '@/lib/db'
-import { sales, saleItems, inventoryItems, cards, staff } from '@/lib/db/schema'
+import { sales, saleItems, inventoryItems, cards, products, staff } from '@/lib/db/schema'
 import { and, eq, sql, gte, inArray, isNull } from 'drizzle-orm'
 import { getSession, requireAdmin, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
@@ -30,10 +30,15 @@ export const GET = guarded(async () => {
   // One query for all line items across the 25 sales → "2× Pikachu, 1× Charizard"
   const saleIds = recent.map(r => r.sale.id)
   const lines = saleIds.length > 0
-    ? await db.select({ saleId: saleItems.saleId, quantity: saleItems.quantity, name: cards.name })
+    ? await db.select({
+        saleId: saleItems.saleId,
+        quantity: saleItems.quantity,
+        name: sql<string | null>`COALESCE(${cards.name}, ${products.name})`,
+      })
         .from(saleItems)
         .leftJoin(inventoryItems, eq(saleItems.inventoryItemId, inventoryItems.id))
         .leftJoin(cards, eq(inventoryItems.cardId, cards.id))
+        .leftJoin(products, eq(inventoryItems.productId, products.id))
         .where(inArray(saleItems.saleId, saleIds))
     : []
   const itemsBySale = new Map<number, string[]>()

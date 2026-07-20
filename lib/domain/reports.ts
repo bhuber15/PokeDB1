@@ -163,6 +163,7 @@ export async function getMarginStockBook(from: string, to: string, dbc: Db = db)
       isNull(sales.voidedAt),
       gte(sales.createdAt, fromTs),
       lt(sales.createdAt, toExcl),
+      isNull(inventoryItems.productId), // standard-rated product lines are not margin-scheme records
     ))
     .orderBy(sales.createdAt)
 
