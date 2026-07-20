@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { SearchBar } from '@/components/pos/SearchBar'
 import { CardResult, InventoryOption } from '@/components/pos/CardResult'
+import { ProductResult } from '@/components/pos/ProductResult'
 import { Cart, CartItem } from '@/components/pos/Cart'
 import { CheckoutDialog } from '@/components/pos/CheckoutDialog'
 import { ReceiptDialog, type ReceiptData } from '@/components/pos/ReceiptDialog'
@@ -13,7 +14,7 @@ import { formatGBP, computeSaleTotals } from '@/lib/pricing'
 import {
   readQueue, enqueueSale, removeSale, setConflict, clearConflict, type QueuedSale,
 } from '@/lib/sale-queue'
-import type { Card, PriceCache } from '@/lib/db/schema'
+import type { Card, PriceCache, Product } from '@/lib/db/schema'
 
 interface SearchState {
   card: Card
@@ -22,8 +23,9 @@ interface SearchState {
 }
 
 interface InvRow {
-  item: { id: number; cardId: number | null; condition: string; quantity: number; sellPriceOverride: number | null }
+  item: { id: number; cardId: number | null; productId: number | null; condition: string; quantity: number; sellPriceOverride: number | null }
   card: Card | null
+  product: Product | null
   prices: PriceCache | null
 }
 
@@ -47,9 +49,18 @@ function groupByCard(rows: InvRow[]): SearchState[] {
   return [...byCard.values()]
 }
 
+interface ProductHit { product: Product; itemId: number; quantity: number; price: number }
+
+function extractProducts(rows: InvRow[]): ProductHit[] {
+  return rows
+    .filter(r => r.product != null && r.item.quantity > 0)
+    .map(r => ({ product: r.product!, itemId: r.item.id, quantity: r.item.quantity, price: r.item.sellPriceOverride ?? 0 }))
+}
+
 export default function POSPage() {
   const { shopName, vatScheme } = useSettings()
   const [results, setResults] = useState<SearchState[]>([])
+  const [productResults, setProductResults] = useState<ProductHit[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -115,13 +126,16 @@ export default function POSPage() {
     const res = await fetch(`/api/inventory?q=${encodeURIComponent(query)}`)
     const rows = (await res.json()) as InvRow[]
     const grouped = groupByCard(rows)
-    if (grouped.length === 0) {
-      toast.error(`No in-stock cards found for "${query}"`)
+    const productHits = extractProducts(rows)
+    if (grouped.length === 0 && productHits.length === 0) {
+      toast.error(`No in-stock items found for "${query}"`)
       setResults([])
+      setProductResults([])
       setLoading(false)
       return
     }
     setResults(grouped)
+    setProductResults(productHits)
     setLoading(false)
   }
 
@@ -130,13 +144,16 @@ export default function POSPage() {
     const res = await fetch(`/api/inventory?qrCode=${encodeURIComponent(qrCode)}`)
     const rows = (await res.json()) as InvRow[]
     const grouped = groupByCard(rows)
-    if (grouped.length === 0) {
+    const productHits = extractProducts(rows)
+    if (grouped.length === 0 && productHits.length === 0) {
       toast.error('QR code not found in inventory')
       setResults([])
+      setProductResults([])
       setLoading(false)
       return
     }
     setResults(grouped)
+    setProductResults(productHits)
     setLoading(false)
   }
 
@@ -248,7 +265,7 @@ export default function POSPage() {
       <h1 className="sr-only">Point of Sale</h1>
       <div className="flex flex-col gap-4 overflow-y-auto">
         <SearchBar onSearch={handleSearch} onQRDetected={handleQRDetected} loading={loading} />
-        {results.length === 0 && !loading && (
+        {results.length === 0 && productResults.length === 0 && !loading && (
           <div className="flex-1 flex items-center justify-center text-center text-sm text-muted-foreground p-8">
             <p>
               Scan a QR label or search the catalogue to begin.<br />
@@ -256,6 +273,10 @@ export default function POSPage() {
             </p>
           </div>
         )}
+        {productResults.map(p => (
+          <ProductResult key={p.itemId} product={p.product} itemId={p.itemId}
+            quantity={p.quantity} price={p.price} onAddToCart={handleAddToCart} />
+        ))}
         {results.map(r => (
           <CardResult
             key={r.card.id}
