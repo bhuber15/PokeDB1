@@ -6,7 +6,7 @@ import * as schema from '../db/schema'
 import {
   getCashUpSummary, getSalesByStaff, getMarginStockBook,
   getInventoryValuation, getAgedStock, getLowStock, getMarginByStaff, getBuyExportRows,
-  getSalesByPaymentMethod,
+  getSalesByPaymentMethod, getSalesByCategory,
 } from './reports'
 import { createSale } from './sales'
 import type { Db } from '../db'
@@ -537,4 +537,29 @@ test('getSalesByPaymentMethod excludes voided sales', async () => {
 
   const rows = await getSalesByPaymentMethod(DAY, DAY, dbc)
   assert.equal(rows.length, 0)
+})
+
+// ---------------------------------------------------------------------------
+// getSalesByCategory
+// ---------------------------------------------------------------------------
+
+// Self-contained rows with explicit overrides (independent of beforeEach pricing).
+test('sales by category: cards are singles, products report their category', async () => {
+  await dbc.insert(schema.inventoryItems).values({
+    id: 53, cardId: 1, condition: 'NM', quantity: 5, sellPriceOverride: 850, qrCode: 'qr-t53',
+  })
+  await dbc.insert(schema.products).values({ id: 62, name: 'Sleeves', category: 'accessories' })
+  await dbc.insert(schema.inventoryItems).values({
+    id: 54, productId: 62, condition: 'NA', quantity: 5, sellPriceOverride: 799, qrCode: 'qr-t54',
+  })
+  await createSale({
+    staffId: 1, items: [{ inventoryItemId: 53, quantity: 2 }, { inventoryItemId: 54, quantity: 1 }],
+    paymentMethod: 'cash', discount: 0, expectedTotal: 2499, // 2×850 + 799
+  }, dbc)
+  const rows = await getSalesByCategory('2020-01-01', '2099-01-01', dbc)
+  const byCat = Object.fromEntries(rows.map(r => [r.category, r]))
+  assert.equal(byCat.singles.quantitySold, 2)
+  assert.equal(byCat.singles.revenue, 1700)
+  assert.equal(byCat.accessories.quantitySold, 1)
+  assert.equal(byCat.accessories.revenue, 799)
 })

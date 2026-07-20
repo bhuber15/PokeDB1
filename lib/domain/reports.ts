@@ -8,7 +8,7 @@
 
 import { and, gt, gte, lt, or, isNull, sql, eq, asc, desc } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
-import { sales, salePayments, refunds, buyTransactions, staff, saleItems, inventoryItems, cards, priceCache, customers, buyItems } from '@/lib/db/schema'
+import { sales, salePayments, refunds, buyTransactions, staff, saleItems, inventoryItems, cards, priceCache, customers, buyItems, products } from '@/lib/db/schema'
 import { MARGIN_VAT_DIVISOR, pickMarketPrice } from '@/lib/pricing'
 import { getSettings } from '@/lib/settings'
 import { DomainError } from './errors'
@@ -437,4 +437,36 @@ export async function getSalesByPaymentMethod(from: string, to: string, dbc: Db 
     .innerJoin(sales, eq(salePayments.saleId, sales.id))
     .where(and(isNull(sales.voidedAt), gte(sales.createdAt, fromTs), lt(sales.createdAt, toExcl)))
     .groupBy(salePayments.method)
+}
+
+// ---------------------------------------------------------------------------
+// getSalesByCategory
+// ---------------------------------------------------------------------------
+
+export interface CategorySales {
+  category: string // 'singles' | ProductCategory
+  quantitySold: number
+  revenue: number // pence
+}
+
+/**
+ * Sold lines bucketed by what they were: card lines are 'singles', product
+ * lines report their product category. Voided sales excluded like every aggregate.
+ */
+export async function getSalesByCategory(from: string, to: string, dbc: Db = db): Promise<CategorySales[]> {
+  const fromTs = `${from} 00:00:00`
+  const toExcl = sql<string>`datetime(${to}, '+1 day')`
+  return dbc
+    .select({
+      category: sql<string>`COALESCE(${products.category}, 'singles')`,
+      quantitySold: sql<number>`COALESCE(SUM(${saleItems.quantity}), 0)`,
+      revenue: sql<number>`COALESCE(SUM(${saleItems.priceAtSale} * ${saleItems.quantity}), 0)`,
+    })
+    .from(saleItems)
+    .innerJoin(sales, eq(saleItems.saleId, sales.id))
+    .leftJoin(inventoryItems, eq(saleItems.inventoryItemId, inventoryItems.id))
+    .leftJoin(products, eq(inventoryItems.productId, products.id))
+    .where(and(isNull(sales.voidedAt), gte(sales.createdAt, fromTs), lt(sales.createdAt, toExcl)))
+    .groupBy(sql`COALESCE(${products.category}, 'singles')`)
+    .orderBy(sql`SUM(${saleItems.priceAtSale} * ${saleItems.quantity}) DESC`)
 }
