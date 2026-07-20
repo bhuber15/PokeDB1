@@ -274,12 +274,12 @@ export default function POSPage() {
           </div>
         )}
         {productResults.map(p => (
-          <ProductResult key={p.itemId} product={p.product} itemId={p.itemId}
+          <ProductResult key={`p-${p.itemId}`} product={p.product} itemId={p.itemId}
             quantity={p.quantity} price={p.price} onAddToCart={handleAddToCart} />
         ))}
         {results.map(r => (
           <CardResult
-            key={r.card.id}
+            key={`c-${r.card.id}`}
             card={r.card}
             prices={r.prices}
             inventoryOptions={r.inventoryOptions}
