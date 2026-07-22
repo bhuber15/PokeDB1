@@ -76,7 +76,7 @@ export interface SweepResult {
 
 const CHUNK = 100 // rows per multi-row statement, well under SQLite's param limit
 
-function chunked<T>(arr: T[], size: number): T[][] {
+export function chunked<T>(arr: T[], size: number): T[][] {
   const out: T[][] = []
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
   return out
