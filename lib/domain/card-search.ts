@@ -4,7 +4,7 @@ import { cards, priceCache, type Card, type PriceCache } from '@/lib/db/schema'
 import { searchPokemonCards, extractBestPrice, type PokemonTCGCard } from '@/lib/apis/pokemon-tcg'
 import { getSettings } from '@/lib/settings'
 import { usdToGbp } from '@/lib/pricing'
-import { syncCardmarketForCard, refreshStaleCardmarket } from '@/lib/prices/sync'
+import { syncMarketPricesForCard, refreshStaleCardmarket } from '@/lib/prices/sync'
 import { similarity } from '@/lib/fuzzy'
 
 // Catalogue searches return up to 100 rows — enough for every printing of a
@@ -34,7 +34,7 @@ export interface CardSearchResult {
 
 interface SearchDeps {
   fetchLive?: (q: string) => Promise<PokemonTCGCard[]>
-  syncCardmarket?: typeof syncCardmarketForCard
+  syncMarketPrices?: typeof syncMarketPricesForCard
 }
 
 // Local catalogue first (instant, works offline), then fuzzy name suggestions
@@ -47,7 +47,7 @@ export async function searchCards(
   deps: SearchDeps = {},
 ): Promise<CardSearchResult> {
   const fetchLive = deps.fetchLive ?? searchPokemonCards
-  const syncCardmarket = deps.syncCardmarket ?? syncCardmarketForCard
+  const syncMarketPrices = deps.syncMarketPrices ?? syncMarketPricesForCard
 
   // Ranked: exact name, then name prefix, then substring/set-number match.
   const likeMatches = await dbc.select().from(cards)
@@ -58,12 +58,12 @@ export async function searchCards(
     )
     .limit(CARD_SEARCH_LIMIT)
   if (likeMatches.length > 0) {
-    return { cards: likeMatches, prices: await pricesForFresh(likeMatches, dbc, syncCardmarket), fuzzy: false, unavailable: false }
+    return { cards: likeMatches, prices: await pricesForFresh(likeMatches, dbc, syncMarketPrices), fuzzy: false, unavailable: false }
   }
 
   const fuzzyMatches = await searchFuzzy(q, dbc)
   if (fuzzyMatches.length > 0) {
-    return { cards: fuzzyMatches, prices: await pricesForFresh(fuzzyMatches, dbc, syncCardmarket), fuzzy: true, unavailable: false }
+    return { cards: fuzzyMatches, prices: await pricesForFresh(fuzzyMatches, dbc, syncMarketPrices), fuzzy: true, unavailable: false }
   }
 
   // Nothing local — fall back to the live API (e.g. a set newer than the
@@ -77,10 +77,10 @@ export async function searchCards(
   }
   const settings = await getSettings(dbc)
   const newCards = (await Promise.all(
-    apiCards.map(apiCard => insertCardSafely(apiCard, settings.highValueThreshold, settings.usdToGbp, settings.eurToGbp, dbc, syncCardmarket))
+    apiCards.map(apiCard => insertCardSafely(apiCard, settings.highValueThreshold, settings.usdToGbp, settings.eurToGbp, dbc, syncMarketPrices))
   )).filter((c): c is Card => c != null)
 
-  return { cards: newCards, prices: await pricesForFresh(newCards, dbc, syncCardmarket), fuzzy: false, unavailable: false }
+  return { cards: newCards, prices: await pricesForFresh(newCards, dbc, syncMarketPrices), fuzzy: false, unavailable: false }
 }
 
 // Refresh missing/stale Cardmarket cache entries for the top results before
@@ -89,7 +89,7 @@ export async function searchCards(
 // never covers cards the shop hasn't stocked. Bounded and best-effort inside
 // refreshStaleCardmarket, so a TCGdex outage cannot slow or break search.
 async function pricesForFresh(
-  rows: Card[], dbc: Db, sync: typeof syncCardmarketForCard,
+  rows: Card[], dbc: Db, sync: typeof syncMarketPricesForCard,
 ): Promise<Record<number, PriceCache>> {
   await refreshStaleCardmarket(rows, dbc, { sync })
   return pricesFor(rows, dbc)
@@ -135,7 +135,7 @@ async function insertCardSafely(
   rate: number,
   eurRate: number,
   dbc: Db,
-  syncCardmarket: typeof syncCardmarketForCard,
+  syncMarketPrices: typeof syncMarketPricesForCard,
 ): Promise<Card | null> {
   const [existing] = await dbc.select().from(cards).where(eq(cards.externalId, apiCard.id)).limit(1)
   if (existing) return existing
@@ -166,7 +166,7 @@ async function insertCardSafely(
         })
         // Fire-and-forget: don't add a TCGdex round-trip to search latency.
         // Durable population is guaranteed by the nightly cron + backfill script.
-        void syncCardmarket(card.id, card.externalId, card.variant, eurRate).catch(() => {})
+        void syncMarketPrices(card.id, card.externalId, card.variant, { eur: eurRate, usd: rate }).catch(() => {})
       } catch {
         // priceCache.cardId is unique — a concurrent insert already wrote it. Fine.
       }

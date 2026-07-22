@@ -84,7 +84,7 @@ test('live fallback inserts new cards with cached prices and returns them', asyn
   }
   const res = await searchCards('Zzzqqqxxx', dbc, {
     fetchLive: () => Promise.resolve([apiCard]),
-    syncCardmarket: syncNoop,
+    syncMarketPrices: syncNoop,
   })
   assert.equal(res.cards.length, 1)
   assert.equal(res.cards[0].name, 'Zzzqqqxxx')
@@ -105,7 +105,7 @@ test('search refreshes a missing Cardmarket entry before pricing results', async
   const synced: number[] = []
   const res = await searchCards('Pikachu', dbc, {
     fetchLive: liveNever,
-    syncCardmarket: async (cardId) => {
+    syncMarketPrices: async (cardId) => {
       synced.push(cardId)
       await dbc.update(schema.priceCache)
         .set({ cardmarketTrend: 850, cardmarketSyncedAt: new Date().toISOString() })
@@ -125,7 +125,7 @@ test('search leaves fresh Cardmarket entries alone', async () => {
   let called = false
   const res = await searchCards('Pikachu', dbc, {
     fetchLive: liveNever,
-    syncCardmarket: async () => { called = true },
+    syncMarketPrices: async () => { called = true },
   })
   assert.equal(called, false, 'fresh cache → no TCGdex round-trip')
   assert.equal(res.prices[1]?.cardmarketTrend, 900)
@@ -136,7 +136,7 @@ test('a failing Cardmarket refresh never breaks search', async () => {
   await dbc.insert(schema.priceCache).values({ cardId: 1, tcgplayerMarket: 1000 })
   const res = await searchCards('Pikachu', dbc, {
     fetchLive: liveNever,
-    syncCardmarket: () => Promise.reject(new Error('tcgdex down')),
+    syncMarketPrices: () => Promise.reject(new Error('tcgdex down')),
   })
   assert.equal(res.cards.length, 3)
   assert.equal(res.prices[1]?.tcgplayerMarket, 1000, 'cached prices still served')
@@ -157,7 +157,7 @@ test('live fallback returns the existing row instead of duplicating it', async (
   }
   const res = await searchCards('Yyywwwvvv', dbc, {
     fetchLive: () => Promise.resolve([apiCard]),
-    syncCardmarket: syncNoop,
+    syncMarketPrices: syncNoop,
   })
   assert.equal(res.cards.length, 1)
   assert.equal(res.cards[0].id, 42)

@@ -6,7 +6,7 @@ import * as schema from '../db/schema'
 import type { Db } from '../db'
 import type { AppSettings } from '../settings'
 import {
-  syncCardmarketForCard, sweepTcgplayerCatalogue, syncInStockCardmarket, pruneOldHistory,
+  syncMarketPricesForCard, sweepTcgplayerCatalogue, syncInStockCardmarket, pruneOldHistory,
   syncStaleCardmarket, refreshStaleCardmarket,
 } from './sync'
 
@@ -35,6 +35,7 @@ function apiCard(externalId: string, name: string, marketUsd: number | null) {
 function stubFetch(opts: {
   pages?: Record<number, { data: unknown[]; totalCount: number } | 'fail'>
   cardmarket?: Record<string, { trend?: number; low?: number; avg?: number } | 'fail' | 'missing'>
+  tcgdexCards?: Record<string, { dexId?: number[]; pricing?: { cardmarket?: unknown; tcgplayer?: unknown } } | 'fail' | 'missing'>
 }) {
   globalThis.fetch = (async (input: string | URL | Request) => {
     const url = String(input instanceof Request ? input.url : input)
@@ -46,6 +47,10 @@ function stubFetch(opts: {
     }
     if (url.includes('api.tcgdex.net')) {
       const id = url.split('/').pop()!
+      const tc = opts.tcgdexCards?.[id]
+      if (tc === 'missing') return new Response('not found', { status: 404 })
+      if (tc === 'fail') return new Response('boom', { status: 500 })
+      if (tc) return Response.json(tc)
       const cm = opts.cardmarket?.[id]
       if (cm === 'missing') return new Response('not found', { status: 404 })
       if (!cm || cm === 'fail') return new Response('boom', { status: 500 })
@@ -55,6 +60,14 @@ function stubFetch(opts: {
   }) as typeof fetch
 }
 
+async function insertJaCard(dbc: Db, aliasName: string | null = null): Promise<number> {
+  const [c] = await dbc.insert(schema.cards).values({
+    name: 'リザードン', aliasName, game: 'pokemon', language: 'JA',
+    setName: 'テスト', setNumber: '006', externalId: 'tcgdex:ja:TEST-006',
+  }).returning()
+  return c.id
+}
+
 let db: Db
 beforeEach(async () => {
   db = await createTestDb()
@@ -62,28 +75,28 @@ beforeEach(async () => {
   await db.update(schema.cards).set({ externalId: 'base1-58' }).where(eq(schema.cards.id, 1))
 })
 
-test('syncCardmarketForCard inserts the price_cache row when missing (no silent no-op)', async () => {
+test('syncMarketPricesForCard inserts the price_cache row when missing (no silent no-op)', async () => {
   stubFetch({ cardmarket: { 'base1-58': { trend: 10, low: 8, avg: 9 } } })
-  await syncCardmarketForCard(1, 'base1-58', null, 0.85, db)
+  await syncMarketPricesForCard(1, 'base1-58', null, { eur: 0.85, usd: 0.79 }, db)
   const [row] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, 1))
   assert.ok(row, 'price_cache row was created')
   assert.equal(row.cardmarketTrend, 850) // €10 × 0.85 × 100
 })
 
-test('syncCardmarketForCard: an all-zero TCGdex block is "no data" — keeps cached values, stamps the check', async () => {
+test('syncMarketPricesForCard: an all-zero TCGdex block is "no data" — keeps cached values, stamps the check', async () => {
   stubFetch({ cardmarket: { 'base1-58': { trend: 10, low: 8, avg: 9 } } })
-  await syncCardmarketForCard(1, 'base1-58', null, 0.85, db)
+  await syncMarketPricesForCard(1, 'base1-58', null, { eur: 0.85, usd: 0.79 }, db)
 
   // TCGdex "loses" the pricing (emits zeros): the real trend must survive, never become 0.
   stubFetch({ cardmarket: { 'base1-58': { trend: 0, low: 0, avg: 0 } } })
-  await syncCardmarketForCard(1, 'base1-58', null, 0.85, db)
+  await syncMarketPricesForCard(1, 'base1-58', null, { eur: 0.85, usd: 0.79 }, db)
   const [row] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, 1))
   assert.equal(row.cardmarketTrend, 850, 'previously cached trend survives a zero-block answer')
 })
 
-test('syncCardmarketForCard: zero trend with real low/avg stores null trend, not 0', async () => {
+test('syncMarketPricesForCard: zero trend with real low/avg stores null trend, not 0', async () => {
   stubFetch({ cardmarket: { 'base1-58': { trend: 0, low: 8, avg: 9 } } })
-  await syncCardmarketForCard(1, 'base1-58', null, 0.85, db)
+  await syncMarketPricesForCard(1, 'base1-58', null, { eur: 0.85, usd: 0.79 }, db)
   const [row] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, 1))
   assert.equal(row.cardmarketTrend, null)
   assert.equal(row.cardmarketLow, 680)
@@ -92,21 +105,21 @@ test('syncCardmarketForCard: zero trend with real low/avg stores null trend, not
 
 test('cardmarket sync records history only for in-stock or high-value cards', async () => {
   stubFetch({ cardmarket: { 'base1-58': { trend: 10 } } })
-  await syncCardmarketForCard(1, 'base1-58', null, 0.85, db)
+  await syncMarketPricesForCard(1, 'base1-58', null, { eur: 0.85, usd: 0.79 }, db)
   let history = await db.select().from(schema.priceHistory)
   assert.equal(history.length, 0, 'no history for an unstocked, low-value card')
 
   await db.insert(schema.inventoryItems).values({
     cardId: 1, condition: 'NM', quantity: 1, costPrice: 100, qrCode: 'q1',
   })
-  await syncCardmarketForCard(1, 'base1-58', null, 0.85, db)
+  await syncMarketPricesForCard(1, 'base1-58', null, { eur: 0.85, usd: 0.79 }, db)
   history = await db.select().from(schema.priceHistory)
   assert.equal(history.length, 1)
   assert.equal(history[0].cardmarketTrend, 850)
 
   // Same-day re-sync updates rather than duplicating
   stubFetch({ cardmarket: { 'base1-58': { trend: 12 } } })
-  await syncCardmarketForCard(1, 'base1-58', null, 0.85, db)
+  await syncMarketPricesForCard(1, 'base1-58', null, { eur: 0.85, usd: 0.79 }, db)
   history = await db.select().from(schema.priceHistory)
   assert.equal(history.length, 1)
   assert.equal(history[0].cardmarketTrend, 1020)
@@ -186,10 +199,10 @@ test('syncInStockCardmarket isolates per-card failures', async () => {
   assert.equal(failedRows.length, 0, 'transient failure leaves no cache row / stamp behind')
 })
 
-test('syncCardmarketForCard records a no-data check without clobbering cached values', async () => {
+test('syncMarketPricesForCard records a no-data check without clobbering cached values', async () => {
   await db.insert(schema.priceCache).values({ cardId: 1, tcgplayerMarket: 500, cardmarketTrend: 999 })
   stubFetch({ cardmarket: { 'base1-58': 'missing' } }) // TCGdex 404 — a real answer
-  await syncCardmarketForCard(1, 'base1-58', null, 0.85, db)
+  await syncMarketPricesForCard(1, 'base1-58', null, { eur: 0.85, usd: 0.79 }, db)
   const [row] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, 1))
   assert.ok(row.cardmarketSyncedAt, 'check recorded so rotation/on-demand move on')
   assert.equal(row.cardmarketTrend, 999, 'previously cached trend preserved')
@@ -199,10 +212,88 @@ test('syncCardmarketForCard records a no-data check without clobbering cached va
   // never-checked front of the rotation queue.
   await db.insert(schema.cards).values({ id: 2, name: 'Mew', setName: 'S', setNumber: '2', externalId: 'base1-99' })
   stubFetch({ cardmarket: { 'base1-99': 'missing' } })
-  await syncCardmarketForCard(2, 'base1-99', null, 0.85, db)
+  await syncMarketPricesForCard(2, 'base1-99', null, { eur: 0.85, usd: 0.79 }, db)
   const [row2] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, 2))
   assert.ok(row2?.cardmarketSyncedAt)
   assert.equal(row2.cardmarketTrend, null)
+})
+
+test('tcgdex ids fetch per-language, write both column families, and backfill alias', async () => {
+  const id = await insertJaCard(db)
+  stubFetch({ tcgdexCards: { 'TEST-006': { dexId: [6], pricing: {
+    cardmarket: { trend: 4, low: 3, avg: 3.5 },
+    tcgplayer: { holofoil: { marketPrice: 5, lowPrice: 4, midPrice: 4.5, highPrice: 9 } },
+  } } } })
+  await syncMarketPricesForCard(id, 'tcgdex:ja:TEST-006', null, { eur: 0.85, usd: 0.8 }, db)
+
+  const [pc] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, id))
+  assert.equal(pc.cardmarketTrend, Math.round(4 * 0.85 * 100))
+  assert.equal(pc.tcgplayerMarket, Math.round(5 * 0.8 * 100))
+  assert.ok(pc.cardmarketSyncedAt)
+  const [card] = await db.select().from(schema.cards).where(eq(schema.cards.id, id))
+  assert.equal(card.aliasName, 'Charizard')
+})
+
+test('tcgdex sync records price history with both trend and tcgplayerMarket when interesting', async () => {
+  const id = await insertJaCard(db)
+  stubFetch({ tcgdexCards: { 'TEST-006': { dexId: [6], pricing: {
+    cardmarket: { trend: 4, low: 3, avg: 3.5 },
+    tcgplayer: { holofoil: { marketPrice: 5, lowPrice: 4, midPrice: 4.5, highPrice: 9 } },
+  } } } })
+  await syncMarketPricesForCard(id, 'tcgdex:ja:TEST-006', null, { eur: 0.85, usd: 0.8 }, db, { interesting: true })
+  const history = await db.select().from(schema.priceHistory).where(eq(schema.priceHistory.cardId, id))
+  assert.equal(history.length, 1)
+  assert.equal(history[0].cardmarketTrend, Math.round(4 * 0.85 * 100))
+  assert.equal(history[0].tcgplayerMarket, Math.round(5 * 0.8 * 100))
+})
+
+test('a tcgdex response carrying only one column family leaves the other cached family alone', async () => {
+  const id = await insertJaCard(db)
+  // First sync: both blocks present, seeds both column families.
+  stubFetch({ tcgdexCards: { 'TEST-006': { dexId: [6], pricing: {
+    cardmarket: { trend: 4, low: 3, avg: 3.5 },
+    tcgplayer: { holofoil: { marketPrice: 5, lowPrice: 4, midPrice: 4.5, highPrice: 9 } },
+  } } } })
+  await syncMarketPricesForCard(id, 'tcgdex:ja:TEST-006', null, { eur: 0.85, usd: 0.8 }, db)
+
+  // Second sync: only cardmarket comes back this time — tcgplayer must survive untouched.
+  stubFetch({ tcgdexCards: { 'TEST-006': { dexId: [6], pricing: {
+    cardmarket: { trend: 6, low: 5, avg: 5.5 }, tcgplayer: null,
+  } } } })
+  await syncMarketPricesForCard(id, 'tcgdex:ja:TEST-006', null, { eur: 0.85, usd: 0.8 }, db)
+  let [pc] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, id))
+  assert.equal(pc.cardmarketTrend, Math.round(6 * 0.85 * 100), 'cardmarket updated to the new value')
+  assert.equal(pc.tcgplayerMarket, Math.round(5 * 0.8 * 100), 'tcgplayer untouched by a cardmarket-only response')
+
+  // Third sync: only tcgplayer comes back — cardmarket must survive untouched this time.
+  stubFetch({ tcgdexCards: { 'TEST-006': { dexId: [6], pricing: {
+    cardmarket: null, tcgplayer: { holofoil: { marketPrice: 7, lowPrice: 6, midPrice: 6.5, highPrice: 11 } },
+  } } } })
+  await syncMarketPricesForCard(id, 'tcgdex:ja:TEST-006', null, { eur: 0.85, usd: 0.8 }, db)
+  ;[pc] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, id))
+  assert.equal(pc.tcgplayerMarket, Math.round(7 * 0.8 * 100), 'tcgplayer updated to the new value')
+  assert.equal(pc.cardmarketTrend, Math.round(6 * 0.85 * 100), 'cardmarket untouched by a tcgplayer-only response')
+})
+
+test('tcgdex card with null pricing blocks stamps the check and still backfills alias', async () => {
+  const id = await insertJaCard(db)
+  stubFetch({ tcgdexCards: { 'TEST-006': { dexId: [25], pricing: { cardmarket: null, tcgplayer: null } } } })
+  await syncMarketPricesForCard(id, 'tcgdex:ja:TEST-006', null, { eur: 0.85, usd: 0.8 }, db)
+
+  const [pc] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, id))
+  assert.ok(pc.cardmarketSyncedAt)   // checked — rotation moves on
+  assert.equal(pc.cardmarketTrend, null)
+  assert.equal(pc.tcgplayerMarket, null)
+  const [card] = await db.select().from(schema.cards).where(eq(schema.cards.id, id))
+  assert.equal(card.aliasName, 'Pikachu')
+})
+
+test('alias backfill never overwrites an existing aliasName', async () => {
+  const id = await insertJaCard(db, 'Custom')
+  stubFetch({ tcgdexCards: { 'TEST-006': { dexId: [6], pricing: { cardmarket: null, tcgplayer: null } } } })
+  await syncMarketPricesForCard(id, 'tcgdex:ja:TEST-006', null, { eur: 0.85, usd: 0.8 }, db)
+  const [card] = await db.select().from(schema.cards).where(eq(schema.cards.id, id))
+  assert.equal(card.aliasName, 'Custom')
 })
 
 test('syncStaleCardmarket walks the catalogue stalest-first within its limit', async () => {
