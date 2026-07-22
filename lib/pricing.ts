@@ -66,8 +66,11 @@ export function pickMarketSource(
   source: 'cardmarket' | 'tcgplayer'
 ): 'cardmarket' | 'tcgplayer' | null {
   if (!prices) return null
-  const cm = prices.cardmarketTrend ?? null
-  const tcg = prices.tcgplayerMarket ?? null
+  // A cached 0 is a "no data" artifact (TCGdex emits 0 for unpriced cards),
+  // never a real price — treat it as missing so the other source can answer,
+  // otherwise a £0 quote leaks into sell/buy pricing downstream.
+  const cm = prices.cardmarketTrend || null
+  const tcg = prices.tcgplayerMarket || null
   if (source === 'cardmarket') return cm != null ? 'cardmarket' : tcg != null ? 'tcgplayer' : null
   return tcg != null ? 'tcgplayer' : cm != null ? 'cardmarket' : null
 }

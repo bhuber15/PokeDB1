@@ -2,6 +2,26 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { calculateSellPrice, calculateBuyPrice, usdToGbp, eurToGbp, formatGBP, parsePounds, computeSaleTotals, VAT_RATE, MARGIN_VAT_DIVISOR, computeMarginVat, pickMarketPrice, pickMarketSource, marketPriceSyncedAt } from './pricing'
 
+test('pickMarketPrice: picks the primary source when present', () => {
+  assert.equal(pickMarketPrice({ cardmarketTrend: 850, tcgplayerMarket: 900 }, 'cardmarket'), 850)
+  assert.equal(pickMarketPrice({ cardmarketTrend: 850, tcgplayerMarket: 900 }, 'tcgplayer'), 900)
+})
+
+test('pickMarketPrice: falls back to the other source when primary is missing', () => {
+  assert.equal(pickMarketPrice({ cardmarketTrend: null, tcgplayerMarket: 900 }, 'cardmarket'), 900)
+  assert.equal(pickMarketPrice({ cardmarketTrend: 850, tcgplayerMarket: null }, 'tcgplayer'), 850)
+})
+
+test('pickMarketPrice: a cached 0 is "no data", not a price — falls back', () => {
+  assert.equal(pickMarketPrice({ cardmarketTrend: 0, tcgplayerMarket: 6019 }, 'cardmarket'), 6019)
+  assert.equal(pickMarketPrice({ cardmarketTrend: 850, tcgplayerMarket: 0 }, 'tcgplayer'), 850)
+})
+
+test('pickMarketPrice: null when both sources are missing or zero', () => {
+  assert.equal(pickMarketPrice({ cardmarketTrend: 0, tcgplayerMarket: null }, 'cardmarket'), null)
+  assert.equal(pickMarketPrice(null, 'cardmarket'), null)
+})
+
 test('calculateSellPrice: override wins over market price', () => {
   assert.equal(calculateSellPrice(10000, 4200, 0.85), 4200)
 })
@@ -75,6 +95,20 @@ test('pickMarketSource: null when no source has a price or the row is missing', 
   assert.equal(pickMarketSource({ cardmarketTrend: null, tcgplayerMarket: null }, 'cardmarket'), null)
   assert.equal(pickMarketSource(null, 'cardmarket'), null)
   assert.equal(pickMarketSource(undefined, 'tcgplayer'), null)
+})
+
+test('pickMarketSource: a cached 0 is "no data" — falls back like a missing price', () => {
+  assert.equal(pickMarketSource({ cardmarketTrend: 0, tcgplayerMarket: 6019 }, 'cardmarket'), 'tcgplayer')
+  assert.equal(pickMarketSource({ cardmarketTrend: 850, tcgplayerMarket: 0 }, 'tcgplayer'), 'cardmarket')
+  assert.equal(pickMarketSource({ cardmarketTrend: 0, tcgplayerMarket: 0 }, 'cardmarket'), null)
+})
+
+test('marketPriceSyncedAt: a zeroed CM trend ages by the TCG sweep stamp it fell back to', () => {
+  const prices = {
+    cardmarketTrend: 0, tcgplayerMarket: 1000,
+    cardmarketSyncedAt: '2026-07-22T09:00:00.000Z', lastSyncedAt: '2026-07-05T00:00:00.000Z',
+  }
+  assert.equal(marketPriceSyncedAt(prices, 'cardmarket'), '2026-07-05T00:00:00.000Z')
 })
 
 test('pickMarketPrice: quotes the picked source, with cross-source fallback', () => {

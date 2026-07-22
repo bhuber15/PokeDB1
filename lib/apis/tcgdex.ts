@@ -55,9 +55,12 @@ export async function fetchCardmarketPrices(
   const cm = data?.pricing?.cardmarket
   if (!cm) return null
   const holo = isHolo(variant)
-  return {
-    trend: (holo ? cm['trend-holo'] : cm.trend) ?? cm.trend ?? null,
-    low: (holo ? cm['low-holo'] : cm.low) ?? cm.low ?? null,
-    avg: (holo ? cm['avg-holo'] : cm.avg) ?? cm.avg ?? null,
-  }
+  // TCGdex emits 0 for prices it doesn't have — 0 is "no data", not a price.
+  const pos = (v: number | null | undefined): number | null => (v && v > 0 ? v : null)
+  const trend = pos((holo ? cm['trend-holo'] : cm.trend) ?? cm.trend)
+  const low = pos((holo ? cm['low-holo'] : cm.low) ?? cm.low)
+  const avg = pos((holo ? cm['avg-holo'] : cm.avg) ?? cm.avg)
+  // An all-empty pricing block is the same answer as no block at all.
+  if (trend == null && low == null && avg == null) return null
+  return { trend, low, avg }
 }
