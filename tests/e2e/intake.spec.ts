@@ -57,3 +57,33 @@ test('rapid intake: keyboard-only add, session list, repeat last card', async ({
     client.close()
   }
 })
+
+// The Card/Product toggle must be URL-driven, not client state: the pilot
+// shop's clicks landed before hydration and were silently lost, so the
+// toggle renders as plain links and ?mode=product deep-links to the product
+// form (docs/testing/smoke-2026-07-22.md).
+test('Card/Product toggle: ?mode=product deep link, toggle works as links', async ({ page }) => {
+  // Owner unlock → staff PIN (same preamble as checkout.spec.ts)
+  await page.goto('/')
+  await page.waitForURL('**/login')
+  await page.getByLabel('Password').fill(OWNER_PASSWORD)
+  await page.getByRole('button', { name: /sign in/i }).click()
+  await page.waitForURL('**/pin')
+  for (const digit of STAFF_PIN) {
+    await page.getByRole('button', { name: `Digit ${digit}` }).click()
+  }
+  await page.waitForURL('**/pos')
+
+  // Deep link opens straight in product mode
+  await page.goto('/inventory/add?mode=product')
+  const main = page.getByRole('main')
+  await expect(main.getByLabel('Product name')).toBeVisible()
+
+  // Card is a real link — a plain navigation even before React hydrates
+  await main.getByRole('link', { name: 'Card' }).click()
+  await expect(main.getByPlaceholder(/search card name/i)).toBeVisible()
+
+  // And back to product mode
+  await main.getByRole('link', { name: 'Product' }).click()
+  await expect(main.getByLabel('Product name')).toBeVisible()
+})
