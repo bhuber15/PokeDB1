@@ -1,7 +1,7 @@
 import { db, isMultiTenant, type Db } from '@/lib/db'
 import { settings, type Settings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
-import { parsePounds } from '@/lib/pricing'
+import { parsePounds, type ConditionLadder, DEFAULT_CONDITION_LADDER } from '@/lib/pricing'
 import { BRAND } from '@/lib/brand'
 
 export interface AppSettings {
@@ -15,6 +15,7 @@ export interface AppSettings {
   primaryPriceSource: 'cardmarket' | 'tcgplayer'
   vatScheme: 'none' | 'standard' | 'margin'
   marginNoCostHandling: 'exclude' | 'block'
+  conditionSellPct: ConditionLadder
 }
 
 // Defaults fall back to env so pricing still works before the row exists
@@ -31,6 +32,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   primaryPriceSource: 'cardmarket',
   vatScheme: 'none',
   marginNoCostHandling: 'exclude',
+  conditionSellPct: { ...DEFAULT_CONDITION_LADDER },
 }
 
 function toAppSettings(row: Settings): AppSettings {
@@ -45,6 +47,10 @@ function toAppSettings(row: Settings): AppSettings {
     primaryPriceSource: row.primaryPriceSource as 'cardmarket' | 'tcgplayer',
     vatScheme: row.vatScheme as 'none' | 'standard' | 'margin',
     marginNoCostHandling: row.marginNoCostHandling as 'exclude' | 'block',
+    conditionSellPct: {
+      NM: row.condSellPctNm, LP: row.condSellPctLp, MP: row.condSellPctMp,
+      HP: row.condSellPctHp, DMG: row.condSellPctDmg,
+    },
   }
 }
 
@@ -74,8 +80,15 @@ export async function getSettings(dbc: Db = db): Promise<AppSettings> {
 
 export async function updateSettings(patch: Partial<AppSettings>, dbc: Db = db): Promise<AppSettings> {
   await getSettings(dbc) // ensure the row exists
+  // The ladder record is not a column — map it onto the five cond_sell_pct_* columns.
+  const { conditionSellPct, ...columns } = patch
+  const ladderCols = conditionSellPct ? {
+    condSellPctNm: conditionSellPct.NM, condSellPctLp: conditionSellPct.LP,
+    condSellPctMp: conditionSellPct.MP, condSellPctHp: conditionSellPct.HP,
+    condSellPctDmg: conditionSellPct.DMG,
+  } : {}
   const [updated] = await dbc.update(settings)
-    .set({ ...patch, updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19) })
+    .set({ ...columns, ...ladderCols, updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19) })
     .where(eq(settings.id, 1))
     .returning()
   return toAppSettings(updated)
