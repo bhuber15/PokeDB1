@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CardZoomModal } from '@/components/shared/CardZoomModal'
 import { useSettings } from '@/components/shared/SettingsProvider'
-import { calculateBuyPrice, formatGBP, pickMarketPrice } from '@/lib/pricing'
+import { calculateBuyPrice, formatGBP, pickMarketPrice, pickMarketSource } from '@/lib/pricing'
 import type { Card, PriceCache } from '@/lib/db/schema'
 
 const CONDITIONS = ['NM', 'LP', 'MP', 'HP', 'DMG'] as const
@@ -37,9 +37,9 @@ export function BuyCard({ card, prices, onAdd }: BuyCardProps) {
   const cashOffer = calculateBuyPrice(market, buyCashPct)
   const creditOffer = calculateBuyPrice(market, buyCreditPct)
   // A Cardmarket-primary shop can still land on the TCGplayer fallback (card
-  // never synced) — flag it so a US-market number isn't presented as the
-  // market price at the moment an offer is being made.
-  const usdFallback = primaryPriceSource === 'cardmarket' && market != null && prices?.cardmarketTrend == null
+  // never synced, or TCGdex zeroed the trend) — flag it so a US-market number
+  // isn't presented as the market price at the moment an offer is being made.
+  const usdFallback = primaryPriceSource === 'cardmarket' && pickMarketSource(prices, primaryPriceSource) === 'tcgplayer'
 
   return (
     <>

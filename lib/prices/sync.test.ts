@@ -69,6 +69,26 @@ test('syncCardmarketForCard inserts the price_cache row when missing (no silent 
   assert.equal(row.cardmarketTrend, 850) // €10 × 0.85 × 100
 })
 
+test('syncCardmarketForCard: an all-zero TCGdex block is "no data" — keeps cached values, stamps the check', async () => {
+  stubFetch({ cardmarket: { 'base1-58': { trend: 10, low: 8, avg: 9 } } })
+  await syncCardmarketForCard(1, 'base1-58', null, 0.85, db)
+
+  // TCGdex "loses" the pricing (emits zeros): the real trend must survive, never become 0.
+  stubFetch({ cardmarket: { 'base1-58': { trend: 0, low: 0, avg: 0 } } })
+  await syncCardmarketForCard(1, 'base1-58', null, 0.85, db)
+  const [row] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, 1))
+  assert.equal(row.cardmarketTrend, 850, 'previously cached trend survives a zero-block answer')
+})
+
+test('syncCardmarketForCard: zero trend with real low/avg stores null trend, not 0', async () => {
+  stubFetch({ cardmarket: { 'base1-58': { trend: 0, low: 8, avg: 9 } } })
+  await syncCardmarketForCard(1, 'base1-58', null, 0.85, db)
+  const [row] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, 1))
+  assert.equal(row.cardmarketTrend, null)
+  assert.equal(row.cardmarketLow, 680)
+  assert.equal(row.cardmarketAvg, 765)
+})
+
 test('cardmarket sync records history only for in-stock or high-value cards', async () => {
   stubFetch({ cardmarket: { 'base1-58': { trend: 10 } } })
   await syncCardmarketForCard(1, 'base1-58', null, 0.85, db)
