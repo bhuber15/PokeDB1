@@ -397,3 +397,30 @@ test('pruneOldHistory deletes rows older than 90 days only', async () => {
   assert.equal(rows.length, 1)
   assert.equal(rows[0].recordedOn, recent)
 })
+
+test('tcgdex priceHistory conflict-set is per-block conditional (same-day partial re-sync must not null a recorded family)', async () => {
+  const id = await insertJaCard(db)
+  // First sync: both blocks present, seeds both column families in history.
+  stubFetch({ tcgdexCards: { 'TEST-006': { dexId: [6], pricing: {
+    cardmarket: { trend: 4, low: 3, avg: 3.5 },
+    tcgplayer: { holofoil: { marketPrice: 5, lowPrice: 4, midPrice: 4.5, highPrice: 9 } },
+  } } } })
+  await syncMarketPricesForCard(id, 'tcgdex:ja:TEST-006', null, { eur: 0.85, usd: 0.8 }, db, { interesting: true })
+  let history = await db.select().from(schema.priceHistory).where(eq(schema.priceHistory.cardId, id))
+  assert.equal(history.length, 1)
+  const firstCardmarketTrend = Math.round(4 * 0.85 * 100)
+  const firstTcgplayerMarket = Math.round(5 * 0.8 * 100)
+  assert.equal(history[0].cardmarketTrend, firstCardmarketTrend)
+  assert.equal(history[0].tcgplayerMarket, firstTcgplayerMarket)
+
+  // Second sync same day: only cardmarket block — tcgplayer history must survive untouched.
+  stubFetch({ tcgdexCards: { 'TEST-006': { dexId: [6], pricing: {
+    cardmarket: { trend: 6, low: 5, avg: 5.5 }, tcgplayer: null,
+  } } } })
+  await syncMarketPricesForCard(id, 'tcgdex:ja:TEST-006', null, { eur: 0.85, usd: 0.8 }, db, { interesting: true })
+  history = await db.select().from(schema.priceHistory).where(eq(schema.priceHistory.cardId, id))
+  assert.equal(history.length, 1, 'same-day re-sync updates the row, not duplicates')
+  const secondCardmarketTrend = Math.round(6 * 0.85 * 100)
+  assert.equal(history[0].cardmarketTrend, secondCardmarketTrend, 'cardmarket updated to the new value')
+  assert.equal(history[0].tcgplayerMarket, firstTcgplayerMarket, 'tcgplayer untouched by a cardmarket-only response')
+})

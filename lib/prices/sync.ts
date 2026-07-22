@@ -150,7 +150,10 @@ async function syncTcgdexCard(
       cardId, cardmarketTrend: trend, tcgplayerMarket: values.tcgplayerMarket, recordedOn: today(),
     }).onConflictDoUpdate({
       target: [priceHistory.cardId, priceHistory.recordedOn],
-      set: { cardmarketTrend: sql`excluded.cardmarket_trend`, tcgplayerMarket: sql`excluded.tcgplayer_market` },
+      set: {
+        ...(cm ? { cardmarketTrend: sql`excluded.cardmarket_trend` } : {}),
+        ...(tp ? { tcgplayerMarket: sql`excluded.tcgplayer_market` } : {}),
+      },
     })
   }
 }
