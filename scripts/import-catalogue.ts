@@ -29,7 +29,14 @@ async function main() {
     for (;;) {
       const r = await syncStaleCardmarket(settings, { limit: 5000, timeBudgetMs: 10 * 60_000 })
       console.log(`rotation pass ${pass++}: synced ${r.synced}, failed ${r.failed}, remaining ${r.remaining}`)
-      if (r.remaining <= 0 || r.synced + r.failed === 0) break
+      // Stop when a pass makes no progress: either the stale query returned
+      // nothing (backfill complete — synced cards age out of the candidate
+      // pool via their fresh cardmarketSyncedAt stamp), or everything left is
+      // persistently failing (retrying forever would hang the script; failures
+      // stay stale and are retried by the nightly rotation). `remaining` is
+      // NOT a completion signal here — it counts only the current pass's
+      // limit-capped candidate set.
+      if (r.synced === 0) break
     }
   }
   if (result.pagesFailed > 0 || cjk.setsFailed > 0) process.exitCode = 1
