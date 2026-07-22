@@ -1,11 +1,48 @@
+// Single source of truth for card conditions. buys.ts, BuyCard, and the CSV
+// import route all key off this list; the DB stores the raw string.
+export const CONDITIONS = ['NM', 'LP', 'MP', 'HP', 'DMG'] as const
+export type Condition = (typeof CONDITIONS)[number]
+
+// Integer percent of market price per condition (1–100). 100 across the
+// board = condition pricing off (today's behavior).
+export type ConditionLadder = Record<Condition, number>
+
+export const DEFAULT_CONDITION_LADDER: ConditionLadder = { NM: 100, LP: 100, MP: 100, HP: 100, DMG: 100 }
+// The Settings preset ("Use recommended ladder") — never a DB default.
+export const RECOMMENDED_CONDITION_LADDER: ConditionLadder = { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 }
+
+// Tolerant lookup: an unknown condition string or an out-of-range/non-integer
+// value prices at full market (100) — bad data must never silently discount.
+export function conditionPct(
+  ladder: Record<string, number> | null | undefined,
+  condition: string,
+): number {
+  const pct = ladder?.[condition]
+  return pct != null && Number.isInteger(pct) && pct >= 1 && pct <= 100 ? pct : 100
+}
+
+// Condition-adjusted market price, integer pence. Clamped to ≥1p so a penny
+// card can never round to a £0 price (0 would slip past createSale's == null
+// NO_PRICE guard and sell for free).
+export function applyConditionPct(marketPence: number, pct: number): number {
+  return Math.max(1, Math.round(marketPence * pct / 100))
+}
+
 export function calculateSellPrice(
   marketPence: number | null | undefined,
   overridePence: number | null | undefined,
-  multiplier = parseFloat(process.env.NEXT_PUBLIC_MARGIN_MULTIPLIER ?? '0.85') || 0.85
+  multiplier = parseFloat(process.env.NEXT_PUBLIC_MARGIN_MULTIPLIER ?? '0.85') || 0.85,
+  // Required so every call site makes an explicit condition decision; pass a
+  // literal 100 only where an NM-reference price is the intent.
+  conditionPctArg: number,
 ): number | null {
   if (overridePence != null) return overridePence
   if (marketPence == null) return null
-  return Math.ceil(marketPence * multiplier)
+  // 100 = ladder off: bypass the condition step entirely so behavior is
+  // bit-identical to pre-ladder pricing (applyConditionPct would round a
+  // fractional market input).
+  const conditioned = conditionPctArg === 100 ? marketPence : applyConditionPct(marketPence, conditionPctArg)
+  return Math.ceil(conditioned * multiplier)
 }
 
 export function formatGBP(pence: number | null | undefined): string {
@@ -13,10 +50,16 @@ export function formatGBP(pence: number | null | undefined): string {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(pence / 100)
 }
 
-// Buy-in offer = market pence × percentage, floored so we never overpay by a rounding penny.
-export function calculateBuyPrice(marketPence: number | null | undefined, pct: number): number | null {
+// Buy-in offer = condition-adjusted market pence × percentage, floored so we
+// never overpay by a rounding penny.
+export function calculateBuyPrice(
+  marketPence: number | null | undefined,
+  pct: number,
+  conditionPctArg: number,
+): number | null {
   if (marketPence == null) return null
-  return Math.floor(marketPence * pct)
+  const conditioned = conditionPctArg === 100 ? marketPence : applyConditionPct(marketPence, conditionPctArg)
+  return Math.floor(conditioned * pct)
 }
 
 // Parses a pounds-denominated form/CSV input string or number into integer pence.

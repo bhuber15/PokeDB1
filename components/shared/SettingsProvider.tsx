@@ -1,6 +1,7 @@
 'use client'
 import { createContext, useContext } from 'react'
 import type { AppSettings } from '@/lib/settings'
+import { DEFAULT_CONDITION_LADDER } from '@/lib/pricing'
 import { BRAND } from '@/lib/brand'
 
 const SettingsContext = createContext<AppSettings | null>(null)
@@ -13,7 +14,7 @@ export function useSettings(): AppSettings {
   const ctx = useContext(SettingsContext)
   if (!ctx) {
     // Fallback so components never crash if used outside the provider
-    return { shopName: BRAND.name, usdToGbp: 0.79, eurToGbp: 0.86, marginMultiplier: 0.85, highValueThreshold: 5000, buyCashPct: 0.5, buyCreditPct: 0.65, primaryPriceSource: 'cardmarket', vatScheme: 'none', marginNoCostHandling: 'exclude' }
+    return { shopName: BRAND.name, usdToGbp: 0.79, eurToGbp: 0.86, marginMultiplier: 0.85, highValueThreshold: 5000, buyCashPct: 0.5, buyCreditPct: 0.65, primaryPriceSource: 'cardmarket', vatScheme: 'none', marginNoCostHandling: 'exclude', conditionSellPct: { ...DEFAULT_CONDITION_LADDER } }
   }
   return ctx
 }

@@ -154,6 +154,14 @@ export const settings = sqliteTable('settings', {
   buyCreditPct: real('buy_credit_pct').notNull().default(0.65),
   vatScheme: text('vat_scheme').notNull().default('none'), // 'none' | 'standard' | 'margin'
   marginNoCostHandling: text('margin_no_cost_handling').notNull().default('exclude'), // 'exclude' | 'block'
+  // Condition ladder: integer % of market price per condition (1–100).
+  // 100 across the board = condition pricing off. Shared by sell prices,
+  // buylist offers, and the buylist overpayment cap.
+  condSellPctNm: integer('cond_sell_pct_nm').notNull().default(100),
+  condSellPctLp: integer('cond_sell_pct_lp').notNull().default(100),
+  condSellPctMp: integer('cond_sell_pct_mp').notNull().default(100),
+  condSellPctHp: integer('cond_sell_pct_hp').notNull().default(100),
+  condSellPctDmg: integer('cond_sell_pct_dmg').notNull().default(100),
   // Per-tenant owner password (bcrypt). Null = fall back to the
   // OWNER_PASSWORD_HASH env var (single-tenant installs).
   ownerPasswordHash: text('owner_password_hash'),

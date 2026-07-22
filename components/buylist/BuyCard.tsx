@@ -5,11 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CardZoomModal } from '@/components/shared/CardZoomModal'
 import { useSettings } from '@/components/shared/SettingsProvider'
-import { calculateBuyPrice, formatGBP, pickMarketPrice, pickMarketSource } from '@/lib/pricing'
+import { calculateBuyPrice, conditionPct, formatGBP, pickMarketPrice, pickMarketSource, CONDITIONS, type Condition } from '@/lib/pricing'
 import type { Card, PriceCache } from '@/lib/db/schema'
-
-const CONDITIONS = ['NM', 'LP', 'MP', 'HP', 'DMG'] as const
-type Condition = (typeof CONDITIONS)[number]
 
 export interface BuyLineInput {
   cardId: number
@@ -29,13 +26,16 @@ export function BuyCard({ card, prices, onAdd }: BuyCardProps) {
   const [condition, setCondition] = useState<Condition>('NM')
   const [qty, setQty] = useState(1)
   const [zoomed, setZoomed] = useState(false)
-  const { buyCashPct, buyCreditPct, primaryPriceSource } = useSettings()
+  const { buyCashPct, buyCreditPct, primaryPriceSource, conditionSellPct } = useSettings()
 
   // Use the shop's primary price source so the offer shown matches the
   // reference price the server enforces its overpayment cap against.
   const market = pickMarketPrice(prices, primaryPriceSource)
-  const cashOffer = calculateBuyPrice(market, buyCashPct)
-  const creditOffer = calculateBuyPrice(market, buyCreditPct)
+  // Offers are quoted for the card AS GRADED: conditioned market × buy %.
+  // The Market badge stays raw — it's the reference, like marketAtBuy.
+  const condPct = conditionPct(conditionSellPct, condition)
+  const cashOffer = calculateBuyPrice(market, buyCashPct, condPct)
+  const creditOffer = calculateBuyPrice(market, buyCreditPct, condPct)
   // A Cardmarket-primary shop can still land on the TCGplayer fallback (card
   // never synced, or TCGdex zeroed the trend) — flag it so a US-market number
   // isn't presented as the market price at the moment an offer is being made.

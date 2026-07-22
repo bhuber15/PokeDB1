@@ -7,14 +7,14 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { InventoryTable, InventoryRow } from '@/components/inventory/InventoryTable'
 import { QRLabel } from '@/components/inventory/QRLabel'
 import { ImportDialog } from '@/components/inventory/ImportDialog'
-import { calculateSellPrice, formatGBP, pickMarketPrice } from '@/lib/pricing'
+import { calculateSellPrice, conditionPct, formatGBP, pickMarketPrice } from '@/lib/pricing'
 import { useSettings } from '@/components/shared/SettingsProvider'
 import { useStaffRole } from '@/components/shared/SessionProvider'
 import { toast } from 'sonner'
 import type { AdjustmentReason } from '@/lib/adjustment-reasons'
 
 export default function InventoryPage() {
-  const { primaryPriceSource, marginMultiplier } = useSettings()
+  const { primaryPriceSource, marginMultiplier, conditionSellPct } = useSettings()
   const isAdmin = useStaffRole() === 'admin' // Export CSV includes cost — admin-only (F8)
   const [rows, setRows] = useState<InventoryRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -54,11 +54,13 @@ export default function InventoryPage() {
         dataUrl,
         cardName: row.card?.name ?? row.product?.name ?? 'Unknown',
         condition: row.item.condition,
-        // Match the sell price shown in the table: primary price source × margin.
+        // Match the sell price shown in the table: primary price source ×
+        // condition % × margin.
         sellPrice: formatGBP(calculateSellPrice(
           pickMarketPrice(row.prices, primaryPriceSource),
           row.item.sellPriceOverride,
           marginMultiplier,
+          conditionPct(conditionSellPct, row.item.condition),
         )),
       })
     } catch {

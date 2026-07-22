@@ -14,6 +14,7 @@ const SETTINGS: AppSettings = {
   shopName: 'Test', usdToGbp: 0.8, eurToGbp: 0.85, marginMultiplier: 0.85,
   highValueThreshold: 5000, buyCashPct: 0.5, buyCreditPct: 0.65,
   primaryPriceSource: 'cardmarket', vatScheme: 'none', marginNoCostHandling: 'exclude',
+  conditionSellPct: { NM: 100, LP: 100, MP: 100, HP: 100, DMG: 100 },
 }
 
 const realFetch = globalThis.fetch

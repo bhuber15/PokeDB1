@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 import { createTestDb, seedBase } from '../db/test-helpers'
 import * as schema from '../db/schema'
 import { createSale, type CreateSaleInput } from './sales'
+import { updateSettings } from '../settings'
 import { createRefund } from './refunds'
 import { DomainError } from './errors'
 import type { Db } from '../db'
@@ -473,4 +474,47 @@ test('refunding a product line restocks it and refunds what was paid', async () 
   assert.equal(amount, 600)
   const [item] = await dbc.select().from(schema.inventoryItems).where(eq(schema.inventoryItems.id, 2))
   assert.equal(item.quantity, 9) // 10 − 2 sold + 1 restocked
+})
+
+// --- Condition-based pricing ---
+
+test('condition ladder scales the sell price (LP 85%: conditioned market, then margin ceil)', async () => {
+  await updateSettings({ conditionSellPct: { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
+  // LP item for the same card: conditioned = round(1000×0.85) = 850; ceil(850×0.85) = 723
+  await dbc.insert(schema.inventoryItems).values({
+    id: 2, cardId: 1, condition: 'LP', quantity: 3, costPrice: 200, qrCode: 'qr-2',
+  })
+  const { total } = await createSale({
+    ...base, items: [{ inventoryItemId: 2, quantity: 1 }], expectedTotal: 723,
+  }, dbc)
+  assert.equal(total, 723)
+})
+
+test('condition ladder: NM stays at full market; default all-100 ladder is a byte-exact no-op', async () => {
+  await updateSettings({ conditionSellPct: { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
+  const { total } = await createSale(base, dbc) // NM item, 2 × ceil(1000×0.85) = 1700
+  assert.equal(total, 1700)
+})
+
+test('condition ladder: override still beats the ladder', async () => {
+  await updateSettings({ conditionSellPct: { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
+  await dbc.insert(schema.inventoryItems).values({
+    id: 3, cardId: 1, condition: 'DMG', quantity: 1, costPrice: 100, sellPriceOverride: 1200, qrCode: 'qr-3',
+  })
+  const { total } = await createSale({
+    ...base, items: [{ inventoryItemId: 3, quantity: 1 }], expectedTotal: 1200,
+  }, dbc)
+  assert.equal(total, 1200)
+})
+
+test('condition ladder: a stale client expectedTotal still throws PRICE_CHANGED', async () => {
+  await updateSettings({ conditionSellPct: { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
+  await dbc.insert(schema.inventoryItems).values({
+    id: 4, cardId: 1, condition: 'MP', quantity: 1, costPrice: 100, qrCode: 'qr-4',
+  })
+  // Client displayed the un-conditioned 850; server now computes ceil(700×0.85) = 595
+  await assert.rejects(
+    () => createSale({ ...base, items: [{ inventoryItemId: 4, quantity: 1 }], expectedTotal: 850 }, dbc),
+    domainCode('PRICE_CHANGED'),
+  )
 })

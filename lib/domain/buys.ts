@@ -2,7 +2,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
 import { buyTransactions, buyItems, inventoryItems, creditLedger, customers, priceCache } from '@/lib/db/schema'
 import { generateQRId } from '@/lib/qr'
-import { pickMarketPrice } from '@/lib/pricing'
+import { applyConditionPct, conditionPct, pickMarketPrice, CONDITIONS } from '@/lib/pricing'
 import { getSettings } from '@/lib/settings'
 import { DomainError } from './errors'
 
@@ -20,7 +20,7 @@ export interface CreateBuyInput {
 export const BUY_CAP_NUMERATOR = 11
 export const BUY_CAP_DENOMINATOR = 10
 
-const CONDITIONS = new Set(['NM', 'LP', 'MP', 'HP', 'DMG'])
+const CONDITION_SET = new Set<string>(CONDITIONS)
 
 export async function createBuy(
   input: CreateBuyInput,
@@ -32,7 +32,7 @@ export async function createBuy(
     throw new DomainError('INVALID_INPUT', 'Store credit requires a customer')
   }
   for (const it of input.items) {
-    if (!CONDITIONS.has(it.condition)) throw new DomainError('INVALID_INPUT', 'Invalid condition')
+    if (!CONDITION_SET.has(it.condition)) throw new DomainError('INVALID_INPUT', 'Invalid condition')
     if (!Number.isInteger(it.quantity) || it.quantity < 1) throw new DomainError('INVALID_INPUT', 'Invalid quantity')
     if (!(it.payPrice >= 0)) throw new DomainError('INVALID_INPUT', 'Invalid pay price')
     if (!Number.isInteger(it.cardId) || it.cardId < 1) throw new DomainError('INVALID_INPUT', 'Invalid cardId')
@@ -43,21 +43,26 @@ export async function createBuy(
   // non-admin staff. Integer comparison (pay×10 > market×11) avoids floats.
   const cardIds = [...new Set(input.items.map(i => i.cardId))]
   const cacheRows = await dbc.select().from(priceCache).where(inArray(priceCache.cardId, cardIds))
-  const { primaryPriceSource } = await getSettings(dbc)
+  const settings = await getSettings(dbc)
   const marketByCard = new Map<number, number | null>(
-    cardIds.map(id => [id, pickMarketPrice(cacheRows.find(r => r.cardId === id), primaryPriceSource)]),
+    cardIds.map(id => [id, pickMarketPrice(cacheRows.find(r => r.cardId === id), settings.primaryPriceSource)]),
   )
   for (const it of input.items) {
     const market = marketByCard.get(it.cardId) ?? null
+    // The cap protects against overpaying for the card AS GRADED — reference
+    // is the condition-adjusted market, not raw NM market.
+    const conditioned = market !== null
+      ? applyConditionPct(market, conditionPct(settings.conditionSellPct, it.condition))
+      : null
     if (
-      input.staffRole !== 'admin' && market !== null
-      && it.payPrice * BUY_CAP_DENOMINATOR > market * BUY_CAP_NUMERATOR
+      input.staffRole !== 'admin' && conditioned !== null
+      && it.payPrice * BUY_CAP_DENOMINATOR > conditioned * BUY_CAP_NUMERATOR
     ) {
-      const maxPay = Math.floor(market * BUY_CAP_NUMERATOR / BUY_CAP_DENOMINATOR)
+      const maxPay = Math.floor(conditioned * BUY_CAP_NUMERATOR / BUY_CAP_DENOMINATOR)
       throw new DomainError(
         'BUY_CAP_EXCEEDED',
-        `Pay price is above 110% of market — max £${(maxPay / 100).toFixed(2)} for this card. An admin can override.`,
-        { cardId: it.cardId, payPrice: it.payPrice, market, maxPay },
+        `Pay price is above 110% of market for this condition — max £${(maxPay / 100).toFixed(2)} for this card. An admin can override.`,
+        { cardId: it.cardId, payPrice: it.payPrice, market: conditioned, maxPay },
       )
     }
   }

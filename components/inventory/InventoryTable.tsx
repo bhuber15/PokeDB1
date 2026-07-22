@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { ADJUSTMENT_REASONS, type AdjustmentReason } from '@/lib/adjustment-reasons'
-import { calculateSellPrice, formatGBP, pickMarketPrice } from '@/lib/pricing'
+import { calculateSellPrice, conditionPct, formatGBP, pickMarketPrice } from '@/lib/pricing'
 import { CardZoomModal, type CardZoomData } from '@/components/shared/CardZoomModal'
 import { useSettings } from '@/components/shared/SettingsProvider'
 import { useStaffRole } from '@/components/shared/SessionProvider'
@@ -127,7 +127,7 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
   const [pendingChange, setPendingChange] = useState<{ id: number; quantity: number; from: number } | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [zoomCard, setZoomCard] = useState<CardZoomData | null>(null)
-  const { marginMultiplier, primaryPriceSource } = useSettings()
+  const { marginMultiplier, primaryPriceSource, conditionSellPct } = useSettings()
   // Cost basis is admin-only (server already redacts it; this hides the cell)
   const isAdmin = useStaffRole() === 'admin'
 
@@ -190,7 +190,12 @@ export function InventoryTable({ rows, onStockChange, onPrintQR }: InventoryTabl
           <tbody>
             {groups.map(group => {
               const { card, product, prices } = group
-              const sellPrice = calculateSellPrice(pickMarketPrice(prices, primaryPriceSource), group.items[0].item.sellPriceOverride, marginMultiplier)
+              const sellPrice = calculateSellPrice(
+                pickMarketPrice(prices, primaryPriceSource),
+                group.items[0].item.sellPriceOverride,
+                marginMultiplier,
+                conditionPct(conditionSellPct, group.condition),
+              )
               const multi = group.items.length > 1
               const isOpen = expanded.has(group.key)
               const zoom = () => card && setZoomCard({
