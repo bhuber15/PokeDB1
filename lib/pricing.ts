@@ -32,7 +32,9 @@ export function calculateSellPrice(
   marketPence: number | null | undefined,
   overridePence: number | null | undefined,
   multiplier = parseFloat(process.env.NEXT_PUBLIC_MARGIN_MULTIPLIER ?? '0.85') || 0.85,
-  conditionPctArg = 100, // TODO(flip-to-required in final wiring task)
+  // Required so every call site makes an explicit condition decision; pass a
+  // literal 100 only where an NM-reference price is the intent.
+  conditionPctArg: number,
 ): number | null {
   if (overridePence != null) return overridePence
   if (marketPence == null) return null
@@ -53,7 +55,7 @@ export function formatGBP(pence: number | null | undefined): string {
 export function calculateBuyPrice(
   marketPence: number | null | undefined,
   pct: number,
-  conditionPctArg = 100, // TODO(flip-to-required in final wiring task)
+  conditionPctArg: number,
 ): number | null {
   if (marketPence == null) return null
   const conditioned = conditionPctArg === 100 ? marketPence : applyConditionPct(marketPence, conditionPctArg)

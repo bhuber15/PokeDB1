@@ -23,25 +23,25 @@ test('pickMarketPrice: null when both sources are missing or zero', () => {
 })
 
 test('calculateSellPrice: override wins over market price', () => {
-  assert.equal(calculateSellPrice(10000, 4200, 0.85), 4200)
+  assert.equal(calculateSellPrice(10000, 4200, 0.85, 100), 4200)
 })
 
 test('calculateSellPrice: applies multiplier and rounds up to the penny', () => {
-  assert.equal(calculateSellPrice(1000, null, 0.85), 850)
-  assert.equal(calculateSellPrice(1000.1, null, 0.85), 851) // ceil, never round down
+  assert.equal(calculateSellPrice(1000, null, 0.85, 100), 850)
+  assert.equal(calculateSellPrice(1000.1, null, 0.85, 100), 851) // ceil, never round down
 })
 
 test('calculateSellPrice: null market with no override is null', () => {
-  assert.equal(calculateSellPrice(null, null, 0.85), null)
+  assert.equal(calculateSellPrice(null, null, 0.85, 100), null)
 })
 
 test('calculateBuyPrice: floors to the penny (shop never overpays)', () => {
-  assert.equal(calculateBuyPrice(1000, 0.5), 500)
-  assert.equal(calculateBuyPrice(999.9, 0.5), 499)
+  assert.equal(calculateBuyPrice(1000, 0.5, 100), 500)
+  assert.equal(calculateBuyPrice(999.9, 0.5, 100), 499)
 })
 
 test('calculateBuyPrice: null market is null', () => {
-  assert.equal(calculateBuyPrice(null, 0.5), null)
+  assert.equal(calculateBuyPrice(null, 0.5, 100), null)
 })
 
 test('usdToGbp: converts USD pounds-equivalent to GBP pence, rounds to nearest', () => {
@@ -313,7 +313,7 @@ test('calculateSellPrice: condition step before margin, ceil after', () => {
   // conditioned = round(1000 × 85/100) = 850; ceil(850 × 0.85) = ceil(722.5) = 723
   assert.equal(calculateSellPrice(1000, null, 0.85, 85), 723)
   // pct 100 reproduces the pre-feature value penny-exact
-  assert.equal(calculateSellPrice(1000, null, 0.85, 100), calculateSellPrice(1000, null, 0.85))
+  assert.equal(calculateSellPrice(1000, null, 0.85, 100), 850)
 })
 
 test('calculateSellPrice: override wins over the ladder too', () => {
@@ -323,6 +323,6 @@ test('calculateSellPrice: override wins over the ladder too', () => {
 test('calculateBuyPrice: condition step before the buy fraction, floor after', () => {
   // conditioned = round(1000 × 70/100) = 700; floor(700 × 0.5) = 350
   assert.equal(calculateBuyPrice(1000, 0.5, 70), 350)
-  assert.equal(calculateBuyPrice(1000, 0.5, 100), calculateBuyPrice(1000, 0.5))
+  assert.equal(calculateBuyPrice(1000, 0.5, 100), 500) // pct 100 = pre-feature value
   assert.equal(calculateBuyPrice(null, 0.5, 70), null)
 })
