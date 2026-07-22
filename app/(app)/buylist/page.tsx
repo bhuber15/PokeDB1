@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { BuyCard } from '@/components/buylist/BuyCard'
@@ -22,6 +22,14 @@ export default function BuylistPage() {
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<SearchResult[]>([])
   const [cart, setCart] = useState<BuyCartLine[]>([])
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  // The input is disabled while a search runs, which permanently drops focus
+  // when it re-enables — so typing (and Enter) after the first search went
+  // nowhere until the box was clicked again. Refocus like the POS box does.
+  useEffect(() => {
+    if (!loading && pageMode === 'search') searchRef.current?.focus()
+  }, [loading, pageMode])
 
   async function handleSearch() {
     const q = query.trim()
@@ -94,6 +102,7 @@ export default function BuylistPage() {
         {pageMode === 'search' && (
           <div className="flex gap-2 shrink-0">
             <Input
+              ref={searchRef}
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}

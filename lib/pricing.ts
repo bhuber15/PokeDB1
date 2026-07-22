@@ -57,16 +57,48 @@ export function isCardmarketFresh(syncedAt: string | null | undefined, now = Dat
   return Number.isFinite(t) && now - t < CARDMARKET_STALE_MS
 }
 
+// Which source the "market" price is quoted from, per shop setting, falling
+// back to the other source if the chosen one is missing. Single source of
+// truth for the selection — pickMarketPrice and marketPriceSyncedAt must
+// always agree on which source won.
+export function pickMarketSource(
+  prices: { tcgplayerMarket?: number | null; cardmarketTrend?: number | null } | null | undefined,
+  source: 'cardmarket' | 'tcgplayer'
+): 'cardmarket' | 'tcgplayer' | null {
+  if (!prices) return null
+  const cm = prices.cardmarketTrend ?? null
+  const tcg = prices.tcgplayerMarket ?? null
+  if (source === 'cardmarket') return cm != null ? 'cardmarket' : tcg != null ? 'tcgplayer' : null
+  return tcg != null ? 'tcgplayer' : cm != null ? 'cardmarket' : null
+}
+
 // Pick the "market" price that drives sell-price math, per shop setting.
-// Both inputs are already GBP pence. Falls back to the other source if the chosen one is missing.
+// Both inputs are already GBP pence.
 export function pickMarketPrice(
   prices: { tcgplayerMarket?: number | null; cardmarketTrend?: number | null } | null | undefined,
   source: 'cardmarket' | 'tcgplayer'
 ): number | null {
-  if (!prices) return null
-  const cm = prices.cardmarketTrend ?? null
-  const tcg = prices.tcgplayerMarket ?? null
-  return source === 'cardmarket' ? (cm ?? tcg) : (tcg ?? cm)
+  const picked = pickMarketSource(prices, source)
+  if (picked === null) return null
+  return (picked === 'cardmarket' ? prices!.cardmarketTrend : prices!.tcgplayerMarket) ?? null
+}
+
+// When the price the shop is quoting was last synced. Cardmarket entries
+// carry their own timestamp (bumped by the on-demand refresh and nightly
+// rotation); TCGplayer rows are stamped by the catalogue sweep's
+// lastSyncedAt. A CM row from before cardmarket_synced_at existed falls back
+// to lastSyncedAt rather than reading as never-synced.
+export function marketPriceSyncedAt(
+  prices: {
+    tcgplayerMarket?: number | null; cardmarketTrend?: number | null
+    lastSyncedAt?: string | null; cardmarketSyncedAt?: string | null
+  } | null | undefined,
+  source: 'cardmarket' | 'tcgplayer'
+): string | null {
+  const picked = pickMarketSource(prices, source)
+  if (picked === null) return null
+  if (picked === 'cardmarket') return prices!.cardmarketSyncedAt ?? prices!.lastSyncedAt ?? null
+  return prices!.lastSyncedAt ?? null
 }
 
 // Standard UK VAT rate. Single source of truth so a rate change is one edit.
