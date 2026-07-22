@@ -56,8 +56,10 @@ Schema changes (one additive migration):
 - **`cards.alias_name` (nullable text), new.** CJK findability: JP-exclusive sets have
   Japanese-script names UK staff can't type. TCGdex exposes the Pokémon's national dex
   number; a static EN species table (`lib/data/pokedex-en.json`, ~1,025 entries, generated
-  once from TCGdex's EN card data by a small script) fills `alias_name` ("Charizard") at
-  import. Search matches
+  once by a small script) fills `alias_name` ("Charizard") as card details are fetched —
+  the dex number lives on TCGdex's per-card endpoint, not the set briefs, so the backfill
+  piggybacks on the per-card price fetch (import's full pass + nightly rotation). Some
+  special-art printings carry no dex number and stay set-number-searchable. Search matches
   `name OR alias_name OR set_number`. Trainers/energy have no dex number and rely on
   set-number search — the JP-shop norm anyway.
 - **Index on `(game, language)`** for filtered search and catalogue browse.
@@ -130,8 +132,12 @@ Phase-1 registry:
   fetch, exactly the shape of `syncStaleCardmarket`. That rotation dispatches to the card's
   source adapter (`refreshPrices`) instead of hardcoding `fetchCardmarketPrices` — dispatch
   keys on the row's `(game, language)`, which resolves grandfathered bare ids too. The
-  TCGdex fetch also reads the embedded **TCGplayer** block — TCGplayer carries a Japanese
-  Pokémon category, so JA cards often have USD data where Cardmarket is thin. In-stock
+  TCGdex fetch reads both embedded blocks (Cardmarket **and** TCGplayer), but live checks
+  (2026-07-22) show TCGdex returns `pricing: {cardmarket: null, tcgplayer: null}` for
+  JP-exclusive sets — chase cards included. **Expect CJK stock to run override-first from
+  day one**; the per-card seam lands both blocks the moment TCGdex links them, or a future
+  JA source (e.g. TCGCSV's Pokémon-Japan TCGplayer category) can slot in behind it. The
+  same per-card fetch carries `dexId`, which is what backfills `alias_name`. In-stock
   cards keep nightly priority; the on-demand refresh in search covers CJK for free.
 - **Rotation sizing:** ~20k EN + ~20k JA + smaller KO/ZH ≈ 45–50k rows → the full rotation
   stretches from ~fortnightly to ~monthly at 2,000/night. Acceptable (in-stock and
