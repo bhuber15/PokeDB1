@@ -14,6 +14,7 @@ import { formatGBP, computeSaleTotals } from '@/lib/pricing'
 import {
   readQueue, enqueueSale, removeSale, setConflict, clearConflict, type QueuedSale,
 } from '@/lib/sale-queue'
+import { applySaleToCardResults, applySaleToProductResults, type SoldLine } from '@/lib/pos-stock'
 import type { Card, PriceCache, Product } from '@/lib/db/schema'
 
 interface SearchState {
@@ -191,6 +192,13 @@ export default function POSPage() {
     // Keep the search results so several different cards can be rung up from one search.
   }
 
+  // The results panel survives checkout (several customers can be rung up
+  // from one search), so its stock counts must follow the goods out the door.
+  function applySaleToResults(sold: SoldLine[]) {
+    setResults(prev => applySaleToCardResults(prev, sold))
+    setProductResults(prev => applySaleToProductResults(prev, sold))
+  }
+
   async function handleCheckoutConfirm(opts: CheckoutConfirmOptions) {
     const { paymentMethod, payments, discountAmount, expectedTotal, customerId, cashReceived } = opts
     const body = {
@@ -216,6 +224,7 @@ export default function POSPage() {
       // makes the replay idempotent even if this request actually landed.
       enqueueSale(body)
       setQueue(readQueue())
+      applySaleToResults(body.items) // goods left the till even though the POST is queued
       setCart([])
       setCheckoutOpen(false)
       toast.info('Offline — sale queued, will send automatically when back online')
@@ -239,6 +248,7 @@ export default function POSPage() {
         cashReceived,
         changeDue,
       }
+      applySaleToResults(body.items)
       setCart([])
       setCheckoutOpen(false)
       toast.success(

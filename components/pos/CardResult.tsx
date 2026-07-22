@@ -4,7 +4,7 @@ import Image from 'next/image'
 import { MinusIcon, PlusIcon, RefreshCwIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { calculateSellPrice, formatGBP, pickMarketPrice } from '@/lib/pricing'
+import { calculateSellPrice, formatGBP, marketPriceSyncedAt, pickMarketPrice } from '@/lib/pricing'
 import { CardZoomModal } from '@/components/shared/CardZoomModal'
 import { useSettings } from '@/components/shared/SettingsProvider'
 import type { Card, PriceCache } from '@/lib/db/schema'
@@ -25,18 +25,27 @@ interface CardResultProps {
 }
 
 export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefreshPrice }: CardResultProps) {
-  const [selected, setSelected] = useState<InventoryOption | null>(inventoryOptions[0] ?? null)
+  // Store only the id: options are re-derived from props so a post-sale or
+  // post-refresh update to the search results is reflected here immediately.
+  const [selectedItemId, setSelectedItemId] = useState<number | null>(inventoryOptions[0]?.itemId ?? null)
   const [qty, setQty] = useState(1)
   const [zoomed, setZoomed] = useState(false)
   const { marginMultiplier, primaryPriceSource } = useSettings()
+
+  const selected = inventoryOptions.find(o => o.itemId === selectedItemId) ?? inventoryOptions[0] ?? null
+  // Stock may have shrunk under a picked qty (e.g. a sale just completed)
+  const boundedQty = selected ? Math.min(qty, selected.quantity) : qty
 
   const sellPrice = selected
     ? calculateSellPrice(pickMarketPrice(prices, primaryPriceSource), selected.sellPriceOverride, marginMultiplier)
     : null
 
-  const hoursOld = prices
+  // Age of the source the sell price is actually quoted from — a Cardmarket
+  // refresh bumps cardmarketSyncedAt, not the sweep's lastSyncedAt.
+  const syncedAt = marketPriceSyncedAt(prices, primaryPriceSource)
+  const hoursOld = syncedAt != null
     // eslint-disable-next-line react-hooks/purity -- staleness badge; a fresh clock reading each render is intended
-    ? (Date.now() - new Date(prices.lastSyncedAt).getTime()) / 3_600_000
+    ? (Date.now() - new Date(syncedAt).getTime()) / 3_600_000
     : null
 
   return (
@@ -118,7 +127,7 @@ export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefr
               {inventoryOptions.map(opt => (
                 <button
                   key={opt.itemId}
-                  onClick={() => { setSelected(opt); setQty(1) }}
+                  onClick={() => { setSelectedItemId(opt.itemId); setQty(1) }}
                   className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
                     selected?.itemId === opt.itemId
                       ? 'bg-primary text-primary-foreground border-primary'
@@ -133,12 +142,12 @@ export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefr
               <div className="flex items-center gap-3 pt-1 border-t">
                 <span className="text-2xl font-bold">{formatGBP(sellPrice)}</span>
                 <div className="flex items-center gap-2 ml-auto">
-                  <Button variant="outline" size="sm" aria-label="Decrease quantity" onClick={() => setQty(q => Math.max(1, q - 1))}><MinusIcon className="size-3.5" aria-hidden="true" /></Button>
-                  <span className="w-8 text-center font-semibold tabular-nums">{qty}</span>
-                  <Button variant="outline" size="sm" aria-label="Increase quantity" onClick={() => setQty(q => Math.min(selected.quantity, q + 1))}><PlusIcon className="size-3.5" aria-hidden="true" /></Button>
+                  <Button variant="outline" size="sm" aria-label="Decrease quantity" onClick={() => setQty(Math.max(1, boundedQty - 1))}><MinusIcon className="size-3.5" aria-hidden="true" /></Button>
+                  <span className="w-8 text-center font-semibold tabular-nums">{boundedQty}</span>
+                  <Button variant="outline" size="sm" aria-label="Increase quantity" onClick={() => setQty(Math.min(selected.quantity, boundedQty + 1))}><PlusIcon className="size-3.5" aria-hidden="true" /></Button>
                   <Button
                     disabled={!sellPrice}
-                    onClick={() => sellPrice && onAddToCart(selected.itemId, card.name, selected.condition, sellPrice, qty)}
+                    onClick={() => sellPrice && onAddToCart(selected.itemId, card.name, selected.condition, sellPrice, boundedQty)}
                   >
                     Add to Cart
                   </Button>

@@ -18,18 +18,20 @@ test('staff can ring up a cash sale end to end', async ({ page }) => {
   }
   await page.waitForURL('**/pos')
 
-  // Search the seeded card; first stock option is auto-selected
-  await page.getByPlaceholder(/scan barcode/i).fill('Pikachu')
-  await page.getByRole('button', { name: 'Search' }).click()
-  await expect(page.getByText('NM · 3 in stock')).toBeVisible()
-  await expect(page.getByText('£5.00').first()).toBeVisible()
-  await page.getByRole('button', { name: 'Add to Cart' }).click()
-
   // Scan the product barcode (a USB scanner types digits + Enter)
   await page.getByPlaceholder(/scan barcode/i).fill('5060000000017')
   await page.getByRole('button', { name: 'Search' }).click()
   await expect(page.getByText('SV Booster Pack')).toBeVisible()
   await expect(page.getByText('£4.50').first()).toBeVisible()
+  await page.getByRole('button', { name: 'Add to Cart' }).click()
+
+  // Search the seeded card second, so its row is the one still on screen at
+  // checkout (each search replaces the results panel); first stock option is
+  // auto-selected
+  await page.getByPlaceholder(/scan barcode/i).fill('Pikachu')
+  await page.getByRole('button', { name: 'Search' }).click()
+  await expect(page.getByText('NM · 3 in stock')).toBeVisible()
+  await expect(page.getByText('£5.00').first()).toBeVisible()
   await page.getByRole('button', { name: 'Add to Cart' }).click()
 
   // Cart totals and checkout (cash is the default, no discount).
@@ -44,6 +46,10 @@ test('staff can ring up a cash sale end to end', async ({ page }) => {
   // Success feedback (with change) and cart reset
   await expect(page.getByText(/Sale complete.*Change £0\.50/)).toBeVisible()
   await expect(page.getByText('Cart is empty')).toBeVisible()
+
+  // The results panel stays up for the next customer — its stock count
+  // must reflect what this sale just took off the shelf, without re-searching
+  await expect(page.getByText('NM · 2 in stock')).toBeVisible()
 
   // The database agrees: one 950p cash sale, both items' stock decremented
   const client = createClient({ url: `file:${E2E_DB_PATH}` })

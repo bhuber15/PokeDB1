@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { calculateSellPrice, calculateBuyPrice, usdToGbp, eurToGbp, formatGBP, parsePounds, computeSaleTotals, VAT_RATE, MARGIN_VAT_DIVISOR, computeMarginVat } from './pricing'
+import { calculateSellPrice, calculateBuyPrice, usdToGbp, eurToGbp, formatGBP, parsePounds, computeSaleTotals, VAT_RATE, MARGIN_VAT_DIVISOR, computeMarginVat, pickMarketPrice, pickMarketSource, marketPriceSyncedAt } from './pricing'
 
 test('calculateSellPrice: override wins over market price', () => {
   assert.equal(calculateSellPrice(10000, 4200, 0.85), 4200)
@@ -58,6 +58,74 @@ test('parsePounds: converts a pounds number to integer pence', () => {
 test('parsePounds: non-numeric input is 0', () => {
   assert.equal(parsePounds(''), 0)
   assert.equal(parsePounds('abc'), 0)
+})
+
+test('pickMarketSource: prefers the configured source', () => {
+  const prices = { cardmarketTrend: 900, tcgplayerMarket: 1000 }
+  assert.equal(pickMarketSource(prices, 'cardmarket'), 'cardmarket')
+  assert.equal(pickMarketSource(prices, 'tcgplayer'), 'tcgplayer')
+})
+
+test('pickMarketSource: falls back to the other source when the preferred one is missing', () => {
+  assert.equal(pickMarketSource({ cardmarketTrend: null, tcgplayerMarket: 1000 }, 'cardmarket'), 'tcgplayer')
+  assert.equal(pickMarketSource({ cardmarketTrend: 900, tcgplayerMarket: null }, 'tcgplayer'), 'cardmarket')
+})
+
+test('pickMarketSource: null when no source has a price or the row is missing', () => {
+  assert.equal(pickMarketSource({ cardmarketTrend: null, tcgplayerMarket: null }, 'cardmarket'), null)
+  assert.equal(pickMarketSource(null, 'cardmarket'), null)
+  assert.equal(pickMarketSource(undefined, 'tcgplayer'), null)
+})
+
+test('pickMarketPrice: quotes the picked source, with cross-source fallback', () => {
+  const prices = { cardmarketTrend: 900, tcgplayerMarket: 1000 }
+  assert.equal(pickMarketPrice(prices, 'cardmarket'), 900)
+  assert.equal(pickMarketPrice(prices, 'tcgplayer'), 1000)
+  assert.equal(pickMarketPrice({ cardmarketTrend: null, tcgplayerMarket: 1000 }, 'cardmarket'), 1000)
+  assert.equal(pickMarketPrice({ cardmarketTrend: null, tcgplayerMarket: null }, 'cardmarket'), null)
+  assert.equal(pickMarketPrice(null, 'cardmarket'), null)
+})
+
+// The POS staleness badge derives its age from marketPriceSyncedAt — it must
+// follow the source the sell price is quoted from, so an on-demand Cardmarket
+// refresh (which bumps only cardmarketSyncedAt) clears the badge for a
+// CM-quoted price, and leaves it for a TCG-quoted one.
+test('marketPriceSyncedAt: CM-quoted price reads cardmarketSyncedAt', () => {
+  const prices = {
+    cardmarketTrend: 900, tcgplayerMarket: 1000,
+    cardmarketSyncedAt: '2026-07-22T09:00:00.000Z', lastSyncedAt: '2026-07-05T00:00:00.000Z',
+  }
+  assert.equal(marketPriceSyncedAt(prices, 'cardmarket'), '2026-07-22T09:00:00.000Z')
+})
+
+test('marketPriceSyncedAt: TCG-quoted price reads lastSyncedAt even when the CM stamp is fresher', () => {
+  const prices = {
+    cardmarketTrend: 900, tcgplayerMarket: 1000,
+    cardmarketSyncedAt: '2026-07-22T09:00:00.000Z', lastSyncedAt: '2026-07-05T00:00:00.000Z',
+  }
+  assert.equal(marketPriceSyncedAt(prices, 'tcgplayer'), '2026-07-05T00:00:00.000Z')
+})
+
+test('marketPriceSyncedAt: follows the fallback source when the preferred one has no price', () => {
+  const prices = {
+    cardmarketTrend: null, tcgplayerMarket: 1000,
+    cardmarketSyncedAt: '2026-07-22T09:00:00.000Z', lastSyncedAt: '2026-07-05T00:00:00.000Z',
+  }
+  // CM-primary shop quoting the TCG fallback: the TCG sweep stamp is the honest age
+  assert.equal(marketPriceSyncedAt(prices, 'cardmarket'), '2026-07-05T00:00:00.000Z')
+})
+
+test('marketPriceSyncedAt: CM row without its own stamp falls back to lastSyncedAt', () => {
+  const prices = {
+    cardmarketTrend: 900, tcgplayerMarket: null,
+    cardmarketSyncedAt: null, lastSyncedAt: '2026-07-05T00:00:00.000Z',
+  }
+  assert.equal(marketPriceSyncedAt(prices, 'cardmarket'), '2026-07-05T00:00:00.000Z')
+})
+
+test('marketPriceSyncedAt: null when nothing is quotable', () => {
+  assert.equal(marketPriceSyncedAt({ cardmarketTrend: null, tcgplayerMarket: null }, 'cardmarket'), null)
+  assert.equal(marketPriceSyncedAt(null, 'cardmarket'), null)
 })
 
 test('computeSaleTotals: no VAT scheme passes amounts through', () => {
