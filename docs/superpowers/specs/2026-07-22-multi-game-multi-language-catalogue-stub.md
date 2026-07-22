@@ -1,5 +1,10 @@
 # Stub: multi-game + multi-language catalogue (needs brainstorm → spec)
 
+> **Superseded 2026-07-22** by `2026-07-22-multi-game-multi-language-catalogue-design.md`
+> (brainstormed with Brad; all open questions below are resolved there). One correction to
+> the "current state" section: `cards.game` and `cards.language` have existed since
+> migration 0000 as dormant defaults — the pipeline ignores them, but the columns are real.
+
 Source: first-shop demo 2026-07-22 (docs/testing/smoke-2026-07-22.md). Two asks that share one
 root: the catalogue/pricing pipeline is Pokémon-English-only.
 
