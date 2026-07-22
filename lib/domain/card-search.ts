@@ -1,6 +1,7 @@
-import { or, like, eq, sql, inArray } from 'drizzle-orm'
+import { or, like, eq, and, sql, inArray, type SQL } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
 import { cards, priceCache, type Card, type PriceCache } from '@/lib/db/schema'
+import { type Game, type Language } from '@/lib/games'
 import { searchPokemonCards, extractBestPrice, type PokemonTCGCard } from '@/lib/apis/pokemon-tcg'
 import { getSettings } from '@/lib/settings'
 import { usdToGbp } from '@/lib/pricing'
@@ -37,21 +38,37 @@ interface SearchDeps {
   syncMarketPrices?: typeof syncMarketPricesForCard
 }
 
+export interface CardSearchFilters {
+  game?: Game
+  language?: Language
+}
+
 // Local catalogue first (instant, works offline), then fuzzy name suggestions
 // for misspellings, then the live API for cards newer than the last catalogue
 // sweep. The live call is time-bounded upstream, so a hung upstream becomes a
-// fast `unavailable` result instead of a stuck request.
+// fast `unavailable` result instead of a stuck request. Optional filters scope
+// every stage to one game and/or language.
 export async function searchCards(
   q: string,
   dbc: Db = db,
   deps: SearchDeps = {},
+  filters: CardSearchFilters = {},
 ): Promise<CardSearchResult> {
   const fetchLive = deps.fetchLive ?? searchPokemonCards
   const syncMarketPrices = deps.syncMarketPrices ?? syncMarketPricesForCard
 
-  // Ranked: exact name, then name prefix, then substring/set-number match.
+  const scope = [
+    ...(filters.game ? [eq(cards.game, filters.game)] : []),
+    ...(filters.language ? [eq(cards.language, filters.language)] : []),
+  ]
+
+  // Ranked: exact name, then name prefix, then substring/alias/set-number
+  // match. aliasName lets an EN species query find CJK printings.
   const likeMatches = await dbc.select().from(cards)
-    .where(or(like(cards.name, `%${q}%`), like(cards.setNumber, `%${q}%`)))
+    .where(and(
+      or(like(cards.name, `%${q}%`), like(cards.aliasName, `%${q}%`), like(cards.setNumber, `%${q}%`)),
+      ...scope,
+    ))
     .orderBy(
       sql`CASE WHEN lower(${cards.name}) = lower(${q}) THEN 0 WHEN ${cards.name} LIKE ${q + '%'} THEN 1 ELSE 2 END`,
       cards.name,
@@ -61,9 +78,15 @@ export async function searchCards(
     return { cards: likeMatches, prices: await pricesForFresh(likeMatches, dbc, syncMarketPrices), fuzzy: false, unavailable: false }
   }
 
-  const fuzzyMatches = await searchFuzzy(q, dbc)
+  const fuzzyMatches = await searchFuzzy(q, dbc, scope)
   if (fuzzyMatches.length > 0) {
     return { cards: fuzzyMatches, prices: await pricesForFresh(fuzzyMatches, dbc, syncMarketPrices), fuzzy: true, unavailable: false }
+  }
+
+  // pokemontcg.io is EN-only — inserting its cards into a non-EN-filtered
+  // search would be wrong, so a scoped miss is just a miss.
+  if (filters.language && filters.language !== 'EN') {
+    return { cards: [], prices: {}, fuzzy: false, unavailable: false }
   }
 
   // Nothing local — fall back to the live API (e.g. a set newer than the
@@ -102,15 +125,17 @@ async function pricesFor(rows: Card[], dbc: Db): Promise<Record<number, PriceCac
   return Object.fromEntries(cached.map(p => [p.cardId, p]))
 }
 
-// Score every distinct catalogue name against the query in memory (~20k names,
-// a few ms — no SQLite extension needed on Turso), then pull all printings of
-// the closest few names.
-async function searchFuzzy(q: string, dbc: Db): Promise<Card[]> {
-  const names = await dbc.selectDistinct({ name: cards.name }).from(cards)
+// Score every distinct catalogue name (and EN alias, for CJK rows) against
+// the query in memory (~20k names, a few ms — no SQLite extension needed on
+// Turso), then pull all printings of the closest few names.
+async function searchFuzzy(q: string, dbc: Db, scope: SQL[]): Promise<Card[]> {
+  const names = await dbc.selectDistinct({ name: cards.name, aliasName: cards.aliasName })
+    .from(cards)
+    .where(scope.length ? and(...scope) : undefined)
   const scores = new Map<string, number>()
-  for (const { name } of names) {
-    const score = similarity(q, name)
-    if (score >= FUZZY_THRESHOLD) scores.set(name, score)
+  for (const { name, aliasName } of names) {
+    const score = Math.max(similarity(q, name), aliasName ? similarity(q, aliasName) : 0)
+    if (score >= FUZZY_THRESHOLD) scores.set(name, Math.max(score, scores.get(name) ?? 0))
   }
   if (scores.size === 0) return []
 
@@ -120,7 +145,7 @@ async function searchFuzzy(q: string, dbc: Db): Promise<Card[]> {
     .map(([name]) => name)
 
   const rows = await dbc.select().from(cards)
-    .where(inArray(cards.name, topNames))
+    .where(and(inArray(cards.name, topNames), ...scope))
     .limit(CARD_SEARCH_LIMIT)
   return rows.sort((a, b) =>
     (scores.get(b.name)! - scores.get(a.name)!) || a.name.localeCompare(b.name) || a.setName.localeCompare(b.setName))
