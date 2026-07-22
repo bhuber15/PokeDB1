@@ -1,5 +1,5 @@
 // lib/db/schema.ts
-import { sqliteTable, text, integer, real, unique, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, real, unique, uniqueIndex, index } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
 
 export const staff = sqliteTable('staff', {
@@ -19,11 +19,14 @@ export const cards = sqliteTable('cards', {
   variant: text('variant'),
   series: text('series'), // era/series, e.g. "Sword & Shield" — nullable, backfilled by scripts/backfill-series.ts
   language: text('language').notNull().default('EN'),
+  // EN species name for CJK printings (from the TCGdex dexId) — search-only.
+  // Null for EN rows, trainers/energy, and special arts without a dex number.
+  aliasName: text('alias_name'),
   externalId: text('external_id').unique(), // Pokemon TCG API card id e.g. "xy7-54"
   tcgplayerId: text('tcgplayer_id'),
   imageUrl: text('image_url'),
   imageUrlLarge: text('image_url_large'),
-})
+}, (t) => [index('idx_cards_game_language').on(t.game, t.language)])
 
 // Non-card SKUs (sealed, accessories, snacks…). Identity only — stock, price
 // and deactivation live on the product's single inventory_items row.
@@ -160,6 +163,8 @@ export const settings = sqliteTable('settings', {
   // Onboarding checklist state (JSON: { dismissedAt?, done? }). Null = feature
   // off — only tenants provisioned by the platform get a value seeded.
   onboarding: text('onboarding'),
+  // JSON array of Language codes (lib/games.ts). 'EN' is always a member.
+  enabledLanguages: text('enabled_languages').notNull().default('["EN"]'),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
 

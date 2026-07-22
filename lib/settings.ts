@@ -3,6 +3,7 @@ import { settings, type Settings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { parsePounds } from '@/lib/pricing'
 import { BRAND } from '@/lib/brand'
+import { type Language, isLanguage } from '@/lib/games'
 
 export interface AppSettings {
   shopName: string
@@ -15,6 +16,7 @@ export interface AppSettings {
   primaryPriceSource: 'cardmarket' | 'tcgplayer'
   vatScheme: 'none' | 'standard' | 'margin'
   marginNoCostHandling: 'exclude' | 'block'
+  enabledLanguages: Language[]
 }
 
 // Defaults fall back to env so pricing still works before the row exists
@@ -31,6 +33,28 @@ export const DEFAULT_SETTINGS: AppSettings = {
   primaryPriceSource: 'cardmarket',
   vatScheme: 'none',
   marginNoCostHandling: 'exclude',
+  enabledLanguages: ['EN'],
+}
+
+// enabled_languages is a JSON text column; tolerate junk (['EN'] fallback)
+// and guarantee 'EN' membership so the EN catalogue can never be disabled.
+function parseLanguages(json: string): Language[] {
+  try {
+    const arr: unknown = JSON.parse(json)
+    const langs = Array.isArray(arr) ? arr.filter(isLanguage) : []
+    return langs.includes('EN') ? langs : ['EN', ...langs]
+  } catch {
+    return ['EN']
+  }
+}
+
+// Row-shaped copy of an AppSettings patch: arrays become JSON text.
+function toRow(patch: Partial<AppSettings>) {
+  const { enabledLanguages, ...rest } = patch
+  return {
+    ...rest,
+    ...(enabledLanguages ? { enabledLanguages: JSON.stringify(enabledLanguages) } : {}),
+  }
 }
 
 function toAppSettings(row: Settings): AppSettings {
@@ -45,6 +69,7 @@ function toAppSettings(row: Settings): AppSettings {
     primaryPriceSource: row.primaryPriceSource as 'cardmarket' | 'tcgplayer',
     vatScheme: row.vatScheme as 'none' | 'standard' | 'margin',
     marginNoCostHandling: row.marginNoCostHandling as 'exclude' | 'block',
+    enabledLanguages: parseLanguages(row.enabledLanguages),
   }
 }
 
@@ -56,7 +81,7 @@ export async function getSettings(dbc: Db = db): Promise<AppSettings> {
     if (row) return toAppSettings(row)
 
     const [created] = await dbc.insert(settings)
-      .values({ id: 1, ...DEFAULT_SETTINGS })
+      .values({ id: 1, ...toRow(DEFAULT_SETTINGS) })
       .onConflictDoNothing()
       .returning()
     if (created) return toAppSettings(created)
@@ -75,7 +100,7 @@ export async function getSettings(dbc: Db = db): Promise<AppSettings> {
 export async function updateSettings(patch: Partial<AppSettings>, dbc: Db = db): Promise<AppSettings> {
   await getSettings(dbc) // ensure the row exists
   const [updated] = await dbc.update(settings)
-    .set({ ...patch, updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19) })
+    .set({ ...toRow(patch), updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19) })
     .where(eq(settings.id, 1))
     .returning()
   return toAppSettings(updated)

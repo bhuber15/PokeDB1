@@ -33,3 +33,21 @@ test('multi mode: getSettings rejects on a broken DB instead of returning defaul
   await dbc.run(sql`DROP TABLE settings`)
   await assert.rejects(() => getSettings(dbc))
 })
+
+test('enabledLanguages defaults to EN and round-trips through updateSettings', async () => {
+  const db = await createTestDb()
+  const initial = await getSettings(db)
+  assert.deepEqual(initial.enabledLanguages, ['EN'])
+
+  const { updateSettings } = await import('./settings')
+  const updated = await updateSettings({ enabledLanguages: ['EN', 'JA', 'KO'] }, db)
+  assert.deepEqual(updated.enabledLanguages, ['EN', 'JA', 'KO'])
+  assert.deepEqual((await getSettings(db)).enabledLanguages, ['EN', 'JA', 'KO'])
+})
+
+test('malformed enabled_languages JSON degrades to [EN], never throws', async () => {
+  const db = await createTestDb()
+  await getSettings(db) // create the row
+  await db.run(sql`UPDATE settings SET enabled_languages = 'not json' WHERE id = 1`)
+  assert.deepEqual((await getSettings(db)).enabledLanguages, ['EN'])
+})
