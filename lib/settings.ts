@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { db, isMultiTenant, type Db } from '@/lib/db'
 import { settings, type Settings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
@@ -34,6 +35,26 @@ export const DEFAULT_SETTINGS: AppSettings = {
   marginNoCostHandling: 'exclude',
   conditionSellPct: { ...DEFAULT_CONDITION_LADDER },
 }
+
+const pctInt = z.number().int().min(1).max(100)
+const conditionLadderSchema = z.object({ NM: pctInt, LP: pctInt, MP: pctInt, HP: pctInt, DMG: pctInt })
+
+// Body contract for PATCH /api/settings. Mirrors the old hand-rolled checks:
+// positive finite rates, (0,1] buy fractions, enum fields, 60-char shop name;
+// unknown keys are stripped; at least one recognised field required.
+export const settingsPatchSchema = z.object({
+  shopName: z.string().trim().min(1).max(60),
+  usdToGbp: z.number().finite().positive(),
+  eurToGbp: z.number().finite().positive(),
+  marginMultiplier: z.number().finite().positive(),
+  highValueThreshold: z.number().int().positive(), // pence
+  primaryPriceSource: z.enum(['cardmarket', 'tcgplayer']),
+  vatScheme: z.enum(['none', 'standard', 'margin']),
+  marginNoCostHandling: z.enum(['exclude', 'block']),
+  buyCashPct: z.number().positive().max(1),
+  buyCreditPct: z.number().positive().max(1),
+  conditionSellPct: conditionLadderSchema,
+}).partial().refine(o => Object.keys(o).length > 0, { message: 'No valid fields to update' })
 
 function toAppSettings(row: Settings): AppSettings {
   return {

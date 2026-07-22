@@ -2,7 +2,7 @@ import { test, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { sql } from 'drizzle-orm'
 import { createTestDb, seedBase } from './db/test-helpers'
-import { getSettings, updateSettings, DEFAULT_SETTINGS } from './settings'
+import { getSettings, updateSettings, DEFAULT_SETTINGS, settingsPatchSchema } from './settings'
 
 test('getSettings never exposes ownerPasswordHash', async () => {
   const dbc = await createTestDb()
@@ -51,4 +51,31 @@ test('condition ladder: defaults to all-100 and round-trips through updateSettin
   // A ladder-less patch leaves the ladder untouched
   const patched = await updateSettings({ shopName: 'Cardtill' }, dbc)
   assert.deepEqual(patched.conditionSellPct, { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 })
+})
+
+test('settingsPatchSchema: accepts a full 1–100 integer ladder', () => {
+  const r = settingsPatchSchema.safeParse({ conditionSellPct: { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } })
+  assert.ok(r.success)
+})
+
+test('settingsPatchSchema: rejects partial ladders, out-of-range and non-integer values', () => {
+  assert.ok(!settingsPatchSchema.safeParse({ conditionSellPct: { NM: 100, LP: 85 } }).success)
+  assert.ok(!settingsPatchSchema.safeParse({ conditionSellPct: { NM: 100, LP: 0, MP: 70, HP: 50, DMG: 35 } }).success)
+  assert.ok(!settingsPatchSchema.safeParse({ conditionSellPct: { NM: 101, LP: 85, MP: 70, HP: 50, DMG: 35 } }).success)
+  assert.ok(!settingsPatchSchema.safeParse({ conditionSellPct: { NM: 99.5, LP: 85, MP: 70, HP: 50, DMG: 35 } }).success)
+})
+
+test('settingsPatchSchema: preserves the existing route semantics', () => {
+  // valid single-field patches
+  assert.ok(settingsPatchSchema.safeParse({ marginMultiplier: 0.9 }).success)
+  assert.ok(settingsPatchSchema.safeParse({ buyCreditPct: 1 }).success)
+  assert.ok(settingsPatchSchema.safeParse({ vatScheme: 'margin' }).success)
+  // invalid values that the old route 400'd on
+  assert.ok(!settingsPatchSchema.safeParse({ marginMultiplier: 0 }).success)
+  assert.ok(!settingsPatchSchema.safeParse({ buyCashPct: 1.5 }).success)
+  assert.ok(!settingsPatchSchema.safeParse({ primaryPriceSource: 'ebay' }).success)
+  // empty patch → refine failure (was "No valid fields to update")
+  assert.ok(!settingsPatchSchema.safeParse({}).success)
+  // unknown keys are stripped, and a patch of ONLY unknown keys is empty → rejected
+  assert.ok(!settingsPatchSchema.safeParse({ bogus: 1 }).success)
 })
