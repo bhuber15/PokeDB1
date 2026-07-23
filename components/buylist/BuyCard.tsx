@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CardZoomModal } from '@/components/shared/CardZoomModal'
 import { useSettings } from '@/components/shared/SettingsProvider'
-import { calculateBuyPrice, formatGBP, pickMarketPrice, pickMarketSource } from '@/lib/pricing'
+import { calculateBuyPrice, formatGBP, parsePounds, pickMarketPrice, pickMarketSource } from '@/lib/pricing'
+import { LANGUAGE_LABELS, type Language } from '@/lib/games'
 import type { Card, PriceCache } from '@/lib/db/schema'
 
 const CONDITIONS = ['NM', 'LP', 'MP', 'HP', 'DMG'] as const
@@ -29,6 +30,8 @@ export function BuyCard({ card, prices, onAdd }: BuyCardProps) {
   const [condition, setCondition] = useState<Condition>('NM')
   const [qty, setQty] = useState(1)
   const [zoomed, setZoomed] = useState(false)
+  const [manualCash, setManualCash] = useState('')
+  const [manualCredit, setManualCredit] = useState('')
   const { buyCashPct, buyCreditPct, primaryPriceSource } = useSettings()
 
   // Use the shop's primary price source so the offer shown matches the
@@ -77,6 +80,9 @@ export function BuyCard({ card, prices, onAdd }: BuyCardProps) {
               {card.name}
             </h2>
             <p className="text-sm text-muted-foreground">{card.setName} · #{card.setNumber}</p>
+            {card.language !== 'EN' && (
+              <Badge variant="outline">{LANGUAGE_LABELS[card.language as Language] ?? card.language}</Badge>
+            )}
             <div className="flex gap-2 mt-2 flex-wrap items-center">
               {market != null && (
                 <Badge
@@ -97,7 +103,7 @@ export function BuyCard({ card, prices, onAdd }: BuyCardProps) {
                 </Badge>
               )}
               {market == null && (
-                <Badge variant="destructive">No price data</Badge>
+                <Badge variant="destructive">No market data — manual offer</Badge>
               )}
             </div>
           </div>
@@ -127,6 +133,17 @@ export function BuyCard({ card, prices, onAdd }: BuyCardProps) {
             <span className="w-8 text-center font-semibold">{qty}</span>
             <Button variant="outline" size="sm" onClick={() => setQty(q => q + 1)}>+</Button>
           </div>
+          {market == null && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Manual offer:</span>
+              <input value={manualCash} onChange={e => setManualCash(e.target.value)} inputMode="decimal"
+                placeholder="Cash £" aria-label="Manual cash offer in pounds"
+                className="w-20 h-9 rounded-md border border-input bg-background px-2 text-right text-sm" />
+              <input value={manualCredit} onChange={e => setManualCredit(e.target.value)} inputMode="decimal"
+                placeholder="Credit £" aria-label="Manual credit offer in pounds"
+                className="w-20 h-9 rounded-md border border-input bg-background px-2 text-right text-sm" />
+            </div>
+          )}
           <div className="ml-auto flex items-center gap-3">
             {(cashOffer != null || creditOffer != null) && (
               <span className="text-sm text-muted-foreground">
@@ -134,8 +151,12 @@ export function BuyCard({ card, prices, onAdd }: BuyCardProps) {
               </span>
             )}
             <Button
-              disabled={market == null}
-              onClick={() => onAdd({ cardId: card.id, condition, quantity: qty, payPriceCash: cashOffer, payPriceCredit: creditOffer })}
+              disabled={market == null && (parsePounds(manualCash) <= 0 || parsePounds(manualCredit) <= 0)}
+              onClick={() => onAdd({
+                cardId: card.id, condition, quantity: qty,
+                payPriceCash: market != null ? cashOffer : parsePounds(manualCash),
+                payPriceCredit: market != null ? creditOffer : parsePounds(manualCredit),
+              })}
             >
               Add to buy
             </Button>

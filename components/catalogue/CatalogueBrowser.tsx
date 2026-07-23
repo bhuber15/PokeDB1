@@ -4,6 +4,7 @@ import Image from 'next/image'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { formatGBP } from '@/lib/pricing'
+import { LANGUAGE_LABELS, type Language } from '@/lib/games'
 import type { SetSummary, CatalogueRow } from '@/lib/domain/catalogue'
 
 // Re-exported under a name that reads naturally at the call site ("the
@@ -156,6 +157,9 @@ export function CatalogueBrowser({ onSelectCard }: CatalogueBrowserProps) {
               )}
               <p className="text-xs font-semibold mt-1 truncate">{card.name}</p>
               <p className="text-[11px] text-muted-foreground truncate">{card.setName} · #{card.setNumber}</p>
+              {card.language !== 'EN' && (
+                <Badge variant="outline">{LANGUAGE_LABELS[card.language as Language] ?? card.language}</Badge>
+              )}
               {prices?.tcgplayerMarket != null && (
                 <Badge variant="secondary" className="text-[10px] mt-1">{formatGBP(prices.tcgplayerMarket)}</Badge>
               )}
