@@ -2,7 +2,7 @@ import { test, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { sql } from 'drizzle-orm'
 import { createTestDb, seedBase } from './db/test-helpers'
-import { getSettings, DEFAULT_SETTINGS } from './settings'
+import { getSettings, updateSettings, DEFAULT_SETTINGS, settingsPatchSchema } from './settings'
 
 test('getSettings never exposes ownerPasswordHash', async () => {
   const dbc = await createTestDb()
@@ -50,4 +50,58 @@ test('malformed enabled_languages JSON degrades to [EN], never throws', async ()
   await getSettings(db) // create the row
   await db.run(sql`UPDATE settings SET enabled_languages = 'not json' WHERE id = 1`)
   assert.deepEqual((await getSettings(db)).enabledLanguages, ['EN'])
+})
+
+test('settingsPatchSchema: enabledLanguages validates codes and always includes EN', () => {
+  const ok = settingsPatchSchema.safeParse({ enabledLanguages: ['JA', 'KO'] })
+  assert.ok(ok.success)
+  assert.deepEqual(ok.data.enabledLanguages, ['EN', 'JA', 'KO'])
+  assert.ok(!settingsPatchSchema.safeParse({ enabledLanguages: ['JA', 'xx'] }).success)
+  assert.ok(!settingsPatchSchema.safeParse({ enabledLanguages: 'JA' }).success)
+})
+
+test('condition ladder: defaults to all-100 and round-trips through updateSettings', async () => {
+  const dbc = await createTestDb()
+  await seedBase(dbc)
+  const before = await getSettings(dbc)
+  assert.deepEqual(before.conditionSellPct, { NM: 100, LP: 100, MP: 100, HP: 100, DMG: 100 })
+
+  const after = await updateSettings(
+    { conditionSellPct: { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
+  assert.deepEqual(after.conditionSellPct, { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 })
+
+  // Persisted, not just echoed
+  const reread = await getSettings(dbc)
+  assert.deepEqual(reread.conditionSellPct, { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 })
+
+  // A ladder-less patch leaves the ladder untouched
+  const patched = await updateSettings({ shopName: 'Cardtill' }, dbc)
+  assert.deepEqual(patched.conditionSellPct, { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 })
+})
+
+test('settingsPatchSchema: accepts a full 1–100 integer ladder', () => {
+  const r = settingsPatchSchema.safeParse({ conditionSellPct: { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } })
+  assert.ok(r.success)
+})
+
+test('settingsPatchSchema: rejects partial ladders, out-of-range and non-integer values', () => {
+  assert.ok(!settingsPatchSchema.safeParse({ conditionSellPct: { NM: 100, LP: 85 } }).success)
+  assert.ok(!settingsPatchSchema.safeParse({ conditionSellPct: { NM: 100, LP: 0, MP: 70, HP: 50, DMG: 35 } }).success)
+  assert.ok(!settingsPatchSchema.safeParse({ conditionSellPct: { NM: 101, LP: 85, MP: 70, HP: 50, DMG: 35 } }).success)
+  assert.ok(!settingsPatchSchema.safeParse({ conditionSellPct: { NM: 99.5, LP: 85, MP: 70, HP: 50, DMG: 35 } }).success)
+})
+
+test('settingsPatchSchema: preserves the existing route semantics', () => {
+  // valid single-field patches
+  assert.ok(settingsPatchSchema.safeParse({ marginMultiplier: 0.9 }).success)
+  assert.ok(settingsPatchSchema.safeParse({ buyCreditPct: 1 }).success)
+  assert.ok(settingsPatchSchema.safeParse({ vatScheme: 'margin' }).success)
+  // invalid values that the old route 400'd on
+  assert.ok(!settingsPatchSchema.safeParse({ marginMultiplier: 0 }).success)
+  assert.ok(!settingsPatchSchema.safeParse({ buyCashPct: 1.5 }).success)
+  assert.ok(!settingsPatchSchema.safeParse({ primaryPriceSource: 'ebay' }).success)
+  // empty patch → refine failure (was "No valid fields to update")
+  assert.ok(!settingsPatchSchema.safeParse({}).success)
+  // unknown keys are stripped, and a patch of ONLY unknown keys is empty → rejected
+  assert.ok(!settingsPatchSchema.safeParse({ bogus: 1 }).success)
 })

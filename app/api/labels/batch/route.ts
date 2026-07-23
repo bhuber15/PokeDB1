@@ -5,7 +5,7 @@ import { getTenantDb } from '@/lib/db'
 import { inventoryItems, cards, priceCache } from '@/lib/db/schema'
 import { generateQRDataURL } from '@/lib/qr'
 import { getSettings } from '@/lib/settings'
-import { calculateSellPrice, pickMarketPrice } from '@/lib/pricing'
+import { calculateSellPrice, conditionPct, pickMarketPrice } from '@/lib/pricing'
 import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
@@ -38,6 +38,7 @@ export const POST = guarded(async (req: NextRequest) => {
       pickMarketPrice(prices, settings.primaryPriceSource),
       item.sellPriceOverride,
       settings.marginMultiplier,
+      conditionPct(settings.conditionSellPct, item.condition),
     ),
   })))
 

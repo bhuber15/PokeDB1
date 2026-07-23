@@ -152,8 +152,15 @@
     {
       "idx": 21,
       "version": "6",
-      "when": 1784749434467,
-      "tag": "0021_multilang-pokemon",
+      "when": 1784739988162,
+      "tag": "0021_bitter_zuras",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1784834153632,
+      "tag": "0022_multilang-pokemon",
       "breakpoints": true
     }
   ]

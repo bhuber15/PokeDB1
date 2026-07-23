@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useSettings } from '@/components/shared/SettingsProvider'
-import { formatGBP, parsePounds, usdToGbp as usdToGbpPence, eurToGbp as eurToGbpPence, calculateSellPrice, calculateBuyPrice } from '@/lib/pricing'
+import { formatGBP, parsePounds, usdToGbp as usdToGbpPence, eurToGbp as eurToGbpPence, calculateSellPrice, calculateBuyPrice, CONDITIONS, RECOMMENDED_CONDITION_LADDER, type Condition } from '@/lib/pricing'
 import { LANGUAGES, LANGUAGE_LABELS, type Language } from '@/lib/games'
 
 export function SettingsForm() {
@@ -24,19 +24,31 @@ export function SettingsForm() {
   const [vatScheme, setVatScheme] = useState<'none' | 'standard' | 'margin'>(current.vatScheme)
   const [marginNoCostHandling, setMarginNoCostHandling] = useState<'exclude' | 'block'>(current.marginNoCostHandling)
   const [enabledLanguages, setEnabledLanguages] = useState<Language[]>(current.enabledLanguages)
+  const [condPct, setCondPct] = useState<Record<Condition, string>>({
+    NM: String(current.conditionSellPct.NM), LP: String(current.conditionSellPct.LP),
+    MP: String(current.conditionSellPct.MP), HP: String(current.conditionSellPct.HP),
+    DMG: String(current.conditionSellPct.DMG),
+  })
   const [saving, setSaving] = useState(false)
+
+  // A blank/out-of-range input previews as 100 (off); the server rejects it on save.
+  const condPctInt = (c: Condition) => {
+    const n = parseInt(condPct[c])
+    return Number.isInteger(n) && n >= 1 && n <= 100 ? n : 100
+  }
 
   const rate = parseFloat(usdToGbp) || 0
   const eurRate = parseFloat(eurToGbp) || 0
   const margin = parseFloat(marginMultiplier) || 0
-  // Worked examples use the real pricing functions so they match actual behavior (all pence)
+  // Worked examples use the real pricing functions so they match actual behavior
+  // (all pence). These are NM-reference examples, so condition % is literal 100.
   const exampleGbp = usdToGbpPence(10, rate) // a $10 TCGplayer card
-  const exampleSell = calculateSellPrice(exampleGbp, null, margin)
+  const exampleSell = calculateSellPrice(exampleGbp, null, margin, 100)
   const exampleCmGbp = eurToGbpPence(10, eurRate) // a €10 Cardmarket card
-  const exampleCmSell = calculateSellPrice(exampleCmGbp, null, margin)
+  const exampleCmSell = calculateSellPrice(exampleCmGbp, null, margin, 100)
   const TEN_POUNDS = 1000 // pence, for the buylist example
-  const cashExample = calculateBuyPrice(TEN_POUNDS, parseFloat(buyCashPct) || 0)
-  const creditExample = calculateBuyPrice(TEN_POUNDS, parseFloat(buyCreditPct) || 0)
+  const cashExample = calculateBuyPrice(TEN_POUNDS, parseFloat(buyCashPct) || 0, 100)
+  const creditExample = calculateBuyPrice(TEN_POUNDS, parseFloat(buyCreditPct) || 0, 100)
 
   async function save() {
     setSaving(true)
@@ -56,6 +68,10 @@ export function SettingsForm() {
           vatScheme,
           marginNoCostHandling,
           enabledLanguages,
+          conditionSellPct: {
+            NM: parseInt(condPct.NM), LP: parseInt(condPct.LP), MP: parseInt(condPct.MP),
+            HP: parseInt(condPct.HP), DMG: parseInt(condPct.DMG),
+          },
         }),
       })
       if (!res.ok) {
@@ -266,6 +282,51 @@ export function SettingsForm() {
             <span className="text-muted-foreground">Auto sell price ({primaryPriceSource === 'cardmarket' ? 'CM' : 'TCG'})</span>
             <span className="font-bold text-primary">{formatGBP(primaryPriceSource === 'cardmarket' ? exampleCmSell : exampleSell)}</span>
           </div>
+        </div>
+      </section>
+
+      {/* Condition pricing */}
+      <section className="bg-card border border-border rounded-xl p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Condition Pricing</h2>
+        <p className="text-xs text-muted-foreground">
+          Percent of market price each condition sells at, applied before the margin multiplier.
+          Also scales buylist offers. 100 across the board = condition pricing off.
+          Manual price overrides always win.
+        </p>
+
+        <div className="grid grid-cols-5 gap-2">
+          {CONDITIONS.map(c => (
+            <div key={c} className="space-y-1.5">
+              <Label htmlFor={`settings-cond-${c}`}>{c} %</Label>
+              <Input
+                id={`settings-cond-${c}`} name={`condPct${c}`} type="number" inputMode="numeric"
+                step="1" min={1} max={100} value={condPct[c]}
+                onChange={e => setCondPct(prev => ({ ...prev, [c]: e.target.value }))}
+              />
+            </div>
+          ))}
+        </div>
+
+        <Button
+          type="button" variant="outline" className="w-full"
+          onClick={() => setCondPct({
+            NM: String(RECOMMENDED_CONDITION_LADDER.NM), LP: String(RECOMMENDED_CONDITION_LADDER.LP),
+            MP: String(RECOMMENDED_CONDITION_LADDER.MP), HP: String(RECOMMENDED_CONDITION_LADDER.HP),
+            DMG: String(RECOMMENDED_CONDITION_LADDER.DMG),
+          })}
+        >
+          Use recommended ladder (100 / 85 / 70 / 50 / 35)
+        </Button>
+
+        {/* Live worked example */}
+        <div className="bg-muted/30 rounded-lg p-3 text-sm space-y-1">
+          <div className="text-xs text-muted-foreground mb-1">Worked example — a card with a £10.00 market price sells for:</div>
+          {CONDITIONS.map(c => (
+            <div key={c} className="flex justify-between">
+              <span className="text-muted-foreground">{c}</span>
+              <span className="font-medium">{formatGBP(calculateSellPrice(1000, null, margin, condPctInt(c)))}</span>
+            </div>
+          ))}
         </div>
       </section>
 

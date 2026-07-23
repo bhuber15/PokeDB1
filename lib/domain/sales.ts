@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, sql } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
 import { sales, saleItems, salePayments, inventoryItems, priceCache, creditLedger, customers } from '@/lib/db/schema'
-import { calculateSellPrice, pickMarketPrice, computeSaleTotals, computeMarginVat } from '@/lib/pricing'
+import { calculateSellPrice, conditionPct, pickMarketPrice, computeSaleTotals, computeMarginVat } from '@/lib/pricing'
 import { getSettings } from '@/lib/settings'
 import { DomainError, isUniqueViolation } from './errors'
 
@@ -92,6 +92,7 @@ export async function createSale(
       pickMarketPrice(row.prices, settings.primaryPriceSource),
       row.item.sellPriceOverride,
       settings.marginMultiplier,
+      conditionPct(settings.conditionSellPct, row.item.condition),
     )
     if (unitPrice == null) {
       throw new DomainError('NO_PRICE', `No price for item ${item.inventoryItemId} — set a price override`, { inventoryItemId: item.inventoryItemId })

@@ -15,6 +15,7 @@ const SETTINGS: AppSettings = {
   highValueThreshold: 5000, buyCashPct: 0.5, buyCreditPct: 0.65,
   primaryPriceSource: 'cardmarket', vatScheme: 'none', marginNoCostHandling: 'exclude',
   enabledLanguages: ['EN'],
+  conditionSellPct: { NM: 100, LP: 100, MP: 100, HP: 100, DMG: 100 },
 }
 
 const realFetch = globalThis.fetch

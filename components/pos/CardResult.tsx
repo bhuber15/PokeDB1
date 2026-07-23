@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { MinusIcon, PlusIcon, RefreshCwIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { calculateSellPrice, formatGBP, marketPriceSyncedAt, parsePounds, pickMarketPrice } from '@/lib/pricing'
+import { calculateSellPrice, conditionPct, formatGBP, marketPriceSyncedAt, parsePounds, pickMarketPrice } from '@/lib/pricing'
 import { CardZoomModal } from '@/components/shared/CardZoomModal'
 import { useSettings } from '@/components/shared/SettingsProvider'
 import { LANGUAGE_LABELS, type Language } from '@/lib/games'
@@ -35,14 +35,21 @@ export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefr
   const [zoomed, setZoomed] = useState(false)
   const [priceDraft, setPriceDraft] = useState('')
   const [savingPrice, setSavingPrice] = useState(false)
-  const { marginMultiplier, primaryPriceSource } = useSettings()
+  const { marginMultiplier, primaryPriceSource, conditionSellPct } = useSettings()
 
   const selected = inventoryOptions.find(o => o.itemId === selectedItemId) ?? inventoryOptions[0] ?? null
   // Stock may have shrunk under a picked qty (e.g. a sale just completed)
   const boundedQty = selected ? Math.min(qty, selected.quantity) : qty
 
+  // Same inputs + function as createSale, so the price added to the cart (and
+  // the resulting expectedTotal) always matches the server's canonical price.
   const sellPrice = selected
-    ? calculateSellPrice(pickMarketPrice(prices, primaryPriceSource), selected.sellPriceOverride, marginMultiplier)
+    ? calculateSellPrice(
+        pickMarketPrice(prices, primaryPriceSource),
+        selected.sellPriceOverride,
+        marginMultiplier,
+        conditionPct(conditionSellPct, selected.condition),
+      )
     : null
 
   // Age of the source the sell price is actually quoted from — a Cardmarket

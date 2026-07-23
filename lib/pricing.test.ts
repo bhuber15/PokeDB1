@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { calculateSellPrice, calculateBuyPrice, usdToGbp, eurToGbp, formatGBP, parsePounds, computeSaleTotals, VAT_RATE, MARGIN_VAT_DIVISOR, computeMarginVat, pickMarketPrice, pickMarketSource, marketPriceSyncedAt } from './pricing'
+import { calculateSellPrice, calculateBuyPrice, usdToGbp, eurToGbp, formatGBP, parsePounds, computeSaleTotals, VAT_RATE, MARGIN_VAT_DIVISOR, computeMarginVat, pickMarketPrice, pickMarketSource, marketPriceSyncedAt, conditionPct, applyConditionPct } from './pricing'
 
 test('pickMarketPrice: picks the primary source when present', () => {
   assert.equal(pickMarketPrice({ cardmarketTrend: 850, tcgplayerMarket: 900 }, 'cardmarket'), 850)
@@ -23,25 +23,25 @@ test('pickMarketPrice: null when both sources are missing or zero', () => {
 })
 
 test('calculateSellPrice: override wins over market price', () => {
-  assert.equal(calculateSellPrice(10000, 4200, 0.85), 4200)
+  assert.equal(calculateSellPrice(10000, 4200, 0.85, 100), 4200)
 })
 
 test('calculateSellPrice: applies multiplier and rounds up to the penny', () => {
-  assert.equal(calculateSellPrice(1000, null, 0.85), 850)
-  assert.equal(calculateSellPrice(1000.1, null, 0.85), 851) // ceil, never round down
+  assert.equal(calculateSellPrice(1000, null, 0.85, 100), 850)
+  assert.equal(calculateSellPrice(1000.1, null, 0.85, 100), 851) // ceil, never round down
 })
 
 test('calculateSellPrice: null market with no override is null', () => {
-  assert.equal(calculateSellPrice(null, null, 0.85), null)
+  assert.equal(calculateSellPrice(null, null, 0.85, 100), null)
 })
 
 test('calculateBuyPrice: floors to the penny (shop never overpays)', () => {
-  assert.equal(calculateBuyPrice(1000, 0.5), 500)
-  assert.equal(calculateBuyPrice(999.9, 0.5), 499)
+  assert.equal(calculateBuyPrice(1000, 0.5, 100), 500)
+  assert.equal(calculateBuyPrice(999.9, 0.5, 100), 499)
 })
 
 test('calculateBuyPrice: null market is null', () => {
-  assert.equal(calculateBuyPrice(null, 0.5), null)
+  assert.equal(calculateBuyPrice(null, 0.5, 100), null)
 })
 
 test('usdToGbp: converts USD pounds-equivalent to GBP pence, rounds to nearest', () => {
@@ -279,4 +279,50 @@ test('computeMarginVat: mixed margin + standardRated lines share the discount al
     { unitPrice: 600, quantity: 1, costAtSale: 250, standardRated: true },
   ], 145)
   assert.equal(vatAmount, 78 + 90)
+})
+
+// --- Condition ladder ---
+
+test('conditionPct: looks up a known condition', () => {
+  const ladder = { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 }
+  assert.equal(conditionPct(ladder, 'NM'), 100)
+  assert.equal(conditionPct(ladder, 'DMG'), 35)
+})
+
+test('conditionPct: unknown condition, missing ladder, or invalid value → 100 (full market, today’s behavior)', () => {
+  assert.equal(conditionPct({ NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 }, 'SEALED'), 100)
+  assert.equal(conditionPct(null, 'LP'), 100)
+  assert.equal(conditionPct(undefined, 'LP'), 100)
+  assert.equal(conditionPct({ NM: 100, LP: 0, MP: 70, HP: 50, DMG: 35 }, 'LP'), 100)   // below range
+  assert.equal(conditionPct({ NM: 100, LP: 170, MP: 70, HP: 50, DMG: 35 }, 'LP'), 100) // above range
+  assert.equal(conditionPct({ NM: 100, LP: 85.5, MP: 70, HP: 50, DMG: 35 }, 'LP'), 100) // non-integer
+})
+
+test('applyConditionPct: integer rounding, and pct 100 is identity', () => {
+  assert.equal(applyConditionPct(1000, 100), 1000)
+  assert.equal(applyConditionPct(1000, 85), 850)
+  assert.equal(applyConditionPct(999, 85), 849)  // round(849.15)
+  assert.equal(applyConditionPct(999, 35), 350)  // round(349.65)
+})
+
+test('applyConditionPct: never rounds a real market price to £0.00', () => {
+  assert.equal(applyConditionPct(1, 35), 1) // round(0.35) = 0 → clamped to 1p
+})
+
+test('calculateSellPrice: condition step before margin, ceil after', () => {
+  // conditioned = round(1000 × 85/100) = 850; ceil(850 × 0.85) = ceil(722.5) = 723
+  assert.equal(calculateSellPrice(1000, null, 0.85, 85), 723)
+  // pct 100 reproduces the pre-feature value penny-exact
+  assert.equal(calculateSellPrice(1000, null, 0.85, 100), 850)
+})
+
+test('calculateSellPrice: override wins over the ladder too', () => {
+  assert.equal(calculateSellPrice(10000, 4200, 0.85, 35), 4200)
+})
+
+test('calculateBuyPrice: condition step before the buy fraction, floor after', () => {
+  // conditioned = round(1000 × 70/100) = 700; floor(700 × 0.5) = 350
+  assert.equal(calculateBuyPrice(1000, 0.5, 70), 350)
+  assert.equal(calculateBuyPrice(1000, 0.5, 100), 500) // pct 100 = pre-feature value
+  assert.equal(calculateBuyPrice(null, 0.5, 70), null)
 })

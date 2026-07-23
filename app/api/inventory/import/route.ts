@@ -6,10 +6,10 @@ import { getSession, requireAdmin, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseCSV } from '@/lib/csv'
 import { generateQRId } from '@/lib/qr'
-import { parsePounds } from '@/lib/pricing'
+import { parsePounds, CONDITIONS } from '@/lib/pricing'
 import { isLanguage, GAME_IDS, type Game, type Language } from '@/lib/games'
 
-const CONDITIONS = new Set(['NM', 'LP', 'MP', 'HP', 'DMG'])
+const CONDITION_SET = new Set<string>(CONDITIONS)
 
 export const POST = guarded(async (req: NextRequest) => {
   const db = await getTenantDb()
@@ -47,7 +47,7 @@ export const POST = guarded(async (req: NextRequest) => {
       const language = (languageRaw || 'EN') as Language
       if (!isLanguage(language)) throw new Error(`bad language "${languageRaw}"`)
 
-      if (!CONDITIONS.has(condition)) throw new Error(`bad condition "${condition}"`)
+      if (!CONDITION_SET.has(condition)) throw new Error(`bad condition "${condition}"`)
       if (!Number.isInteger(quantity) || quantity < 1) throw new Error('bad quantity')
       if (!(costPrice >= 0)) throw new Error('bad cost_price')
 

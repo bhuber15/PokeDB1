@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "69e335ce-38ff-4ac7-94d3-f84e530b1b90",
-  "prevId": "fba24b26-190f-4a9a-80c0-af5bab5c2691",
+  "id": "e53aae53-b5cd-4fb5-8188-a7f40f588375",
+  "prevId": "69e335ce-38ff-4ac7-94d3-f84e530b1b90",
   "tables": {
     "auth_lockouts": {
       "name": "auth_lockouts",
@@ -305,6 +305,13 @@
           "autoincrement": false,
           "default": "'EN'"
         },
+        "alias_name": {
+          "name": "alias_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "external_id": {
           "name": "external_id",
           "type": "text",
@@ -341,6 +348,14 @@
             "external_id"
           ],
           "isUnique": true
+        },
+        "idx_cards_game_language": {
+          "name": "idx_cards_game_language",
+          "columns": [
+            "game",
+            "language"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {},
@@ -1586,6 +1601,14 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "enabled_languages": {
+          "name": "enabled_languages",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[\"EN\"]'"
         },
         "updated_at": {
           "name": "updated_at",
