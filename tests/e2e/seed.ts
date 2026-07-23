@@ -41,6 +41,21 @@ async function seed() {
     qrCode: 'e2e-0001-qr',
   })
 
+  // JA card with no price_cache row and no override — the till quick-set
+  // flow (Task 9) prices it manually. Deliberately a species no other spec
+  // searches for (the seed has no EN Charizard): now that in-stock search
+  // matches aliases, a 'Pikachu' alias here would leak this card into
+  // checkout/search-enter's unscoped 'Pikachu' locators (strict-mode
+  // violations on shared texts like "NM · 2 in stock").
+  const [jaCard] = await db.insert(schema.cards).values({
+    name: 'リザードン', aliasName: 'Charizard', game: 'pokemon', language: 'JA',
+    setName: 'テストセット', setNumber: '099', externalId: 'tcgdex:ja:TEST-099',
+  }).returning()
+  await db.insert(schema.inventoryItems).values({
+    cardId: jaCard.id, condition: 'NM', quantity: 2, costPrice: 100,
+    qrCode: 'e2e-ja-quickset',
+  })
+
   client.close()
   console.log(`e2e database seeded at ${E2E_DB_PATH}`)
 }
