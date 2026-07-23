@@ -3,6 +3,7 @@ import { getTenantDb } from '@/lib/db'
 import { getSession, requireStaff, requireAdmin, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { getSettings, updateSettings, type AppSettings } from '@/lib/settings'
+import { isLanguage, type Language } from '@/lib/games'
 
 export const GET = guarded(async () => {
   const db = await getTenantDb()
@@ -56,6 +57,13 @@ export const PATCH = guarded(async (req: NextRequest) => {
       }
       patch[key] = n
     }
+  }
+  if (body.enabledLanguages != null) {
+    if (!Array.isArray(body.enabledLanguages) || !body.enabledLanguages.every(isLanguage)) {
+      return NextResponse.json({ error: 'Invalid enabledLanguages' }, { status: 400 })
+    }
+    // 'EN' is always on — the EN catalogue is the app's baseline.
+    patch.enabledLanguages = [...new Set<Language>(['EN', ...body.enabledLanguages])]
   }
 
   if (Object.keys(patch).length === 0) {
