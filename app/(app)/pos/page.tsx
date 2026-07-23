@@ -181,6 +181,18 @@ export default function POSPage() {
     }
   }
 
+  // Till quick-set persisted an override server-side; mirror it into the
+  // result's inventory option so the priced footer appears immediately —
+  // calculateSellPrice(override-first) then derives the same price the
+  // server will charge.
+  function handleOverrideSet(itemId: number, sellPriceOverride: number) {
+    setResults(prev => prev.map(r => ({
+      ...r,
+      inventoryOptions: r.inventoryOptions.map(o =>
+        o.itemId === itemId ? { ...o, sellPriceOverride } : o),
+    })))
+  }
+
   function handleAddToCart(itemId: number, name: string, condition: string, price: number, qty: number) {
     setCart(prev => {
       const existing = prev.find(i => i.inventoryItemId === itemId)
@@ -295,6 +307,7 @@ export default function POSPage() {
             inventoryOptions={r.inventoryOptions}
             onAddToCart={handleAddToCart}
             onRefreshPrice={() => handleRefreshPrice(r.card.id)}
+            onOverrideSet={handleOverrideSet}
           />
         ))}
       </div>

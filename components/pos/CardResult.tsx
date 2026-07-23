@@ -24,9 +24,10 @@ interface CardResultProps {
   inventoryOptions: InventoryOption[]
   onAddToCart: (itemId: number, name: string, condition: string, price: number, qty: number) => void
   onRefreshPrice: () => void
+  onOverrideSet?: (itemId: number, sellPriceOverride: number) => void
 }
 
-export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefreshPrice }: CardResultProps) {
+export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefreshPrice, onOverrideSet }: CardResultProps) {
   // Store only the id: options are re-derived from props so a post-sale or
   // post-refresh update to the search results is reflected here immediately.
   const [selectedItemId, setSelectedItemId] = useState<number | null>(inventoryOptions[0]?.itemId ?? null)
@@ -54,7 +55,9 @@ export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefr
 
   // No market price and no override: staff types a price at the till; it
   // persists as the item's override (the price charged is snapshotted on the
-  // sale line as usual), then a refresh re-derives the sell price server-side.
+  // sale line as usual). A Cardmarket refresh would be pointless here — this
+  // flow only runs when the card has no market data — so we mirror the
+  // override straight into the parent's result state instead.
   async function quickSetPrice() {
     if (!selected) return
     const pence = parsePounds(priceDraft)
@@ -73,7 +76,7 @@ export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefr
       }
       toast.success(`Price set — ${formatGBP(pence)}`)
       setPriceDraft('')
-      onRefreshPrice()
+      onOverrideSet?.(selected.itemId, pence)
     } finally {
       setSavingPrice(false)
     }
