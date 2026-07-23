@@ -140,3 +140,27 @@ test('inactive rows are excluded from search', async () => {
   assert.equal((await searchSellables('5060000000024', dbc)).length, 0)
   assert.equal((await searchSellables('Old Line', dbc)).length, 0)
 })
+
+test('in-stock search matches the EN species alias of CJK cards', async () => {
+  // Seed a CJK card with an EN species alias
+  await dbc.insert(schema.cards).values({
+    id: 2,
+    name: 'ピカチュウ',
+    aliasName: 'Pikachu',
+    game: 'pokemon',
+    language: 'JA',
+    setName: 'テスト',
+    setNumber: '099',
+  })
+  // Create an active inventory item for it
+  await dbc.insert(schema.inventoryItems).values({
+    id: 2,
+    cardId: 2,
+    condition: 'NM',
+    quantity: 1,
+    qrCode: 'qr-ja-pikachu',
+  })
+  // Search by the EN alias should find the JA card
+  const rows = await searchSellables('Pikachu', dbc)
+  assert.ok(rows.some(r => r.card?.name === 'ピカチュウ'), 'JA card should be found via EN alias')
+})
