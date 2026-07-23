@@ -234,7 +234,7 @@ git commit -m "feat: game metadata, enabledGames setting, multiGame entitlement,
 
 **Interfaces:**
 - Consumes: `isGame` is not needed here; keep using `Language`/`isLanguage` (existing).
-- Produces: `ParsedExternalId` union gains `{ source: 'scryfall'; id: string; finish: MtgFinish }` and `{ source: 'ygoprodeck'; passcode: string; setCode: string; rarity: string; id: string }`; constructors `scryfallExternalId(uuid: string, finish: MtgFinish): string`, `ygoExternalId(passcode, setCode, rarityCode): string`; `type MtgFinish = 'nonfoil' | 'foil' | 'etched'`; `raritySlug(rarityCode: string): string`.
+- Produces: `ParsedExternalId` union gains `{ source: 'scryfall'; id: string; finish: MtgFinish }` and `{ source: 'ygoprodeck'; passcode: string; setCode: string; rarity: string; id: string }`; constructors `scryfallExternalId(uuid: string, finish: MtgFinish): string`, `ygoExternalId(passcode, setCode, rarityCode, rarityName?): string` (takes the rarity *name* as a fallback — ~1,400 YGO printings have an empty `set_rarity_code`); `type MtgFinish = 'nonfoil' | 'foil' | 'etched'`; `raritySlug(rarityCode: string): string`.
 
 - [ ] **Step 1: Write failing tests**
 
@@ -261,6 +261,13 @@ test('ygoprodeck ids encode passcode, set code and a paren-free rarity slug', ()
   assert.deepEqual(parseExternalId(ext), {
     source: 'ygoprodeck', passcode: '46986414', setCode: 'CT13-EN003', rarity: 'UR', id: ext,
   })
+})
+
+test('empty rarity code falls back to the rarity name, then NA — and still round-trips', () => {
+  assert.equal(ygoExternalId('1', 'X-1', '', 'Ultra Rare'), 'ygoprodeck:1:X-1:UltraRare')
+  const na = ygoExternalId('1', 'X-1', '', '')
+  assert.equal(na, 'ygoprodeck:1:X-1:NA')
+  assert.deepEqual(parseExternalId(na), { source: 'ygoprodeck', passcode: '1', setCode: 'X-1', rarity: 'NA', id: na })
 })
 
 test('raritySlug strips non-alphanumerics', () => {
@@ -308,8 +315,13 @@ export function raritySlug(rarityCode: string): string {
   return rarityCode.replace(/[^a-zA-Z0-9]/g, '')
 }
 
-export function ygoExternalId(passcode: string, setCode: string, rarityCode: string): string {
-  return `ygoprodeck:${passcode}:${setCode}:${raritySlug(rarityCode)}`
+// ~1,400 YGOPRODeck printings have an empty set_rarity_code, which would yield
+// a trailing-colon id ("ygoprodeck:1:X-1:") that parseExternalId rejects. Fall
+// back to the rarity *name*, then a literal 'NA', so the rarity segment is
+// always present and the id round-trips.
+export function ygoExternalId(passcode: string, setCode: string, rarityCode: string, rarityName = ''): string {
+  const slug = raritySlug(rarityCode) || raritySlug(rarityName) || 'NA'
+  return `ygoprodeck:${passcode}:${setCode}:${slug}`
 }
 
 export function parseExternalId(externalId: string): ParsedExternalId {
@@ -435,6 +447,10 @@ test('digital-only cards (no paper) are dropped', () => {
   assert.deepEqual(normalizeScryfallCard({ ...bolt, games: ['mtgo', 'arena'] }), [])
 })
 
+test('non-English printings are dropped — the bulk file includes them; phase 2 is EN-only', () => {
+  assert.deepEqual(normalizeScryfallCard({ ...bolt, lang: 'ja' }), [])
+})
+
 test('null/zero prices become null, not 0', () => {
   const rows = normalizeScryfallCard({ ...bolt, finishes: ['nonfoil'], prices: { usd: null, eur: '0.00' } as ScryfallCard['prices'] })
   assert.equal(rows.length, 1)
@@ -495,7 +511,19 @@ export interface ScryfallCard {
   }
 }
 
+// Scryfall asks for ~50–100 ms between requests (~10/s) and rate-limits
+// abusers. Serialise every Scryfall call through a promise chain spaced 100 ms
+// apart, so both the paged crawl AND the in-stock sync's 8-concurrent per-card
+// fan-out stay under the limit without each caller having to know about it.
+let scryfallGate: Promise<void> = Promise.resolve()
+function throttle(): Promise<void> {
+  const next = scryfallGate.then(() => new Promise<void>(r => setTimeout(r, 100)))
+  scryfallGate = next
+  return next
+}
+
 async function getJson<T>(url: string): Promise<T> {
+  await throttle()
   let res: Response
   try {
     res = await fetch(url, { headers: HEADERS, cache: 'no-store', signal: AbortSignal.timeout(SCRYFALL_TIMEOUT_MS) })
@@ -514,9 +542,14 @@ export async function fetchScryfallBulkUri(): Promise<string> {
 }
 
 // One page (175 cards) of the paged catalogue crawl the nightly sweep walks.
-// `game:paper lang:en unique:prints` == the default_cards contents.
+// `game:paper lang:en unique:prints` == the default_cards EN contents.
+// `order=released dir=asc` (oldest-first) is REQUIRED, not cosmetic: the
+// persisted page cursor is only meaningful if page N is a stable slice
+// night-to-night. Oldest-first keeps the crawled tail stable while new sets
+// append at the end (picked up as the cursor reaches them; hot cards stay
+// fresh via the in-stock/on-demand paths regardless).
 export async function fetchScryfallPage(page: number): Promise<{ cards: ScryfallCard[]; hasMore: boolean }> {
-  const params = new URLSearchParams({ q: 'game:paper lang:en', unique: 'prints', page: String(page) })
+  const params = new URLSearchParams({ q: 'game:paper lang:en', unique: 'prints', order: 'released', dir: 'asc', page: String(page) })
   try {
     const body = await getJson<{ data: ScryfallCard[]; has_more: boolean }>(`${BASE}/cards/search?${params}`)
     return { cards: body.data, hasMore: body.has_more }
@@ -542,7 +575,12 @@ function priceForFinish(prices: ScryfallCard['prices'], finish: MtgFinish): Norm
 }
 
 // One NormalizedCard per paper finish. Non-paper (digital-only) cards drop out.
+// Phase 2 is EN-only: the bulk file (Task 8) is default_cards, which includes a
+// card's non-English printing when it has no English one — those must NOT be
+// stored as language 'EN'. The paged sweep filters lang:en upstream; this guard
+// covers the bulk-import path (and any future all_cards use).
 export function normalizeScryfallCard(card: ScryfallCard): NormalizedCard[] {
+  if (card.lang !== 'en') return []
   if (!card.games?.includes('paper')) return []
   const img = card.image_uris ?? card.card_faces?.[0]?.image_uris
   return card.finishes.map(finish => ({
@@ -624,6 +662,12 @@ test('a 0.00 set_price becomes null (no-price workflow), not a 0 quote', () => {
   assert.equal(rows[0].prices.tcgplayerUsd, null)
 })
 
+test('a printing with an empty rarity code still gets a valid, round-tripping id (~1,400 real cases)', () => {
+  const [row] = normalizeYgoCard({ ...darkMagician,
+    card_sets: [{ set_name: 'X', set_code: 'X-001', set_rarity: 'Short Print', set_rarity_code: '', set_price: '1.00' }] })
+  assert.equal(row.externalId, 'ygoprodeck:46986414:X-001:ShortPrint')
+})
+
 test('a card with no card_sets (unreleased/anime) yields no rows', () => {
   assert.deepEqual(normalizeYgoCard({ ...darkMagician, card_sets: undefined }), [])
 })
@@ -690,7 +734,7 @@ export function normalizeYgoCard(card: YgoCard): NormalizedCard[] {
       setNumber: s.set_code,
       variant: s.set_rarity,
       series: s.set_name,
-      externalId: ygoExternalId(String(card.id), s.set_code, s.set_rarity_code),
+      externalId: ygoExternalId(String(card.id), s.set_code, s.set_rarity_code, s.set_rarity),
       imageUrl: img?.image_url_small ?? null,
       imageUrlLarge: img?.image_url ?? null,
       prices: { tcgplayerUsd: money(s.set_price), cardmarketEur: null },
@@ -766,6 +810,17 @@ test('re-upsert heals identity + refreshes price without duplicating rows', asyn
   const [p] = await db.select().from(priceCache).where(eq(priceCache.cardId, all[0].id))
   assert.equal(p.tcgplayerMarket, Math.round(9 * 0.8 * 100))
 })
+
+test('deduplicates rows sharing an external id within one batch (SQLite conflict guard)', async () => {
+  const db = await createTestDb()
+  const result = fresh()
+  // two rows, same externalId — the real YGOPRODeck duplicate-printing case
+  await upsertNormalizedCards(db, [row, { ...row, name: 'dupe' }], settings, result)
+  const all = await db.select().from(cards).where(eq(cards.externalId, 'scryfall:bolt:foil'))
+  assert.equal(all.length, 1) // did not throw; single row, last wins
+  assert.equal(all[0].name, 'dupe')
+  assert.equal(result.newCards, 1)
+})
 ```
 
 Run: `npx tsx --test lib/sources/upsert.test.ts` → FAIL.
@@ -793,14 +848,20 @@ export async function upsertNormalizedCards(
   dbc: Db, rows: NormalizedCard[], settings: AppSettings, result: SweepResult,
 ): Promise<void> {
   if (rows.length === 0) return
-  result.cardsSeen += rows.length
-  const ids = rows.map(r => r.externalId)
+  // Dedupe by external id within the batch: a single INSERT with two rows
+  // sharing a conflict target raises SQLite's "ON CONFLICT DO UPDATE command
+  // could not affect row a second time". YGOPRODeck lists a few cards with a
+  // duplicated (set_code, rarity) printing — without this the whole sweep
+  // throws. Last occurrence wins.
+  const deduped = [...new Map(rows.map(r => [r.externalId, r])).values()]
+  result.cardsSeen += deduped.length
+  const ids = deduped.map(r => r.externalId)
   const existing = await dbc.select({ externalId: cards.externalId }).from(cards).where(inArray(cards.externalId, ids))
   const known = new Set(existing.map(r => r.externalId))
-  result.newCards += rows.filter(r => !known.has(r.externalId)).length
+  result.newCards += deduped.filter(r => !known.has(r.externalId)).length
 
   const idByExternal = new Map<string, number>()
-  for (const chunk of chunked(rows, CHUNK)) {
+  for (const chunk of chunked(deduped, CHUNK)) {
     const inserted = await dbc.insert(cards).values(chunk.map(r => ({
       name: r.name, game: r.game, language: r.language, setName: r.setName, setNumber: r.setNumber,
       variant: r.variant, series: r.series, externalId: r.externalId,
@@ -816,7 +877,7 @@ export async function upsertNormalizedCards(
     for (const r of inserted) idByExternal.set(r.externalId!, r.id)
   }
 
-  const priceRows = rows.flatMap(r => {
+  const priceRows = deduped.flatMap(r => {
     const cardId = idByExternal.get(r.externalId)
     if (cardId == null) return []
     const market = usdToGbp(r.prices.tcgplayerUsd, settings.usdToGbp)
@@ -1560,7 +1621,7 @@ git commit -m "feat: import-catalogue imports MTG (streamed Scryfall bulk) + YGO
 - Modify: `app/api/inventory/route.ts` (parse `game` param → `searchSellables`)
 - Modify: `app/(app)/pos/page.tsx` (render the selector beside `<SearchBar>`; append `&game=` to the `/api/inventory` fetch — `SearchBar.tsx` itself is unchanged)
 - Modify: `app/(app)/buylist/page.tsx`, `components/inventory/AddItemForm.tsx`, `components/customers/CustomerDetail.tsx` (selector + `&game=` on `/api/cards/search`)
-- Modify: `components/pos/CardResult.tsx` (game badge)
+- Modify: `components/pos/CardResult.tsx`, `components/buylist/BuyCard.tsx`, `components/inventory/AddItemForm.tsx`, `components/customers/CustomerDetail.tsx` (game badge on results — the catalogue browser's badge lands in Task 10, which owns that file)
 
 **Interfaces:**
 - Consumes: `GAMES`, `GAME_IDS`, `type Game` (Task 1); `useSettings` (`enabledGames`).
@@ -1710,15 +1771,17 @@ For each surface, add the hook + render `<GameFilter>` beside the search box, an
 - **Inventory add** (`components/inventory/AddItemForm.tsx`, fetch line ~71): hook (`'inventory-add'`), selector above the results, append the same `&game=`.
 - **Customer wants** (`components/customers/CustomerDetail.tsx`, fetch line ~158): hook (`'customer-wants'`), selector by the want search box, append the same `&game=`.
 
-- [ ] **Step 7: Add the game badge to results**
+- [ ] **Step 7: Add the game badge everywhere the language badge renders**
 
-In `components/pos/CardResult.tsx`, import `GAMES, type Game` from `@/lib/games` and, next to the existing language badge (line ~140), add a game badge for non-Pokémon rows so an "All games" list is unambiguous:
+The default scope is "All games", so any result list can mix games — a game badge is what keeps an MTG "Bolt" distinct from a Pokémon one. The phase-1 language badge renders in `CardResult`, `BuyCard`, and `AddItemForm`; add the game badge beside it in each, and add one to the `CustomerDetail` wants results too. (`CatalogueBrowser`'s badge is added in Task 10, which already edits that file.) The snippet is identical everywhere (import `GAMES, type Game` from `@/lib/games`):
 
 ```tsx
 {card.game !== 'pokemon' && (
   <Badge variant="outline">{GAMES[card.game as Game]?.shortLabel ?? card.game}</Badge>
 )}
 ```
+
+(Grep each file for `LANGUAGE_LABELS` / the language `Badge` for the exact insertion point; `CustomerDetail` has no language badge today, so place the game badge next to the card name in its wants results.) Verify with the browser step below that a two-game buylist/intake result set shows the badge.
 
 - [ ] **Step 8: Verify in the browser**
 
@@ -1729,7 +1792,7 @@ Run the dev server (via the preview tool, not Bash). With `enabledGames` still `
 Run: `npm run lint`, `npm test` → green.
 
 ```bash
-git add lib/domain/inventory.ts lib/domain/inventory.test.ts app/api/inventory/route.ts components/shared/GameFilter.tsx components/shared/useStickyGameFilter.ts app/\(app\)/pos/page.tsx app/\(app\)/buylist/page.tsx components/inventory/AddItemForm.tsx components/customers/CustomerDetail.tsx components/pos/CardResult.tsx
+git add lib/domain/inventory.ts lib/domain/inventory.test.ts app/api/inventory/route.ts components/shared/GameFilter.tsx components/shared/useStickyGameFilter.ts app/\(app\)/pos/page.tsx app/\(app\)/buylist/page.tsx components/inventory/AddItemForm.tsx components/customers/CustomerDetail.tsx components/pos/CardResult.tsx components/buylist/BuyCard.tsx
 git commit -m "feat: game-first search selector (sticky per surface) on POS, buylist, intake, wants + game badge"
 ```
 
@@ -1786,7 +1849,7 @@ In each of `app/api/cards/{sets,names,browse,browse-by-name}/route.ts`, import `
 
 - [ ] **Step 5: Wire the selector into `CatalogueBrowser.tsx`**
 
-Add `const [gameFilter, setGameFilter] = useStickyGameFilter('catalogue')`, render `<GameFilter value={gameFilter} onChange={setGameFilter} />` above the mode toggle, and append `${gameFilter !== 'all' ? \`&game=${gameFilter}\` : ''}` to all four fetches (`/api/cards/sets`, `/names`, `/browse`, `/browse-by-name`). Add `gameFilter` to the effect dependency arrays so switching game re-loads sets/names.
+Add `const [gameFilter, setGameFilter] = useStickyGameFilter('catalogue')`, render `<GameFilter value={gameFilter} onChange={setGameFilter} />` above the mode toggle, and append `${gameFilter !== 'all' ? \`&game=${gameFilter}\` : ''}` to all four fetches (`/api/cards/sets`, `/names`, `/browse`, `/browse-by-name`). Add `gameFilter` to the effect dependency arrays so switching game re-loads sets/names. Also add the game badge (the Task 9 Step 7 snippet — `import { GAMES, type Game }`) beside each browsed row's language badge, so browsing "All games" is unambiguous.
 
 - [ ] **Step 6: Verify + lint + tests + commit**
 
@@ -1924,4 +1987,8 @@ git commit -m "test: multi-game checkout e2e + migration verification; docs for 
 - **Spec coverage:** every spec section maps to a task — metadata/settings/entitlement + migration (§1 → T1), external ids/registry (§2 → T2, T6), Scryfall adapter (§3 → T3, T5, T8), YGOPRODeck adapter (§4 → T4, T5), bounded sync + cursor + orchestration (§5 → T5, T7, T8), game-first search UI across all five surfaces (§6 → T9, T10), gating (§4/§1 → T11), migration/backfill (§7 → T1, T12), testing (§8 → every task + T12).
 - **Type consistency:** `NormalizedCard`/`NormalizedPrices` (T3) are consumed unchanged by T5/T6/T8; `SweepResult` shape is fixed in T5 and reused in T6/T7/T8; `syncMarketPricesForCard`'s signature is unchanged (T6 adds an internal branch only); `GameFilterValue` (T9) is reused in T10.
 - **Three implementation refinements over the spec:** (a) the nightly MTG sweep uses Scryfall's **paged search API** with a page cursor rather than downloading the 557 MB bulk file nightly — the bulk file is used only by the import script (T8), exactly as spec §5 intends; (b) Pokémon stays on its existing sweep path and is intentionally **absent** from `CATALOGUE_SOURCES` (the registry drives only the new games), so phase-1 behaviour is untouched (regression-guarded in T2/T6); (c) the per-card Cardmarket **rotation is scoped to `game = 'pokemon'`** (T6 step 6) — MTG/YGO prices come from their sweeps, not a per-card Cardmarket crawl, so they must not enter that rotation (they would otherwise dominate it via their null `cardmarketSyncedAt` and hammer Scryfall/YGO one card at a time). Their per-card refresh is reserved for the bounded in-stock sync and on-demand search paths.
-- **Verified against the codebase while writing:** entitlement resolution is `getEntitlements()` from `@/lib/entitlements` (single-tenant → full `pro`), enforcement mirrors `assertStaffSeatAvailable` (T11); the catalogue browse queries are `getSets`/`getNames`/`getCardsInSet`/`getPrintingsByName` in `lib/domain/catalogue.ts` (T10); `guarded()` maps `DomainError` → status; `searchSellables` already joins `cards`; `pickMarketSource` already falls back and treats 0 as no-data. The only genuinely open detail for the implementer is whether `lib/domain/errors.ts` is DB-free enough to import into client-safe `lib/plan.ts` (T11 step 2 gives a boolean fallback if not).
+- **Verified against the codebase while writing:** entitlement resolution is `getEntitlements()` from `@/lib/entitlements` (single-tenant → full `pro`); enforcement uses a pure `gamesAllowed()` predicate in client-safe `lib/plan.ts` + a route 403 (T11), so no error class enters the client bundle; the catalogue browse queries are `getSets`/`getNames`/`getCardsInSet`/`getPrintingsByName` in `lib/domain/catalogue.ts` (T10); `guarded()` maps `DomainError` → status; `searchSellables` already joins `cards`; `pickMarketSource` already falls back and treats 0 as no-data; `usdToGbp`/`eurToGbp` return `null` (not 0) for a null input.
+
+- **Plan-review findings folded in (2026-07-23, verified against the live APIs):** four blocking data bugs are now fixed in-task with tests — non-English Scryfall printings dropped in `normalizeScryfallCard` (T3; ~420k non-EN paper printings exist upstream, and the bulk file carries the EN-absent ones); the ~1,400 empty-`set_rarity_code` YGO printings get a name/`NA` fallback so their ids round-trip (T2/T4); duplicate `(set_code,rarity)` YGO printings are de-duped by external id before insert so they don't hit SQLite's "could not affect row a second time" and abort the sweep (T5); and the Scryfall paged crawl now orders `released asc` so the page cursor is stable night-to-night (T3). A 100 ms request gate serialises all Scryfall calls to respect its ~10/s limit across both the crawl and the in-stock fan-out (T3); the game badge is wired into every result renderer, not just the POS (T9/T10).
+
+- **Known trade-offs on record (acceptable for the beta shop; revisit at scale, NOT bugs):** (1) the YGO sweep re-upserts all ~44k printings nightly (~88k row-writes/tenant/night, mostly unchanged) — fine now, add price-change detection or a weekly cadence when there are many tenants; (2) each tenant fetches the catalogues independently (N× upstream load) and stores upstream image URLs — YGOPRODeck discourages image hotlinking, so a shared catalogue cache + self-hosted images is the eventual scale fix; (3) `searchFuzzy` scans distinct names in memory when there's no exact match — its "~20k names" comment is out of date once the multi-game catalogue passes ~200k rows (the game filter mitigates it when a game is picked); (4) minor semantics — MTG `series` holds the set code (a mismatch with the column's "era" meaning; `null` is defensible), catalogue browse keyed on `setName` can merge same-named sets across games in "All" mode, a Growth→Starter downgrade does not auto-prune `enabledGames` (extra games keep syncing until manually disabled), and `isHighValue` on MTG/YGO cards is only recomputed by their sweep (stale between sweeps); (5) confirm the generated migration is `0023` and not taken by another in-flight branch at generation time (phase 1 hit a 0021→0022 renumber).
