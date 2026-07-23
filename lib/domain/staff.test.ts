@@ -136,13 +136,13 @@ test('assertStaffSeatAvailable enforces the plan seat limit on active staff', as
   const db = await createTestDb()
   await createStaff({ name: 'A', pin: '1111', role: 'admin' }, db)
   await createStaff({ name: 'B', pin: '2222' }, db)
-  const twoSeats = { staffSeats: 2, listingSync: false, apiAccess: false }
+  const twoSeats = { staffSeats: 2, listingSync: false, apiAccess: false, multiGame: false }
   await assert.rejects(() => assertStaffSeatAvailable(twoSeats, db), domainCode('PLAN_LIMIT'))
   // Deactivated staff free their seat; unlimited plans never block.
   const b = await listStaff(db).then(s => s.find(x => x.name === 'B')!)
   await updateStaff(b.id, { isActive: false }, db)
   await assertStaffSeatAvailable(twoSeats, db) // no throw
-  await assertStaffSeatAvailable({ staffSeats: null, listingSync: true, apiAccess: true }, db) // no throw
+  await assertStaffSeatAvailable({ staffSeats: null, listingSync: true, apiAccess: true, multiGame: true }, db) // no throw
 })
 
 test('assertStaffSeatAvailable ignores no-op reactivations of already-active staff', async () => {
@@ -151,7 +151,7 @@ test('assertStaffSeatAvailable ignores no-op reactivations of already-active sta
   await createStaff({ name: 'B', pin: '2222' }, db)
   const c = await createStaff({ name: 'C', pin: '3333' }, db)
   await updateStaff(c.id, { isActive: false }, db) // A + B active — at the 2-seat cap
-  const twoSeats = { staffSeats: 2, listingSync: false, apiAccess: false }
+  const twoSeats = { staffSeats: 2, listingSync: false, apiAccess: false, multiGame: false }
   // Re-sending isActive: true for an already-active member is not a seat transition.
   await assertStaffSeatAvailable(twoSeats, db, { reactivatingId: a.id }) // no throw
   // A genuinely deactivated member would consume a seat — still blocked at cap.

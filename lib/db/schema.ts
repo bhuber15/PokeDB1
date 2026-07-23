@@ -173,6 +173,8 @@ export const settings = sqliteTable('settings', {
   onboarding: text('onboarding'),
   // JSON array of Language codes (lib/games.ts). 'EN' is always a member.
   enabledLanguages: text('enabled_languages').notNull().default('["EN"]'),
+  // JSON array of Game ids (lib/games.ts). 'pokemon' is always a member.
+  enabledGames: text('enabled_games').notNull().default('["pokemon"]'),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
 
@@ -269,6 +271,15 @@ export const wantList = sqliteTable('want_list', {
   notify: integer('notify', { mode: 'boolean' }).notNull().default(true),
   fulfilledAt: text('fulfilled_at'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Per-game catalogue sweep progress (operational state, deliberately not in
+// `settings`). `cursor` is adapter-defined: the Scryfall paged sweep stores
+// the next page number; games swept in one call (YGOPRODeck) never write here.
+export const catalogueSyncState = sqliteTable('catalogue_sync_state', {
+  game: text('game').primaryKey(),
+  cursor: text('cursor'),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
 
 export type Staff = typeof staff.$inferSelect

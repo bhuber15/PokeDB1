@@ -91,6 +91,26 @@ test('settingsPatchSchema: rejects partial ladders, out-of-range and non-integer
   assert.ok(!settingsPatchSchema.safeParse({ conditionSellPct: { NM: 99.5, LP: 85, MP: 70, HP: 50, DMG: 35 } }).success)
 })
 
+test('enabledGames defaults to pokemon and round-trips, always keeping pokemon', async () => {
+  const db = await createTestDb()
+  assert.deepEqual((await getSettings(db)).enabledGames, ['pokemon'])
+
+  const updated = await updateSettings({ enabledGames: ['pokemon', 'mtg'] }, db)
+  assert.deepEqual(updated.enabledGames, ['pokemon', 'mtg'])
+  assert.deepEqual((await getSettings(db)).enabledGames, ['pokemon', 'mtg'])
+
+  // pokemon can never be dropped
+  const dropped = await updateSettings({ enabledGames: ['mtg'] }, db)
+  assert.ok(dropped.enabledGames.includes('pokemon'))
+})
+
+test('malformed enabled_games JSON degrades to [pokemon], never throws', async () => {
+  const db = await createTestDb()
+  await getSettings(db)
+  await db.run(sql`UPDATE settings SET enabled_games = 'not json' WHERE id = 1`)
+  assert.deepEqual((await getSettings(db)).enabledGames, ['pokemon'])
+})
+
 test('settingsPatchSchema: preserves the existing route semantics', () => {
   // valid single-field patches
   assert.ok(settingsPatchSchema.safeParse({ marginMultiplier: 0.9 }).success)

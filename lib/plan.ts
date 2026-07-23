@@ -8,12 +8,13 @@ export interface Entitlements {
   staffSeats: number | null // null = unlimited
   listingSync: boolean      // Pro, future (spec §3.5)
   apiAccess: boolean        // Pro, future
+  multiGame: boolean        // Growth+ (spec 2026-07-23) — a second game
 }
 
 export const PLANS: Record<Plan, { label: string; pricePence: number; entitlements: Entitlements }> = {
-  starter: { label: 'Starter', pricePence: 3900, entitlements: { staffSeats: 2, listingSync: false, apiAccess: false } },
-  growth: { label: 'Growth', pricePence: 7900, entitlements: { staffSeats: 5, listingSync: false, apiAccess: false } },
-  pro: { label: 'Pro', pricePence: 14900, entitlements: { staffSeats: null, listingSync: true, apiAccess: true } },
+  starter: { label: 'Starter', pricePence: 3900, entitlements: { staffSeats: 2, listingSync: false, apiAccess: false, multiGame: false } },
+  growth: { label: 'Growth', pricePence: 7900, entitlements: { staffSeats: 5, listingSync: false, apiAccess: false, multiGame: true } },
+  pro: { label: 'Pro', pricePence: 14900, entitlements: { staffSeats: null, listingSync: true, apiAccess: true, multiGame: true } },
 }
 
 export const PLAN_IDS = Object.keys(PLANS) as Plan[]

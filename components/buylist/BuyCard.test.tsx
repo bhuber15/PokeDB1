@@ -13,7 +13,7 @@ const settings = (ladder: AppSettings['conditionSellPct']): AppSettings => ({
   shopName: 'Test', usdToGbp: 0.79, eurToGbp: 0.86, marginMultiplier: 0.85,
   highValueThreshold: 5000, buyCashPct: 0.5, buyCreditPct: 0.65,
   primaryPriceSource: 'cardmarket', vatScheme: 'none', marginNoCostHandling: 'exclude',
-  enabledLanguages: ['EN'], conditionSellPct: ladder,
+  enabledLanguages: ['EN'], enabledGames: ['pokemon'], conditionSellPct: ladder,
 })
 
 // Minimal fixtures — no image URLs so next/image never renders in the test DOM.
