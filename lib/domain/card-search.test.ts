@@ -197,6 +197,7 @@ test('language filter narrows results', async () => {
   assert.ok(ja.cards.length > 0)
   assert.ok(ja.cards.every(c => c.language === 'JA'))
   const en = await searchCards('Pikachu', dbc, noLiveDeps, { language: 'EN' })
+  assert.ok(en.cards.length > 0)
   assert.ok(en.cards.every(c => c.language === 'EN'))
 })
 
@@ -205,4 +206,11 @@ test('fuzzy suggestions score alias names too', async () => {
   const { cards: found, fuzzy } = await searchCards('Pikchu', dbc, noLiveDeps)
   assert.equal(fuzzy, true)
   assert.ok(found.some(c => c.name === 'ピカチュウ'))
+})
+
+test('non-EN language filter never hits the EN-only live API on a miss', async () => {
+  const { cards: found, unavailable } = await searchCards(
+    'Zzznonexistent', dbc, { fetchLive: liveNever, syncMarketPrices: syncNoop }, { language: 'JA' })
+  assert.equal(found.length, 0)
+  assert.equal(unavailable, false)
 })
