@@ -79,7 +79,7 @@ export async function searchSellables(q: string, dbc: Db = db) {
   }
   return base().where(and(
     eq(inventoryItems.isActive, true),
-    or(like(cards.name, `%${q}%`), like(products.name, `%${q}%`)),
+    or(like(cards.name, `%${q}%`), like(cards.aliasName, `%${q}%`), like(products.name, `%${q}%`)),
   ))
 }
 

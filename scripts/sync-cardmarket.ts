@@ -2,7 +2,7 @@ import './load-env'
 import { db } from '../lib/db'
 import { cards } from '../lib/db/schema'
 import { getSettings } from '../lib/settings'
-import { syncCardmarketForCard } from '../lib/prices/sync'
+import { syncMarketPricesForCard } from '../lib/prices/sync'
 
 async function main() {
   const settings = await getSettings()
@@ -11,7 +11,7 @@ async function main() {
   let failed = 0
   for (const c of all) {
     try {
-      await syncCardmarketForCard(c.id, c.externalId, c.variant, settings.eurToGbp)
+      await syncMarketPricesForCard(c.id, c.externalId, c.variant, { eur: settings.eurToGbp, usd: settings.usdToGbp })
       ok++
     } catch {
       failed++ // transient TCGdex failure — keep sweeping; the nightly rotation retries

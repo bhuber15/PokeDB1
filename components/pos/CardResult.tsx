@@ -1,12 +1,14 @@
 'use client'
 import { useState } from 'react'
 import Image from 'next/image'
+import { toast } from 'sonner'
 import { MinusIcon, PlusIcon, RefreshCwIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { calculateSellPrice, conditionPct, formatGBP, marketPriceSyncedAt, pickMarketPrice } from '@/lib/pricing'
+import { calculateSellPrice, conditionPct, formatGBP, marketPriceSyncedAt, parsePounds, pickMarketPrice } from '@/lib/pricing'
 import { CardZoomModal } from '@/components/shared/CardZoomModal'
 import { useSettings } from '@/components/shared/SettingsProvider'
+import { LANGUAGE_LABELS, type Language } from '@/lib/games'
 import type { Card, PriceCache } from '@/lib/db/schema'
 
 export interface InventoryOption {
@@ -22,14 +24,17 @@ interface CardResultProps {
   inventoryOptions: InventoryOption[]
   onAddToCart: (itemId: number, name: string, condition: string, price: number, qty: number) => void
   onRefreshPrice: () => void
+  onOverrideSet?: (itemId: number, sellPriceOverride: number) => void
 }
 
-export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefreshPrice }: CardResultProps) {
+export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefreshPrice, onOverrideSet }: CardResultProps) {
   // Store only the id: options are re-derived from props so a post-sale or
   // post-refresh update to the search results is reflected here immediately.
   const [selectedItemId, setSelectedItemId] = useState<number | null>(inventoryOptions[0]?.itemId ?? null)
   const [qty, setQty] = useState(1)
   const [zoomed, setZoomed] = useState(false)
+  const [priceDraft, setPriceDraft] = useState('')
+  const [savingPrice, setSavingPrice] = useState(false)
   const { marginMultiplier, primaryPriceSource, conditionSellPct } = useSettings()
 
   const selected = inventoryOptions.find(o => o.itemId === selectedItemId) ?? inventoryOptions[0] ?? null
@@ -54,6 +59,35 @@ export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefr
     // eslint-disable-next-line react-hooks/purity -- staleness badge; a fresh clock reading each render is intended
     ? (Date.now() - new Date(syncedAt).getTime()) / 3_600_000
     : null
+
+  // No market price and no override: staff types a price at the till; it
+  // persists as the item's override (the price charged is snapshotted on the
+  // sale line as usual). A Cardmarket refresh would be pointless here — this
+  // flow only runs when the card has no market data — so we mirror the
+  // override straight into the parent's result state instead.
+  async function quickSetPrice() {
+    if (!selected) return
+    const pence = parsePounds(priceDraft)
+    if (pence <= 0) return
+    setSavingPrice(true)
+    try {
+      const res = await fetch(`/api/inventory/${selected.itemId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sellPriceOverride: pence }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error ?? 'Could not set price')
+        return
+      }
+      toast.success(`Price set — ${formatGBP(pence)}`)
+      setPriceDraft('')
+      onOverrideSet?.(selected.itemId, pence)
+    } finally {
+      setSavingPrice(false)
+    }
+  }
 
   return (
     <>
@@ -103,6 +137,9 @@ export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefr
                   </button>
                 </h2>
                 <p className="text-sm text-muted-foreground">{card.setName} · #{card.setNumber}</p>
+                {card.language !== 'EN' && (
+                  <Badge variant="outline">{LANGUAGE_LABELS[card.language as Language] ?? card.language}</Badge>
+                )}
               </div>
               {prices?.isHighValue && hoursOld !== null && hoursOld >= 4 && (
                 <Badge variant="destructive" className="shrink-0">⚠ {Math.floor(hoursOld)}h old</Badge>
@@ -145,7 +182,24 @@ export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefr
                 </button>
               ))}
             </div>
-            {selected && (
+            {selected && sellPrice == null ? (
+              <div className="flex items-center gap-3 pt-1 border-t">
+                <span className="text-sm text-muted-foreground">No price — set one to sell</span>
+                <div className="ml-auto flex items-center gap-2">
+                  <input
+                    value={priceDraft}
+                    onChange={e => setPriceDraft(e.target.value)}
+                    inputMode="decimal"
+                    placeholder="£0.00"
+                    aria-label="Set selling price in pounds"
+                    className="w-24 h-9 rounded-md border border-input bg-background px-2 text-right text-sm"
+                  />
+                  <Button disabled={savingPrice || parsePounds(priceDraft) <= 0} onClick={quickSetPrice}>
+                    Set price
+                  </Button>
+                </div>
+              </div>
+            ) : selected && (
               <div className="flex items-center gap-3 pt-1 border-t">
                 <span className="text-2xl font-bold">{formatGBP(sellPrice)}</span>
                 <div className="flex items-center gap-2 ml-auto">

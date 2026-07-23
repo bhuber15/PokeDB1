@@ -31,6 +31,19 @@ TURSO_DATABASE_URL=<url> TURSO_AUTH_TOKEN=<token> npx tsx scripts/seed-staff.ts
 
 Catalogue import takes several minutes (~20K cards; idempotent — safe to re-run).
 
+### Multi-language (CJK) Pokémon — migration 0021+
+
+- Migration 0021 (`alias_name`, `enabled_languages`, game/language index) must be applied
+  to the shop DB **before** deploying this code (additive-only — old code runs fine against
+  the new schema, so migrate first, deploy second). Backfill check after migrating:
+  `SELECT count(*) FROM cards WHERE game != 'pokemon' OR language != 'EN';` → expected 0
+  before the first CJK import; existing external ids are untouched either way.
+- To enable CJK Pokémon for a shop: Settings → Card languages, then run
+  `npx tsx scripts/import-catalogue.ts` once (add `--full-prices` to backfill alias names
+  and the few internationally-listed prices immediately; otherwise they trickle in at
+  ~2,000 cards/night via the rotation). Most CJK cards have **no market price** — staff
+  set prices at intake or via the till quick-set.
+
 ## 4. Create the Vercel project
 
 New Vercel project from this repo (one per shop), then set env vars

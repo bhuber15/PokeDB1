@@ -7,8 +7,10 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { formatGBP, parsePounds } from '@/lib/pricing'
-import type { Card } from '@/lib/db/schema'
+import { formatGBP, parsePounds, pickMarketPrice } from '@/lib/pricing'
+import { useSettings } from '@/components/shared/SettingsProvider'
+import { LANGUAGE_LABELS, type Language } from '@/lib/games'
+import type { Card, PriceCache } from '@/lib/db/schema'
 
 const CONDITIONS = ['NM', 'LP', 'MP', 'HP', 'DMG'] as const
 
@@ -49,6 +51,8 @@ export function AddItemForm() {
   const [searching, setSearching] = useState(false)
   const [saving, setSaving] = useState(false)
   const [sessionAdds, setSessionAdds] = useState<SessionAdd[]>([])
+  const [prices, setPrices] = useState<Record<number, PriceCache>>({})
+  const { primaryPriceSource } = useSettings()
 
   const lastAdd = useRef<{ payload: AddPayload; display: SessionAdd } | null>(null)
   const lastSearched = useRef('')
@@ -67,6 +71,7 @@ export function AddItemForm() {
     const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}`)
     const data = await res.json()
     setResults(data.cards ?? [])
+    setPrices(data.prices ?? {})
     setHighlight(0)
     setSearching(false)
   }
@@ -192,6 +197,9 @@ export function AddItemForm() {
               <div className="flex-1">
                 <div className="font-semibold">{selected.name}</div>
                 <div className="text-sm text-muted-foreground">{selected.setName} · #{selected.setNumber}</div>
+                {selected.language !== 'EN' && (
+                  <Badge variant="outline">{LANGUAGE_LABELS[selected.language as Language] ?? selected.language}</Badge>
+                )}
               </div>
               <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>Change</Button>
             </div>
@@ -206,7 +214,17 @@ export function AddItemForm() {
             <div className="grid grid-cols-2 gap-3">
               <div><Label htmlFor="add-item-cost">Cost Price (£)</Label><Input ref={costRef} id="add-item-cost" name="costPrice" type="number" inputMode="decimal" step="0.01" min={0} value={costPrice} onChange={e => setCostPrice(e.target.value)} placeholder="0.00" /></div>
               <div><Label htmlFor="add-item-qty">Quantity</Label><Input id="add-item-qty" name="quantity" type="number" inputMode="numeric" min={1} value={quantity} onChange={e => setQuantity(e.target.value)} /></div>
-              <div><Label htmlFor="add-item-sell-override">Sell Override (£)</Label><Input id="add-item-sell-override" name="sellOverride" type="number" inputMode="decimal" step="0.01" min={0} value={sellOverride} onChange={e => setSellOverride(e.target.value)} placeholder="Blank = auto" /></div>
+              <div>
+                <Label htmlFor="add-item-sell-override">Sell Override (£)</Label>
+                {selected && pickMarketPrice(prices[selected.id], primaryPriceSource) == null && (
+                  <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+                    <span className="font-medium">No market data for this card.</span> Set your
+                    selling price below — without one the POS blocks the sale until a price is
+                    set at the till.
+                  </div>
+                )}
+                <Input id="add-item-sell-override" name="sellOverride" type="number" inputMode="decimal" step="0.01" min={0} value={sellOverride} onChange={e => setSellOverride(e.target.value)} placeholder="Blank = auto" />
+              </div>
               <div><Label htmlFor="add-item-location">Location</Label><Input id="add-item-location" name="location" value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. Case 3 / B7" /></div>
             </div>
             <div><Label htmlFor="add-item-defect-notes">Defect Notes</Label><Input id="add-item-defect-notes" name="defectNotes" value={defectNotes} onChange={e => setDefectNotes(e.target.value)} placeholder="e.g. Small scratch on holo" /></div>
@@ -243,6 +261,9 @@ export function AddItemForm() {
                     <div>
                       <div className="font-medium">{card.name}</div>
                       <div className="text-sm text-muted-foreground">{card.setName} · #{card.setNumber}</div>
+                      {card.language !== 'EN' && (
+                        <Badge variant="outline">{LANGUAGE_LABELS[card.language as Language] ?? card.language}</Badge>
+                      )}
                     </div>
                   </button>
                 ))}

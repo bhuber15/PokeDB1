@@ -1,10 +1,13 @@
 import { sql, eq, and, or, inArray, lt, asc, isNull, isNotNull } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
 import { cards, inventoryItems, priceCache, priceHistory, type Card } from '@/lib/db/schema'
-import { fetchCardmarketPrices } from '@/lib/apis/tcgdex'
+import { fetchCardmarketPrices, fetchTcgdexCard } from '@/lib/apis/tcgdex'
 import { fetchCardPage, extractBestPrice, type PokemonTCGCard } from '@/lib/apis/pokemon-tcg'
 import { eurToGbp, usdToGbp, isCardmarketFresh } from '@/lib/pricing'
 import { getSettings, type AppSettings } from '@/lib/settings'
+import { parseExternalId } from '@/lib/sources/external-id'
+import { aliasForDexIds } from '@/lib/pokedex'
+import { TCGDEX_LANGS, type Language } from '@/lib/games'
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -20,14 +23,26 @@ async function isInteresting(dbc: Db, cardId: number): Promise<boolean> {
   return pc?.hv ?? false
 }
 
-// Propagates TcgdexError on transient failures (so sweeps count them as
-// failed and retry another night). `opts.interesting` lets batch callers
-// precompute the history gate instead of paying two lookups per card.
-export async function syncCardmarketForCard(
-  cardId: number, externalId: string | null, variant: string | null, eurRate: number, dbc: Db = db,
+// Per-card marketplace sync. EN rows (bare pokemontcg.io ids) fetch the
+// TCGdex/en Cardmarket block exactly as before; tcgdex:<lang>:<id> rows fetch
+// the per-language card, write BOTH column families (Cardmarket EUR +
+// TCGplayer USD — TCGdex embeds both), and backfill cards.aliasName from
+// dexId while the response is in hand. Propagates TcgdexError on transient
+// failures (so sweeps count them as failed and retry another night).
+// `opts.interesting` lets batch callers precompute the history gate instead
+// of paying two lookups per card.
+export async function syncMarketPricesForCard(
+  cardId: number, externalId: string | null, variant: string | null,
+  rates: { eur: number; usd: number }, dbc: Db = db,
   opts: { interesting?: boolean } = {},
 ): Promise<void> {
   if (!externalId) return
+  const parsed = parseExternalId(externalId)
+  // 'EN' guard: a hypothetical tcgdex:en:… id has no TCGDEX_LANGS entry —
+  // EN always takes the pokemontcg.io path below.
+  if (parsed.source === 'tcgdex' && parsed.language !== 'EN') {
+    return syncTcgdexCard(cardId, parsed.language, parsed.id, rates, dbc, opts)
+  }
   const cm = await fetchCardmarketPrices(externalId, variant)
   const syncedAt = new Date().toISOString()
   if (!cm) {
@@ -41,12 +56,12 @@ export async function syncCardmarketForCard(
       })
     return
   }
-  const trend = eurToGbp(cm.trend, eurRate)
+  const trend = eurToGbp(cm.trend, rates.eur)
   await dbc.insert(priceCache).values({
     cardId,
     cardmarketTrend: trend,
-    cardmarketLow: eurToGbp(cm.low, eurRate),
-    cardmarketAvg: eurToGbp(cm.avg, eurRate),
+    cardmarketLow: eurToGbp(cm.low, rates.eur),
+    cardmarketAvg: eurToGbp(cm.avg, rates.eur),
     cardmarketSyncedAt: syncedAt,
   }).onConflictDoUpdate({
     target: priceCache.cardId,
@@ -66,6 +81,83 @@ export async function syncCardmarketForCard(
   }
 }
 
+// tcgdex:<lang>:<id> branch — full per-language card fetch (not just the
+// pricing block), because the same response also carries the dexId used to
+// backfill the EN alias. Writes both Cardmarket (EUR) and TCGplayer (USD)
+// column families since TCGdex embeds both in one payload.
+async function syncTcgdexCard(
+  cardId: number, language: Exclude<Language, 'EN'>, rawId: string,
+  rates: { eur: number; usd: number }, dbc: Db,
+  opts: { interesting?: boolean },
+): Promise<void> {
+  const card = await fetchTcgdexCard(TCGDEX_LANGS[language], rawId)
+  const syncedAt = new Date().toISOString()
+
+  // Alias backfill piggybacks on the fetch — fills blanks only.
+  const alias = aliasForDexIds(card?.dexId)
+  if (alias) {
+    await dbc.update(cards).set({ aliasName: alias })
+      .where(and(eq(cards.id, cardId), isNull(cards.aliasName)))
+  }
+
+  const cm = card?.cardmarket ?? null
+  const tp = card?.tcgplayer ?? null
+  if (!cm && !tp) {
+    // Answered with no marketplace data (the JP-exclusive norm) or unknown id:
+    // record the check so the rotation moves on, keep any cached values.
+    await dbc.insert(priceCache).values({ cardId, cardmarketSyncedAt: syncedAt })
+      .onConflictDoUpdate({
+        target: priceCache.cardId,
+        set: { cardmarketSyncedAt: sql`excluded.cardmarket_synced_at` },
+      })
+    return
+  }
+
+  const trend = eurToGbp(cm?.trend ?? null, rates.eur)
+  const values = {
+    cardId,
+    cardmarketTrend: trend,
+    cardmarketLow: eurToGbp(cm?.low ?? null, rates.eur),
+    cardmarketAvg: eurToGbp(cm?.avg ?? null, rates.eur),
+    cardmarketSyncedAt: syncedAt,
+    tcgplayerMarket: usdToGbp(tp?.market ?? null, rates.usd),
+    tcgplayerLow: usdToGbp(tp?.low ?? null, rates.usd),
+    tcgplayerMid: usdToGbp(tp?.mid ?? null, rates.usd),
+    tcgplayerHigh: usdToGbp(tp?.high ?? null, rates.usd),
+    lastSyncedAt: syncedAt,
+  }
+  // Only overwrite the column family the response actually carried — a
+  // present cardmarket block with an absent tcgplayer block must not null
+  // out previously cached TCGplayer values (and vice versa).
+  const set: Record<string, unknown> = { cardmarketSyncedAt: sql`excluded.cardmarket_synced_at` }
+  if (cm) {
+    set.cardmarketTrend = sql`excluded.cardmarket_trend`
+    set.cardmarketLow = sql`excluded.cardmarket_low`
+    set.cardmarketAvg = sql`excluded.cardmarket_avg`
+  }
+  if (tp) {
+    set.tcgplayerMarket = sql`excluded.tcgplayer_market`
+    set.tcgplayerLow = sql`excluded.tcgplayer_low`
+    set.tcgplayerMid = sql`excluded.tcgplayer_mid`
+    set.tcgplayerHigh = sql`excluded.tcgplayer_high`
+    set.lastSyncedAt = sql`excluded.last_synced_at`
+  }
+  await dbc.insert(priceCache).values(values)
+    .onConflictDoUpdate({ target: priceCache.cardId, set })
+
+  if (opts.interesting ?? await isInteresting(dbc, cardId)) {
+    await dbc.insert(priceHistory).values({
+      cardId, cardmarketTrend: trend, tcgplayerMarket: values.tcgplayerMarket, recordedOn: today(),
+    }).onConflictDoUpdate({
+      target: [priceHistory.cardId, priceHistory.recordedOn],
+      set: {
+        ...(cm ? { cardmarketTrend: sql`excluded.cardmarket_trend` } : {}),
+        ...(tp ? { tcgplayerMarket: sql`excluded.tcgplayer_market` } : {}),
+      },
+    })
+  }
+}
+
 export interface SweepResult {
   pagesFetched: number
   pagesFailed: number
@@ -76,7 +168,7 @@ export interface SweepResult {
 
 const CHUNK = 100 // rows per multi-row statement, well under SQLite's param limit
 
-function chunked<T>(arr: T[], size: number): T[][] {
+export function chunked<T>(arr: T[], size: number): T[][] {
   const out: T[][] = []
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
   return out
@@ -219,7 +311,9 @@ export async function syncInStockCardmarket(
   for (const batch of chunked(inStock, 8)) {
     const results = await Promise.allSettled(
       // In stock by construction, so the history gate is a given.
-      batch.map(c => syncCardmarketForCard(c.id, c.externalId, c.variant, settings.eurToGbp, dbc, { interesting: true })),
+      batch.map(c => syncMarketPricesForCard(
+        c.id, c.externalId, c.variant, { eur: settings.eurToGbp, usd: settings.usdToGbp }, dbc, { interesting: true },
+      )),
     )
     for (const r of results) {
       if (r.status === 'fulfilled') synced++
@@ -275,7 +369,7 @@ export async function syncStaleCardmarket(
   for (const batch of chunked(candidates, 8)) {
     if (Date.now() >= deadline) break
     const results = await Promise.allSettled(batch.map(c =>
-      syncCardmarketForCard(c.id, c.externalId, c.variant, settings.eurToGbp, dbc,
+      syncMarketPricesForCard(c.id, c.externalId, c.variant, { eur: settings.eurToGbp, usd: settings.usdToGbp }, dbc,
         { interesting: stockedIds.has(c.id) || (c.isHighValue ?? false) }),
     ))
     for (const r of results) {
@@ -297,7 +391,7 @@ export const ON_DEMAND_BUDGET_MS = 2500
 export async function refreshStaleCardmarket(
   cardRows: Pick<Card, 'id' | 'externalId' | 'variant'>[],
   dbc: Db = db,
-  opts: { maxCards?: number; timeBudgetMs?: number; sync?: typeof syncCardmarketForCard } = {},
+  opts: { maxCards?: number; timeBudgetMs?: number; sync?: typeof syncMarketPricesForCard } = {},
 ): Promise<number> {
   const withExternal = cardRows.filter(c => c.externalId != null)
   if (withExternal.length === 0) return 0
@@ -311,14 +405,14 @@ export async function refreshStaleCardmarket(
     .slice(0, opts.maxCards ?? ON_DEMAND_MAX_CARDS)
   if (stale.length === 0) return 0
 
-  const sync = opts.sync ?? syncCardmarketForCard
+  const sync = opts.sync ?? syncMarketPricesForCard
   const settings = await getSettings(dbc)
   const deadline = Date.now() + (opts.timeBudgetMs ?? ON_DEMAND_BUDGET_MS)
   let refreshed = 0
   for (const batch of chunked(stale, 4)) {
     if (Date.now() >= deadline) break
     const results = await Promise.allSettled(
-      batch.map(c => sync(c.id, c.externalId, c.variant, settings.eurToGbp, dbc)),
+      batch.map(c => sync(c.id, c.externalId, c.variant, { eur: settings.eurToGbp, usd: settings.usdToGbp }, dbc)),
     )
     refreshed += results.filter(r => r.status === 'fulfilled').length
   }

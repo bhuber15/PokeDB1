@@ -4,6 +4,7 @@ import { settings, type Settings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { parsePounds, type ConditionLadder, DEFAULT_CONDITION_LADDER } from '@/lib/pricing'
 import { BRAND } from '@/lib/brand'
+import { type Language, isLanguage, LANGUAGES } from '@/lib/games'
 
 export interface AppSettings {
   shopName: string
@@ -16,6 +17,7 @@ export interface AppSettings {
   primaryPriceSource: 'cardmarket' | 'tcgplayer'
   vatScheme: 'none' | 'standard' | 'margin'
   marginNoCostHandling: 'exclude' | 'block'
+  enabledLanguages: Language[]
   conditionSellPct: ConditionLadder
 }
 
@@ -33,7 +35,30 @@ export const DEFAULT_SETTINGS: AppSettings = {
   primaryPriceSource: 'cardmarket',
   vatScheme: 'none',
   marginNoCostHandling: 'exclude',
+  enabledLanguages: ['EN'],
   conditionSellPct: { ...DEFAULT_CONDITION_LADDER },
+}
+
+// enabled_languages is a JSON text column; tolerate junk (['EN'] fallback)
+// and guarantee 'EN' membership so the EN catalogue can never be disabled.
+function parseLanguages(json: string): Language[] {
+  try {
+    const arr: unknown = JSON.parse(json)
+    const langs = Array.isArray(arr) ? arr.filter(isLanguage) : []
+    return langs.includes('EN') ? langs : ['EN', ...langs]
+  } catch {
+    return ['EN']
+  }
+}
+
+// Row-shaped copy of an AppSettings patch: arrays become JSON text. The
+// condition ladder is handled separately in updateSettings (five columns).
+function toRow(patch: Partial<Omit<AppSettings, 'conditionSellPct'>>) {
+  const { enabledLanguages, ...rest } = patch
+  return {
+    ...rest,
+    ...(enabledLanguages ? { enabledLanguages: JSON.stringify(enabledLanguages) } : {}),
+  }
 }
 
 const pctInt = z.number().int().min(1).max(100)
@@ -54,6 +79,9 @@ export const settingsPatchSchema = z.object({
   buyCashPct: z.number().positive().max(1),
   buyCreditPct: z.number().positive().max(1),
   conditionSellPct: conditionLadderSchema,
+  // 'EN' is always on — the EN catalogue is the app's baseline.
+  enabledLanguages: z.array(z.enum(LANGUAGES))
+    .transform(langs => [...new Set<Language>(['EN', ...langs])]),
 }).partial().refine(o => Object.keys(o).length > 0, { message: 'No valid fields to update' })
 
 function toAppSettings(row: Settings): AppSettings {
@@ -68,6 +96,7 @@ function toAppSettings(row: Settings): AppSettings {
     primaryPriceSource: row.primaryPriceSource as 'cardmarket' | 'tcgplayer',
     vatScheme: row.vatScheme as 'none' | 'standard' | 'margin',
     marginNoCostHandling: row.marginNoCostHandling as 'exclude' | 'block',
+    enabledLanguages: parseLanguages(row.enabledLanguages),
     conditionSellPct: {
       NM: row.condSellPctNm, LP: row.condSellPctLp, MP: row.condSellPctMp,
       HP: row.condSellPctHp, DMG: row.condSellPctDmg,
@@ -83,7 +112,7 @@ export async function getSettings(dbc: Db = db): Promise<AppSettings> {
     if (row) return toAppSettings(row)
 
     const [created] = await dbc.insert(settings)
-      .values({ id: 1, ...DEFAULT_SETTINGS })
+      .values({ id: 1, ...toRow(DEFAULT_SETTINGS) })
       .onConflictDoNothing()
       .returning()
     if (created) return toAppSettings(created)
@@ -109,7 +138,7 @@ export async function updateSettings(patch: Partial<AppSettings>, dbc: Db = db):
     condSellPctDmg: conditionSellPct.DMG,
   } : {}
   const [updated] = await dbc.update(settings)
-    .set({ ...columns, ...ladderCols, updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19) })
+    .set({ ...toRow(columns), ...ladderCols, updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19) })
     .where(eq(settings.id, 1))
     .returning()
   return toAppSettings(updated)

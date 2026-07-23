@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useSettings } from '@/components/shared/SettingsProvider'
 import { formatGBP, parsePounds, usdToGbp as usdToGbpPence, eurToGbp as eurToGbpPence, calculateSellPrice, calculateBuyPrice, CONDITIONS, RECOMMENDED_CONDITION_LADDER, type Condition } from '@/lib/pricing'
+import { LANGUAGES, LANGUAGE_LABELS, type Language } from '@/lib/games'
 
 export function SettingsForm() {
   const current = useSettings()
@@ -22,6 +23,7 @@ export function SettingsForm() {
   const [primaryPriceSource, setPrimaryPriceSource] = useState<'cardmarket' | 'tcgplayer'>(current.primaryPriceSource)
   const [vatScheme, setVatScheme] = useState<'none' | 'standard' | 'margin'>(current.vatScheme)
   const [marginNoCostHandling, setMarginNoCostHandling] = useState<'exclude' | 'block'>(current.marginNoCostHandling)
+  const [enabledLanguages, setEnabledLanguages] = useState<Language[]>(current.enabledLanguages)
   const [condPct, setCondPct] = useState<Record<Condition, string>>({
     NM: String(current.conditionSellPct.NM), LP: String(current.conditionSellPct.LP),
     MP: String(current.conditionSellPct.MP), HP: String(current.conditionSellPct.HP),
@@ -65,6 +67,7 @@ export function SettingsForm() {
           primaryPriceSource,
           vatScheme,
           marginNoCostHandling,
+          enabledLanguages,
           conditionSellPct: {
             NM: parseInt(condPct.NM), LP: parseInt(condPct.LP), MP: parseInt(condPct.MP),
             HP: parseInt(condPct.HP), DMG: parseInt(condPct.DMG),
@@ -158,6 +161,35 @@ export function SettingsForm() {
           <p className="text-xs text-muted-foreground">
             Which market price drives sell-price calculations in POS and Inventory.
           </p>
+        </div>
+
+        <div>
+          <p className="text-sm font-medium mb-2">Card languages</p>
+          <p className="text-xs text-muted-foreground mb-2">
+            Languages the catalogue imports and search offers. English is always on.
+            Most non-English printings have no market price — set selling prices at
+            intake or on the till.
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            {LANGUAGES.map(lang => {
+              const on = enabledLanguages.includes(lang)
+              return (
+                <button
+                  key={lang}
+                  type="button"
+                  disabled={lang === 'EN'}
+                  aria-pressed={on}
+                  onClick={() => setEnabledLanguages(prev =>
+                    on ? prev.filter(l => l !== lang) : [...prev, lang])}
+                  className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors disabled:opacity-70 ${
+                    on ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted border-border'
+                  }`}
+                >
+                  {LANGUAGE_LABELS[lang]}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
         <div className="space-y-1.5">

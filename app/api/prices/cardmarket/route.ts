@@ -5,7 +5,7 @@ import { cards, priceCache } from '@/lib/db/schema'
 import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { fetchCardmarketPrices } from '@/lib/apis/tcgdex'
-import { syncCardmarketForCard } from '@/lib/prices/sync'
+import { syncMarketPricesForCard } from '@/lib/prices/sync'
 import { getSettings } from '@/lib/settings'
 import { eurToGbp } from '@/lib/pricing'
 
@@ -27,7 +27,7 @@ export const GET = guarded(async (req: NextRequest) => {
     if (!card) return NextResponse.json({ error: 'Card not found' }, { status: 404 })
     const settings = await getSettings(db)
     try {
-      await syncCardmarketForCard(card.id, card.externalId, card.variant, settings.eurToGbp, db)
+      await syncMarketPricesForCard(card.id, card.externalId, card.variant, { eur: settings.eurToGbp, usd: settings.usdToGbp }, db)
     } catch {
       // TCGdex down — fall through and serve whatever is cached.
     }

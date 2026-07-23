@@ -7,6 +7,7 @@ import { guarded } from '@/lib/api'
 import { parseCSV } from '@/lib/csv'
 import { generateQRId } from '@/lib/qr'
 import { parsePounds, CONDITIONS } from '@/lib/pricing'
+import { isLanguage, GAME_IDS, type Game, type Language } from '@/lib/games'
 
 const CONDITION_SET = new Set<string>(CONDITIONS)
 
@@ -37,6 +38,14 @@ export const POST = guarded(async (req: NextRequest) => {
       const name = col(r, 'name') || null
       const setName = col(r, 'set_name') || null
       const setNumber = col(r, 'set_number') || null
+      // Optional identity columns; omitting them keeps pre-existing CSVs
+      // importing exactly as before (the catalogue defaults: EN Pokémon).
+      const gameRaw = col(r, 'game')?.toLowerCase()
+      const game = (gameRaw || 'pokemon') as Game
+      if (!(GAME_IDS as readonly string[]).includes(game)) throw new Error(`bad game "${gameRaw}"`)
+      const languageRaw = col(r, 'language')?.toUpperCase()
+      const language = (languageRaw || 'EN') as Language
+      if (!isLanguage(language)) throw new Error(`bad language "${languageRaw}"`)
 
       if (!CONDITION_SET.has(condition)) throw new Error(`bad condition "${condition}"`)
       if (!Number.isInteger(quantity) || quantity < 1) throw new Error('bad quantity')
@@ -57,14 +66,17 @@ export const POST = guarded(async (req: NextRequest) => {
           if (c) cardId = c.id
         }
         if (!cardId && name && setNumber) {
+          // Identity-scoped: a JA "Pikachu 025" must never resolve to (or
+          // create a duplicate of) the EN printing with the same name/number.
           const [c] = await tx.select().from(cards)
-            .where(and(eq(cards.name, name), eq(cards.setNumber, setNumber))).limit(1)
+            .where(and(eq(cards.name, name), eq(cards.setNumber, setNumber),
+              eq(cards.game, game), eq(cards.language, language))).limit(1)
           if (c) cardId = c.id
         }
         if (!cardId) {
           if (!name || !setNumber) throw new Error('no card match and missing name/set_number to create one')
           const [c] = await tx.insert(cards).values({
-            name, setName: setName ?? '', setNumber, externalId,
+            name, setName: setName ?? '', setNumber, externalId, game, language,
           }).returning()
           cardId = c.id
           await tx.insert(priceCache).values({ cardId }).onConflictDoNothing()

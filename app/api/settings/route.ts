@@ -15,6 +15,8 @@ export const PATCH = guarded(async (req: NextRequest) => {
   const db = await getTenantDb()
   // Only admins can change shop settings
   requireAdmin(await getSession(await currentTenantId()))
+  // enabledLanguages validation (incl. the EN-always-on guarantee) lives in
+  // settingsPatchSchema alongside the other fields.
   const patch = await parseBody(req, settingsPatchSchema)
   return NextResponse.json(await updateSettings(patch, db))
 })

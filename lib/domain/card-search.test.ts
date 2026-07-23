@@ -13,6 +13,10 @@ let dbc: Db
 const liveNever = () => Promise.reject(new Error('live API should not be called'))
 const liveEmpty = () => Promise.resolve([] as PokemonTCGCard[])
 const syncNoop = () => Promise.resolve()
+// Combined stub for tests that seed rows with an externalId (the JA printing
+// below): without stubbing syncMarketPrices too, refreshStaleCardmarket would
+// fire a real TCGdex fetch for that row's missing cache entry.
+const noLiveDeps = { fetchLive: liveEmpty, syncMarketPrices: syncNoop }
 
 beforeEach(async () => {
   dbc = await createTestDb()
@@ -84,7 +88,7 @@ test('live fallback inserts new cards with cached prices and returns them', asyn
   }
   const res = await searchCards('Zzzqqqxxx', dbc, {
     fetchLive: () => Promise.resolve([apiCard]),
-    syncCardmarket: syncNoop,
+    syncMarketPrices: syncNoop,
   })
   assert.equal(res.cards.length, 1)
   assert.equal(res.cards[0].name, 'Zzzqqqxxx')
@@ -105,7 +109,7 @@ test('search refreshes a missing Cardmarket entry before pricing results', async
   const synced: number[] = []
   const res = await searchCards('Pikachu', dbc, {
     fetchLive: liveNever,
-    syncCardmarket: async (cardId) => {
+    syncMarketPrices: async (cardId) => {
       synced.push(cardId)
       await dbc.update(schema.priceCache)
         .set({ cardmarketTrend: 850, cardmarketSyncedAt: new Date().toISOString() })
@@ -125,7 +129,7 @@ test('search leaves fresh Cardmarket entries alone', async () => {
   let called = false
   const res = await searchCards('Pikachu', dbc, {
     fetchLive: liveNever,
-    syncCardmarket: async () => { called = true },
+    syncMarketPrices: async () => { called = true },
   })
   assert.equal(called, false, 'fresh cache → no TCGdex round-trip')
   assert.equal(res.prices[1]?.cardmarketTrend, 900)
@@ -136,7 +140,7 @@ test('a failing Cardmarket refresh never breaks search', async () => {
   await dbc.insert(schema.priceCache).values({ cardId: 1, tcgplayerMarket: 1000 })
   const res = await searchCards('Pikachu', dbc, {
     fetchLive: liveNever,
-    syncCardmarket: () => Promise.reject(new Error('tcgdex down')),
+    syncMarketPrices: () => Promise.reject(new Error('tcgdex down')),
   })
   assert.equal(res.cards.length, 3)
   assert.equal(res.prices[1]?.tcgplayerMarket, 1000, 'cached prices still served')
@@ -157,8 +161,56 @@ test('live fallback returns the existing row instead of duplicating it', async (
   }
   const res = await searchCards('Yyywwwvvv', dbc, {
     fetchLive: () => Promise.resolve([apiCard]),
-    syncCardmarket: syncNoop,
+    syncMarketPrices: syncNoop,
   })
   assert.equal(res.cards.length, 1)
   assert.equal(res.cards[0].id, 42)
+})
+
+// --- Alias matching + game/language filters ---
+// The JA printing is seeded per-test (not in the shared beforeEach) so the
+// assertions above, which pin exact result sets for the EN-only seed, stay
+// byte-identical.
+async function seedJaPikachu(): Promise<void> {
+  await dbc.insert(schema.cards).values({
+    id: 8, name: 'ピカチュウ', aliasName: 'Pikachu', game: 'pokemon', language: 'JA',
+    setName: 'テスト', setNumber: '025', externalId: 'tcgdex:ja:TEST-025',
+  })
+}
+
+test('alias matches: searching the EN species name finds the JA printing', async () => {
+  await seedJaPikachu()
+  const { cards: found } = await searchCards('Pikachu', dbc, noLiveDeps)
+  const names = found.map(c => c.name)
+  assert.ok(names.includes('ピカチュウ'))
+})
+
+test('set-number search finds CJK rows', async () => {
+  await seedJaPikachu()
+  const { cards: found } = await searchCards('025', dbc, noLiveDeps)
+  assert.ok(found.some(c => c.language === 'JA'))
+})
+
+test('language filter narrows results', async () => {
+  await seedJaPikachu()
+  const ja = await searchCards('Pikachu', dbc, noLiveDeps, { language: 'JA' })
+  assert.ok(ja.cards.length > 0)
+  assert.ok(ja.cards.every(c => c.language === 'JA'))
+  const en = await searchCards('Pikachu', dbc, noLiveDeps, { language: 'EN' })
+  assert.ok(en.cards.length > 0)
+  assert.ok(en.cards.every(c => c.language === 'EN'))
+})
+
+test('fuzzy suggestions score alias names too', async () => {
+  await seedJaPikachu()
+  const { cards: found, fuzzy } = await searchCards('Pikchu', dbc, noLiveDeps)
+  assert.equal(fuzzy, true)
+  assert.ok(found.some(c => c.name === 'ピカチュウ'))
+})
+
+test('non-EN language filter never hits the EN-only live API on a miss', async () => {
+  const { cards: found, unavailable } = await searchCards(
+    'Zzznonexistent', dbc, { fetchLive: liveNever, syncMarketPrices: syncNoop }, { language: 'JA' })
+  assert.equal(found.length, 0)
+  assert.equal(unavailable, false)
 })
