@@ -11,14 +11,14 @@ export function GameFilter({ value, onChange }: { value: GameFilterValue; onChan
   if (enabledGames.length <= 1) return null
   const options: GameFilterValue[] = ['all', ...enabledGames]
   return (
-    <div role="group" aria-label="Filter by game" className="inline-flex rounded-md border bg-muted p-0.5">
+    <div role="group" aria-label="Filter by game" className="inline-flex flex-wrap gap-0.5 rounded-md border bg-muted p-0.5">
       {options.map(opt => (
         <button
           key={opt}
           type="button"
           aria-pressed={value === opt}
           onClick={() => onChange(opt)}
-          className={`px-2.5 py-1 text-sm rounded ${value === opt ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'}`}
+          className={`px-2.5 py-1 text-sm rounded whitespace-nowrap ${value === opt ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'}`}
         >
           {opt === 'all' ? 'All games' : GAMES[opt as Game].shortLabel}
         </button>
