@@ -5,10 +5,11 @@
 // Catalogue tab and the Buy page's Browse mode. No writes — unlike
 // sales/refunds/buys, this module has no domain invariants to enforce.
 
-import { asc, eq, like, sql } from 'drizzle-orm'
+import { and, asc, eq, like, sql } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
 import { cards, priceCache } from '@/lib/db/schema'
 import type { Card, PriceCache } from '@/lib/db/schema'
+import type { Game } from '@/lib/games'
 
 // Chronological release order. A series not listed here (including null —
 // pre-backfill rows, or a set the API hasn't categorised yet) sorts last,
@@ -42,10 +43,11 @@ export interface SetSummary {
 }
 
 /** Every distinct set in the catalogue, ordered by era then set name. */
-export async function getSets(dbc: Db = db): Promise<SetSummary[]> {
+export async function getSets(dbc: Db = db, game?: Game): Promise<SetSummary[]> {
   const rows = await dbc
     .select({ setName: cards.setName, series: cards.series, count: sql<number>`COUNT(*)` })
     .from(cards)
+    .where(game ? eq(cards.game, game) : undefined)
     .groupBy(cards.setName, cards.series)
   return rows.sort((a, b) =>
     seriesRank(a.series) - seriesRank(b.series) || a.setName.localeCompare(b.setName))
@@ -57,33 +59,33 @@ export interface CatalogueRow {
 }
 
 /** All cards in one set, ordered by set number, left-joined to price_cache. */
-export async function getCardsInSet(setName: string, dbc: Db = db): Promise<CatalogueRow[]> {
+export async function getCardsInSet(setName: string, dbc: Db = db, game?: Game): Promise<CatalogueRow[]> {
   const rows = await dbc
     .select({ card: cards, prices: priceCache })
     .from(cards)
     .leftJoin(priceCache, eq(priceCache.cardId, cards.id))
-    .where(eq(cards.setName, setName))
+    .where(and(eq(cards.setName, setName), ...(game ? [eq(cards.game, game)] : [])))
   return rows.sort((a, b) => naturalCompare(a.card.setNumber, b.card.setNumber))
 }
 
 const NAME_LIMIT = 50
 
 /** Distinct card names, optionally prefix-filtered, capped and alphabetised. */
-export async function getNames(q: string | undefined, dbc: Db = db): Promise<string[]> {
+export async function getNames(q: string | undefined, dbc: Db = db, game?: Game): Promise<string[]> {
   const rows = await dbc.selectDistinct({ name: cards.name }).from(cards)
-    .where(like(cards.name, `${q ?? ''}%`))
+    .where(and(like(cards.name, `${q ?? ''}%`), ...(game ? [eq(cards.game, game)] : [])))
     .orderBy(asc(cards.name))
     .limit(NAME_LIMIT)
   return rows.map(r => r.name)
 }
 
 /** Every printing of an exact card name, ordered by era then set number. */
-export async function getPrintingsByName(name: string, dbc: Db = db): Promise<CatalogueRow[]> {
+export async function getPrintingsByName(name: string, dbc: Db = db, game?: Game): Promise<CatalogueRow[]> {
   const rows = await dbc
     .select({ card: cards, prices: priceCache })
     .from(cards)
     .leftJoin(priceCache, eq(priceCache.cardId, cards.id))
-    .where(eq(cards.name, name))
+    .where(and(eq(cards.name, name), ...(game ? [eq(cards.game, game)] : [])))
   return rows.sort((a, b) =>
     seriesRank(a.card.series) - seriesRank(b.card.series) || naturalCompare(a.card.setNumber, b.card.setNumber))
 }
