@@ -22,7 +22,9 @@ async function seed() {
   await applyMigrations(client)
   const db = drizzle(client, { schema })
 
-  await db.insert(schema.settings).values({ id: 1 })
+  // All three games enabled so the game-first selector (GameFilter) renders
+  // on every surface for the multi-game checkout spec (Task 12).
+  await db.insert(schema.settings).values({ id: 1, enabledGames: JSON.stringify(['pokemon', 'mtg', 'yugioh']) })
   await db.insert(schema.staff).values({
     id: 1, name: 'Tess', pinHash: bcrypt.hashSync(STAFF_PIN, 4), role: 'staff',
   })
@@ -59,6 +61,35 @@ async function seed() {
   await db.insert(schema.inventoryItems).values({
     cardId: jaCard.id, condition: 'NM', quantity: 2, costPrice: 100,
     qrCode: 'e2e-ja-quickset',
+  })
+
+  // MTG foil + YGO printing with priced stock (Task 12's multi-game
+  // checkout). enabledGames above makes GameFilter render on every surface
+  // for every spec in this shared seed, so these two names are chosen to
+  // never collide with another spec's search terms ('Pikachu', the JA
+  // card's 'リザードン'/'Charizard' alias, 'SV Booster Pack') or with a
+  // GameFilter button's own label as a substring (notably 'Magic' — a name
+  // like "Dark Magician" would make a card-name button match
+  // getByRole('button', { name: 'Magic' })). sellPriceOverride makes both
+  // sellable without a price_cache row, exactly like the JA card above.
+  const [mtgCard] = await db.insert(schema.cards).values({
+    name: 'Lightning Bolt', game: 'mtg', language: 'EN', variant: 'Foil',
+    setName: 'Limited Edition Alpha', setNumber: '150', externalId: 'scryfall:foil:e2e-mtg-0001',
+  }).returning()
+  await db.insert(schema.inventoryItems).values({
+    cardId: mtgCard.id, condition: 'NM', quantity: 2, costPrice: 400,
+    sellPriceOverride: 1200, // £12.00
+    qrCode: 'e2e-mtg-foil-qr',
+  })
+
+  const [ygoCard] = await db.insert(schema.cards).values({
+    name: 'Blue-Eyes White Dragon', game: 'yugioh', language: 'EN', variant: 'Ultra Rare',
+    setName: 'Legend of Blue Eyes White Dragon', setNumber: 'LOB-001', externalId: 'ygoprodeck:e2e-ygo-0001:Ultra Rare',
+  }).returning()
+  await db.insert(schema.inventoryItems).values({
+    cardId: ygoCard.id, condition: 'NM', quantity: 5, costPrice: 150,
+    sellPriceOverride: 350, // £3.50
+    qrCode: 'e2e-ygo-printing-qr',
   })
 
   client.close()
