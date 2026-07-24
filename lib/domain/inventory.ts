@@ -4,6 +4,7 @@ import { inventoryItems, stockAdjustments, cards, products, priceCache } from '@
 import { DomainError } from './errors'
 import { EAN_RE } from '@/lib/product-categories'
 import type { AdjustmentReason } from '@/lib/adjustment-reasons'
+import { type Game } from '@/lib/games'
 
 export { ADJUSTMENT_REASONS, type AdjustmentReason } from '@/lib/adjustment-reasons'
 
@@ -65,8 +66,10 @@ export async function applyInventoryPatch(
 
 // POS search: active stock whose card OR product name matches; an all-digits
 // query tries the product barcode first so a USB scanner (types digits +
-// Enter) lands its item instantly and exactly.
-export async function searchSellables(q: string, dbc: Db = db) {
+// Enter) lands its item instantly and exactly. An optional game scopes the
+// name/product match to one TCG — undefined searches across all games.
+export async function searchSellables(q: string, dbc: Db = db, game?: Game) {
+  const scope = game ? [eq(cards.game, game)] : []
   const base = () => dbc
     .select({ item: inventoryItems, card: cards, product: products, prices: priceCache })
     .from(inventoryItems)
@@ -79,7 +82,13 @@ export async function searchSellables(q: string, dbc: Db = db) {
   }
   return base().where(and(
     eq(inventoryItems.isActive, true),
-    or(like(cards.name, `%${q}%`), like(cards.aliasName, `%${q}%`), like(products.name, `%${q}%`)),
+    // Scope the game filter to the card/alias match only — sealed products have
+    // no game (cards.game is NULL on a product row), so ANDing the scope onto
+    // the whole OR would silently hide every product under a game selection.
+    or(
+      and(or(like(cards.name, `%${q}%`), like(cards.aliasName, `%${q}%`)), ...scope),
+      like(products.name, `%${q}%`),
+    ),
   ))
 }
 

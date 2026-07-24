@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { SearchBar } from '@/components/pos/SearchBar'
 import { CardResult, InventoryOption } from '@/components/pos/CardResult'
 import { ProductResult } from '@/components/pos/ProductResult'
@@ -9,6 +9,8 @@ import { ReceiptDialog, type ReceiptData } from '@/components/pos/ReceiptDialog'
 import type { CheckoutConfirmOptions } from '@/components/pos/CheckoutDialog'
 import { SaleQueue } from '@/components/pos/SaleQueue'
 import { useSettings } from '@/components/shared/SettingsProvider'
+import { GameFilter } from '@/components/shared/GameFilter'
+import { useStickyGameFilter } from '@/components/shared/useStickyGameFilter'
 import { toast } from 'sonner'
 import { formatGBP, computeSaleTotals } from '@/lib/pricing'
 import {
@@ -60,6 +62,13 @@ function extractProducts(rows: InvRow[]): ProductHit[] {
 
 export default function POSPage() {
   const { shopName, vatScheme } = useSettings()
+  const [gameFilter, setGameFilter] = useStickyGameFilter('pos')
+  // Mirror the game filter in a ref so the deep-link auto-search effect (which
+  // captures handleSearch once at mount) still reads the current value rather
+  // than the 'all' it froze with — the widget restores a sticky filter after
+  // hydration, and the auto-fired search must agree with it.
+  const gameFilterRef = useRef(gameFilter)
+  gameFilterRef.current = gameFilter
   const [results, setResults] = useState<SearchState[]>([])
   const [productResults, setProductResults] = useState<ProductHit[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
@@ -124,7 +133,8 @@ export default function POSPage() {
 
   async function handleSearch(query: string) {
     setLoading(true)
-    const res = await fetch(`/api/inventory?q=${encodeURIComponent(query)}`)
+    const gameQ = gameFilterRef.current !== 'all' ? `&game=${gameFilterRef.current}` : ''
+    const res = await fetch(`/api/inventory?q=${encodeURIComponent(query)}${gameQ}`)
     const rows = (await res.json()) as InvRow[]
     const grouped = groupByCard(rows)
     const productHits = extractProducts(rows)
@@ -286,7 +296,12 @@ export default function POSPage() {
     <div className="grid grid-cols-[1fr_360px] gap-6" style={{ height: 'calc(100vh - 120px)' }}>
       <h1 className="sr-only">Point of Sale</h1>
       <div className="flex flex-col gap-4 overflow-y-auto">
-        <SearchBar onSearch={handleSearch} onQRDetected={handleQRDetected} loading={loading} />
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
+            <SearchBar onSearch={handleSearch} onQRDetected={handleQRDetected} loading={loading} />
+          </div>
+          <GameFilter value={gameFilter} onChange={setGameFilter} />
+        </div>
         {results.length === 0 && productResults.length === 0 && !loading && (
           <div className="flex-1 flex items-center justify-center text-center text-sm text-muted-foreground p-8">
             <p>

@@ -8,6 +8,7 @@ import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody, parseIdParam } from '@/lib/validation'
 import { redactInventoryCosts, searchSellables } from '@/lib/domain/inventory'
+import { isGame } from '@/lib/games'
 
 const createInventoryBody = z.object({
   cardId: z.number().int(),
@@ -51,7 +52,9 @@ export const GET = guarded(async (req: NextRequest) => {
   }
   if (q) {
     // POS search (cards + products + barcode fast-path) — logic in the domain.
-    return respond(await searchSellables(q, db))
+    const gameParam = req.nextUrl.searchParams.get('game')
+    const game = gameParam && isGame(gameParam) ? gameParam : undefined
+    return respond(await searchSellables(q, db, game))
   }
   return respond(await base.where(eq(inventoryItems.isActive, true)))
 })

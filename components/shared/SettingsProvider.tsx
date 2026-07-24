@@ -14,7 +14,7 @@ export function useSettings(): AppSettings {
   const ctx = useContext(SettingsContext)
   if (!ctx) {
     // Fallback so components never crash if used outside the provider
-    return { shopName: BRAND.name, usdToGbp: 0.79, eurToGbp: 0.86, marginMultiplier: 0.85, highValueThreshold: 5000, buyCashPct: 0.5, buyCreditPct: 0.65, primaryPriceSource: 'cardmarket', vatScheme: 'none', marginNoCostHandling: 'exclude', enabledLanguages: ['EN'], conditionSellPct: { ...DEFAULT_CONDITION_LADDER } }
+    return { shopName: BRAND.name, usdToGbp: 0.79, eurToGbp: 0.86, marginMultiplier: 0.85, highValueThreshold: 5000, buyCashPct: 0.5, buyCreditPct: 0.65, primaryPriceSource: 'cardmarket', vatScheme: 'none', marginNoCostHandling: 'exclude', enabledLanguages: ['EN'], enabledGames: ['pokemon'], conditionSellPct: { ...DEFAULT_CONDITION_LADDER } }
   }
   return ctx
 }

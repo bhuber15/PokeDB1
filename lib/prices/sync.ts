@@ -6,6 +6,7 @@ import { fetchCardPage, extractBestPrice, type PokemonTCGCard } from '@/lib/apis
 import { eurToGbp, usdToGbp, isCardmarketFresh } from '@/lib/pricing'
 import { getSettings, type AppSettings } from '@/lib/settings'
 import { parseExternalId } from '@/lib/sources/external-id'
+import { getCatalogueSource } from '@/lib/sources/registry'
 import { aliasForDexIds } from '@/lib/pokedex'
 import { TCGDEX_LANGS, type Language } from '@/lib/games'
 
@@ -42,6 +43,11 @@ export async function syncMarketPricesForCard(
   // EN always takes the pokemontcg.io path below.
   if (parsed.source === 'tcgdex' && parsed.language !== 'EN') {
     return syncTcgdexCard(cardId, parsed.language, parsed.id, rates, dbc, opts)
+  }
+  if (parsed.source === 'scryfall' || parsed.source === 'ygoprodeck') {
+    const source = getCatalogueSource(parsed.source === 'scryfall' ? 'mtg' : 'yugioh')
+    await source?.refreshPrices?.(externalId, rates, dbc)
+    return
   }
   const cm = await fetchCardmarketPrices(externalId, variant)
   const syncedAt = new Date().toISOString()
@@ -353,6 +359,7 @@ export async function syncStaleCardmarket(
   }).from(cards)
     .leftJoin(priceCache, eq(priceCache.cardId, cards.id))
     .where(and(
+      eq(cards.game, 'pokemon'),
       isNotNull(cards.externalId),
       or(isNull(priceCache.cardmarketSyncedAt), lt(priceCache.cardmarketSyncedAt, cutoff)),
     ))

@@ -44,6 +44,22 @@ Catalogue import takes several minutes (~20K cards; idempotent — safe to re-ru
   ~2,000 cards/night via the rotation). Most CJK cards have **no market price** — staff
   set prices at intake or via the till quick-set.
 
+### Multi-game (Magic: The Gathering / Yu-Gi-Oh!) singles — migration 0023+
+
+- Migration 0023 (`catalogue_sync_state` table, `settings.enabled_games`) must be applied
+  to the shop DB **before** deploying this code (additive-only — old code runs fine against
+  the new schema, so migrate first, deploy second). Backfill check after migrating:
+  `SELECT count(*) FROM cards WHERE game != 'pokemon';` → expected 0 before the first
+  MTG/Yu-Gi-Oh! import; existing Pokémon rows/external ids are untouched either way.
+- To enable a new game for a shop: Settings → Games, then run
+  `npx tsx scripts/import-catalogue.ts` once — it reads `enabledGames` and imports the
+  full Magic catalogue (Scryfall bulk file) and/or Yu-Gi-Oh! catalogue (YGOPRODeck) for
+  whichever of the two are newly turned on; the nightly sweep keeps them current after
+  that (a paged Scryfall crawl for Magic, one call for Yu-Gi-Oh!). Unlike CJK Pokémon,
+  both come back from this one run with prices already attached — no separate rotation
+  backfill needed. A card that either game hasn't priced yet is sold via the same till
+  quick-set as any no-market-price card.
+
 ## 4. Create the Vercel project
 
 New Vercel project from this repo (one per shop), then set env vars

@@ -15,6 +15,7 @@ const SETTINGS: AppSettings = {
   highValueThreshold: 5000, buyCashPct: 0.5, buyCreditPct: 0.65,
   primaryPriceSource: 'cardmarket', vatScheme: 'none', marginNoCostHandling: 'exclude',
   enabledLanguages: ['EN'],
+  enabledGames: ['pokemon'],
   conditionSellPct: { NM: 100, LP: 100, MP: 100, HP: 100, DMG: 100 },
 }
 
@@ -37,6 +38,8 @@ function stubFetch(opts: {
   pages?: Record<number, { data: unknown[]; totalCount: number } | 'fail'>
   cardmarket?: Record<string, { trend?: number; low?: number; avg?: number } | 'fail' | 'missing'>
   tcgdexCards?: Record<string, { dexId?: number[]; pricing?: { cardmarket?: unknown; tcgplayer?: unknown } } | 'fail' | 'missing'>
+  scryfallCards?: Record<string, unknown | 'missing'>
+  ygoCards?: Record<string, unknown | 'missing'>
 }) {
   globalThis.fetch = (async (input: string | URL | Request) => {
     const url = String(input instanceof Request ? input.url : input)
@@ -56,6 +59,18 @@ function stubFetch(opts: {
       if (cm === 'missing') return new Response('not found', { status: 404 })
       if (!cm || cm === 'fail') return new Response('boom', { status: 500 })
       return Response.json({ pricing: { cardmarket: cm } })
+    }
+    if (url.includes('api.scryfall.com/cards/')) {
+      const id = url.split('/').pop()!
+      const c = opts.scryfallCards?.[id]
+      if (c === 'missing') return new Response('no', { status: 404 })
+      if (c) return Response.json(c)
+    }
+    if (url.includes('ygoprodeck.com') && url.includes('id=')) {
+      const id = new URL(url).searchParams.get('id')!
+      const c = opts.ygoCards?.[id]
+      if (c === 'missing') return new Response('no', { status: 400 })
+      if (c) return Response.json({ data: [c] })
     }
     throw new Error(`unexpected fetch: ${url}`)
   }) as typeof fetch
@@ -297,6 +312,35 @@ test('alias backfill never overwrites an existing aliasName', async () => {
   assert.equal(card.aliasName, 'Custom')
 })
 
+test('an mtg external id re-prices via Scryfall into price_cache (GBP pence)', async () => {
+  const [c] = await db.insert(schema.cards).values({
+    name: 'Bolt', game: 'mtg', language: 'EN', setName: '2X2', setNumber: '117', variant: 'Foil',
+    externalId: 'scryfall:bolt:foil',
+  }).returning()
+  stubFetch({ scryfallCards: { bolt: {
+    id: 'bolt', name: 'Bolt', lang: 'en', set: '2x2', set_name: '2X2', collector_number: '117',
+    finishes: ['nonfoil', 'foil'], games: ['paper'], prices: { usd_foil: '2.00', eur_foil: '1.50' },
+  } } })
+  await syncMarketPricesForCard(c.id, 'scryfall:bolt:foil', 'Foil', { eur: 0.85, usd: 0.8 }, db)
+  const [p] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, c.id))
+  assert.equal(p.tcgplayerMarket, Math.round(2 * 0.8 * 100))
+  assert.equal(p.cardmarketTrend, Math.round(1.5 * 0.85 * 100))
+})
+
+test('a yugioh external id re-prices via YGOPRODeck (set_price → tcgplayer)', async () => {
+  const [c] = await db.insert(schema.cards).values({
+    name: 'Dark Magician', game: 'yugioh', language: 'EN', setName: 'LOB', setNumber: 'LOB-005', variant: 'Ultra Rare',
+    externalId: 'ygoprodeck:46986414:LOB-005:UR',
+  }).returning()
+  stubFetch({ ygoCards: { '46986414': {
+    id: 46986414, name: 'Dark Magician', type: 'Normal Monster',
+    card_sets: [{ set_name: 'LOB', set_code: 'LOB-005', set_rarity: 'Ultra Rare', set_rarity_code: '(UR)', set_price: '120.00' }],
+  } } })
+  await syncMarketPricesForCard(c.id, 'ygoprodeck:46986414:LOB-005:UR', 'Ultra Rare', { eur: 0.85, usd: 0.8 }, db)
+  const [p] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, c.id))
+  assert.equal(p.tcgplayerMarket, Math.round(120 * 0.8 * 100))
+})
+
 test('syncStaleCardmarket walks the catalogue stalest-first within its limit', async () => {
   await db.insert(schema.cards).values([
     { id: 2, name: 'Mew', setName: 'S', setNumber: '2', externalId: 'base1-99' },
@@ -349,6 +393,34 @@ test('syncStaleCardmarket leaves transient failures unstamped for retry and stop
 
   const spent = await syncStaleCardmarket(SETTINGS, { timeBudgetMs: 0 }, db)
   assert.deepEqual(spent, { synced: 0, failed: 0, remaining: 1 }, 'exhausted budget syncs nothing')
+})
+
+test('the Cardmarket rotation skips MTG/YGO cards (they are priced by their sweeps)', async () => {
+  const [pokemonCard, mtg, ygo] = await db.insert(schema.cards).values([
+    { name: 'Pika', game: 'pokemon', setName: 'X', setNumber: '1', externalId: 'p1' },
+    { name: 'Bolt', game: 'mtg', language: 'EN', setName: 'Y', setNumber: '2', externalId: 'scryfall:b' },
+    { name: 'DM', game: 'yugioh', language: 'EN', setName: 'Z', setNumber: '3', externalId: 'ygoprodeck:1:Z-3:C' },
+  ]).returning()
+  // scryfallCards/ygoCards are stubbed to SUCCEED (not just left unstubbed) so
+  // that if the game filter regressed and let mtg/ygo back into the candidate
+  // set, they would actually get priced — proving this test fails for the
+  // right reason rather than passing vacuously because an unstubbed fetch throws.
+  stubFetch({
+    cardmarket: { p1: { trend: 1, low: 1, avg: 1 } },
+    scryfallCards: { b: {
+      id: 'b', name: 'Bolt', lang: 'en', set: 'y', set_name: 'Y', collector_number: '2',
+      finishes: ['nonfoil'], games: ['paper'], prices: { usd: '3.00' },
+    } },
+    ygoCards: { '1': {
+      id: 1, name: 'DM', type: 'Normal Monster',
+      card_sets: [{ set_name: 'Z', set_code: 'Z-3', set_rarity: 'Common', set_rarity_code: '(C)', set_price: '5.00' }],
+    } },
+  })
+  await syncStaleCardmarket({ ...SETTINGS, enabledGames: ['pokemon', 'mtg', 'yugioh'] }, {}, db)
+  const priced = new Set((await db.select().from(schema.priceCache)).map(p => p.cardId))
+  assert.ok(priced.has(pokemonCard.id), 'sanity: the pokemon control card was actually processed')
+  assert.ok(!priced.has(mtg.id)) // never a rotation candidate
+  assert.ok(!priced.has(ygo.id))
 })
 
 test('refreshStaleCardmarket refreshes missing/stale entries, skips fresh ones, respects its bound', async () => {

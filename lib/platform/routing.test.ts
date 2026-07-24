@@ -30,7 +30,7 @@ test('live tenants get trusted headers', () => {
     assert.equal(d.headers['x-tenant-status'], s)
     assert.equal(d.headers['x-tenant-plan'], 'starter')
     assert.deepEqual(JSON.parse(d.headers['x-tenant-entitlements']),
-      { staffSeats: 2, listingSync: false, apiAccess: false })
+      { staffSeats: 2, listingSync: false, apiAccess: false, multiGame: false })
   }
 })
 
@@ -43,7 +43,7 @@ test('serve injects plan and merged entitlements headers', () => {
   if (d.kind !== 'serve') return
   assert.equal(d.headers['x-tenant-plan'], 'starter')
   assert.deepEqual(JSON.parse(d.headers['x-tenant-entitlements']),
-    { staffSeats: 10, listingSync: false, apiAccess: false })
+    { staffSeats: 10, listingSync: false, apiAccess: false, multiGame: false })
 })
 
 test('an unrecognised plan value falls back to growth entitlements', () => {

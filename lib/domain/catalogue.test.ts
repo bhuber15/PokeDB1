@@ -68,3 +68,17 @@ test('getPrintingsByName returns every printing of an exact name, ordered by era
   assert.equal(rows.length, 2)
   assert.deepEqual(rows.map(r => r.card.setName), ['Sword & Shield Base', 'Base Set']) // ranked era before null-series seed row
 })
+
+test('catalogue queries scope to the requested game', async () => {
+  const dbc = await createTestDb()
+  await dbc.insert(schema.cards).values([
+    { name: 'Alpha Bolt', game: 'pokemon', setName: 'Base Set', setNumber: '1', externalId: 'p1' },
+    { name: 'Alpha Bolt', game: 'mtg', language: 'EN', setName: 'Alpha', setNumber: '1', externalId: 'scryfall:b' },
+  ])
+  const sets = await getSets(dbc, 'mtg')
+  assert.ok(sets.some(s => s.setName === 'Alpha'))
+  assert.ok(!sets.some(s => s.setName === 'Base Set'))
+  assert.deepEqual(await getNames('Alpha', dbc, 'pokemon'), ['Alpha Bolt']) // one game's rows only
+  assert.equal((await getCardsInSet('Alpha', dbc, 'pokemon')).length, 0)
+  assert.equal((await getPrintingsByName('Alpha Bolt', dbc, 'mtg')).length, 1)
+})

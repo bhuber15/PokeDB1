@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { calculateSellPrice, conditionPct, formatGBP, marketPriceSyncedAt, parsePounds, pickMarketPrice } from '@/lib/pricing'
 import { CardZoomModal } from '@/components/shared/CardZoomModal'
 import { useSettings } from '@/components/shared/SettingsProvider'
+import { GameBadge } from '@/components/shared/GameBadge'
 import { LANGUAGE_LABELS, type Language } from '@/lib/games'
 import type { Card, PriceCache } from '@/lib/db/schema'
 
@@ -137,9 +138,12 @@ export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefr
                   </button>
                 </h2>
                 <p className="text-sm text-muted-foreground">{card.setName} · #{card.setNumber}</p>
-                {card.language !== 'EN' && (
-                  <Badge variant="outline">{LANGUAGE_LABELS[card.language as Language] ?? card.language}</Badge>
-                )}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {card.language !== 'EN' && (
+                    <Badge variant="outline">{LANGUAGE_LABELS[card.language as Language] ?? card.language}</Badge>
+                  )}
+                  <GameBadge game={card.game} />
+                </div>
               </div>
               {prices?.isHighValue && hoursOld !== null && hoursOld >= 4 && (
                 <Badge variant="destructive" className="shrink-0">⚠ {Math.floor(hoursOld)}h old</Badge>

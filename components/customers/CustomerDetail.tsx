@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { formatGBP, parsePounds } from '@/lib/pricing'
+import { GameFilter } from '@/components/shared/GameFilter'
+import { useStickyGameFilter } from '@/components/shared/useStickyGameFilter'
+import { GameBadge } from '@/components/shared/GameBadge'
 import type { Customer, CreditLedger, Card } from '@/lib/db/schema'
 
 interface WantWithCard {
@@ -68,6 +71,7 @@ export function CustomerDetail({ id }: Props) {
   const [adjusting, setAdjusting] = useState(false)
 
   // Add want
+  const [gameFilter, setGameFilter] = useStickyGameFilter('customer-wants')
   const [wantQuery, setWantQuery] = useState('')
   const [wantResults, setWantResults] = useState<Card[]>([])
   const [wantCard, setWantCard] = useState<Card | null>(null)
@@ -155,7 +159,8 @@ export function CustomerDetail({ id }: Props) {
     if (wantQuery.trim().length < 2) return
     setWantSearching(true)
     try {
-      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(wantQuery.trim())}`)
+      const gameQ = gameFilter !== 'all' ? `&game=${gameFilter}` : ''
+      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(wantQuery.trim())}${gameQ}`)
       const d = await res.json()
       setWantResults(d.cards ?? [])
     } catch {
@@ -419,6 +424,7 @@ export function CustomerDetail({ id }: Props) {
                       {wantSearching ? '…' : 'Search'}
                     </Button>
                   </div>
+                  <GameFilter value={gameFilter} onChange={setGameFilter} />
                   {wantResults.length > 0 && (
                     <div className="border border-border rounded-lg divide-y max-h-48 overflow-y-auto">
                       {wantResults.map(card => (
@@ -429,7 +435,10 @@ export function CustomerDetail({ id }: Props) {
                         >
                           {card.imageUrl && <Image src={card.imageUrl} alt={card.name} width={28} height={40} className="w-7 h-10 object-contain flex-shrink-0" />}
                           <div>
-                            <div className="font-medium">{card.name}</div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-medium">{card.name}</span>
+                              <GameBadge game={card.game} />
+                            </div>
                             <div className="text-xs text-muted-foreground">{card.setName} · #{card.setNumber}</div>
                           </div>
                         </button>

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CardZoomModal } from '@/components/shared/CardZoomModal'
 import { useSettings } from '@/components/shared/SettingsProvider'
+import { GameBadge } from '@/components/shared/GameBadge'
 import { calculateBuyPrice, conditionPct, formatGBP, parsePounds, pickMarketPrice, pickMarketSource, CONDITIONS, type Condition } from '@/lib/pricing'
 import { LANGUAGE_LABELS, type Language } from '@/lib/games'
 import type { Card, PriceCache } from '@/lib/db/schema'
@@ -80,9 +81,12 @@ export function BuyCard({ card, prices, onAdd }: BuyCardProps) {
               {card.name}
             </h2>
             <p className="text-sm text-muted-foreground">{card.setName} · #{card.setNumber}</p>
-            {card.language !== 'EN' && (
-              <Badge variant="outline">{LANGUAGE_LABELS[card.language as Language] ?? card.language}</Badge>
-            )}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {card.language !== 'EN' && (
+                <Badge variant="outline">{LANGUAGE_LABELS[card.language as Language] ?? card.language}</Badge>
+              )}
+              <GameBadge game={card.game} />
+            </div>
             <div className="flex gap-2 mt-2 flex-wrap items-center">
               {market != null && (
                 <Badge

@@ -4,7 +4,7 @@ import { settings, type Settings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { parsePounds, type ConditionLadder, DEFAULT_CONDITION_LADDER } from '@/lib/pricing'
 import { BRAND } from '@/lib/brand'
-import { type Language, isLanguage, LANGUAGES } from '@/lib/games'
+import { type Language, isLanguage, LANGUAGES, type Game, isGame, GAME_IDS } from '@/lib/games'
 
 export interface AppSettings {
   shopName: string
@@ -18,6 +18,7 @@ export interface AppSettings {
   vatScheme: 'none' | 'standard' | 'margin'
   marginNoCostHandling: 'exclude' | 'block'
   enabledLanguages: Language[]
+  enabledGames: Game[]
   conditionSellPct: ConditionLadder
 }
 
@@ -36,6 +37,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   vatScheme: 'none',
   marginNoCostHandling: 'exclude',
   enabledLanguages: ['EN'],
+  enabledGames: ['pokemon'],
   conditionSellPct: { ...DEFAULT_CONDITION_LADDER },
 }
 
@@ -51,13 +53,26 @@ function parseLanguages(json: string): Language[] {
   }
 }
 
+// enabled_games is a JSON text column; tolerate junk (['pokemon'] fallback)
+// and guarantee 'pokemon' membership so the baseline game can't be disabled.
+function parseGames(json: string): Game[] {
+  try {
+    const arr: unknown = JSON.parse(json)
+    const games = Array.isArray(arr) ? arr.filter(isGame) : []
+    return games.includes('pokemon') ? games : ['pokemon', ...games]
+  } catch {
+    return ['pokemon']
+  }
+}
+
 // Row-shaped copy of an AppSettings patch: arrays become JSON text. The
 // condition ladder is handled separately in updateSettings (five columns).
 function toRow(patch: Partial<Omit<AppSettings, 'conditionSellPct'>>) {
-  const { enabledLanguages, ...rest } = patch
+  const { enabledLanguages, enabledGames, ...rest } = patch
   return {
     ...rest,
     ...(enabledLanguages ? { enabledLanguages: JSON.stringify(enabledLanguages) } : {}),
+    ...(enabledGames ? { enabledGames: JSON.stringify(enabledGames) } : {}),
   }
 }
 
@@ -82,6 +97,9 @@ export const settingsPatchSchema = z.object({
   // 'EN' is always on — the EN catalogue is the app's baseline.
   enabledLanguages: z.array(z.enum(LANGUAGES))
     .transform(langs => [...new Set<Language>(['EN', ...langs])]),
+  // 'pokemon' is always on — it is the app's baseline game.
+  enabledGames: z.array(z.enum(GAME_IDS))
+    .transform(games => [...new Set<Game>(['pokemon', ...games])]),
 }).partial().refine(o => Object.keys(o).length > 0, { message: 'No valid fields to update' })
 
 function toAppSettings(row: Settings): AppSettings {
@@ -97,6 +115,7 @@ function toAppSettings(row: Settings): AppSettings {
     vatScheme: row.vatScheme as 'none' | 'standard' | 'margin',
     marginNoCostHandling: row.marginNoCostHandling as 'exclude' | 'block',
     enabledLanguages: parseLanguages(row.enabledLanguages),
+    enabledGames: parseGames(row.enabledGames),
     conditionSellPct: {
       NM: row.condSellPctNm, LP: row.condSellPctLp, MP: row.condSellPctMp,
       HP: row.condSellPctHp, DMG: row.condSellPctDmg,
