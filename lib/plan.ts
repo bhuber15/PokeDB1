@@ -2,6 +2,8 @@
 // (the lib/adjustment-reasons.ts pattern): the UI shows plan facts, the server
 // enforces them. Prices are integer pence, display-only — Stripe owns billing
 // amounts via dashboard-configured prices.
+import { type Game } from '@/lib/games'
+
 export type Plan = 'starter' | 'growth' | 'pro'
 
 export interface Entitlements {
@@ -33,4 +35,11 @@ export function entitlementsFor(plan: Plan, overridesJson?: string | null): Enti
   } catch {
     return base
   }
+}
+
+// A tenant may enable more than one game only with the multiGame entitlement.
+// Pure/declarative so the client (SettingsForm) can grey out the toggle and
+// the server (settings route) can reject the write with the same rule.
+export function gamesAllowed(ent: Entitlements, enabledGames: Game[]): boolean {
+  return enabledGames.length <= 1 || ent.multiGame
 }

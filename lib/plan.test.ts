@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert'
-import { PLANS, PLAN_IDS, isPlan, entitlementsFor } from './plan'
+import { PLANS, PLAN_IDS, isPlan, entitlementsFor, gamesAllowed } from './plan'
 
 test('three plans with pence prices and seat limits', () => {
   assert.deepEqual(PLAN_IDS, ['starter', 'growth', 'pro'])
@@ -38,4 +38,10 @@ test('multiGame entitlement is off on Starter, on for Growth and Pro', () => {
 test('entitlement_overrides can force multiGame on for a founding Starter shop', () => {
   assert.equal(entitlementsFor('starter').multiGame, false)
   assert.equal(entitlementsFor('starter', JSON.stringify({ multiGame: true })).multiGame, true)
+})
+
+test('gamesAllowed: a second game needs multiGame; pokemon-only is always fine', () => {
+  assert.equal(gamesAllowed(PLANS.starter.entitlements, ['pokemon', 'mtg']), false)
+  assert.equal(gamesAllowed(PLANS.starter.entitlements, ['pokemon']), true)
+  assert.equal(gamesAllowed(PLANS.growth.entitlements, ['pokemon', 'mtg', 'yugioh']), true)
 })
