@@ -6,6 +6,8 @@ import { getSettings } from '../lib/settings'
 import { sweepTcgplayerCatalogue } from '../lib/prices/sync'
 import { sweepTcgdexCatalogue } from '../lib/prices/tcgdex-sweep'
 import { syncStaleCardmarket } from '../lib/prices/sync'
+import { importScryfallBulk } from '../lib/sources/scryfall-bulk'
+import { sweepYgoprodeck } from '../lib/sources/ygoprodeck-sweep'
 
 async function main() {
   const settings = await getSettings()
@@ -19,6 +21,17 @@ async function main() {
     console.log(`tcgdex ${setId}: ${r.cardsSeen} cards seen, ${r.newCards} new, ${r.setsFailed} failed sets`)
   })
   console.log('TCGdex sweep done:', cjk)
+
+  if (settings.enabledGames.includes('mtg')) {
+    const mtg = await importScryfallBulk(settings)
+    console.log('Scryfall (MTG) import done:', mtg)
+    if (mtg.failed > 0) process.exitCode = 1
+  }
+  if (settings.enabledGames.includes('yugioh')) {
+    const ygo = await sweepYgoprodeck(settings)
+    console.log('YGOPRODeck import done:', ygo)
+    if (ygo.failed > 0) process.exitCode = 1
+  }
 
   // --full-prices: run the per-card rotation to completion now (prices where
   // TCGdex has them + alias_name backfill) instead of trickling ~2,000/night.
