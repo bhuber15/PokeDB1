@@ -59,6 +59,16 @@ export async function fetchScryfallBulkUri(): Promise<string> {
   return data.download_uri
 }
 
+// One card by Scryfall id — used by the per-card refresh (in-stock + on-demand).
+export async function fetchScryfallCard(id: string): Promise<ScryfallCard | null> {
+  try {
+    return await getJson<ScryfallCard>(`${BASE}/cards/${encodeURIComponent(id)}`)
+  } catch (e) {
+    if (e instanceof ScryfallError && e.message.includes('404')) return null
+    throw e
+  }
+}
+
 // One page (175 cards) of the paged catalogue crawl the nightly sweep walks.
 // `game:paper lang:en unique:prints` == the default_cards EN contents.
 // `order=released dir=asc` (oldest-first) is REQUIRED, not cosmetic: the

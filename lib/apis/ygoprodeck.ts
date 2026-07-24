@@ -34,6 +34,20 @@ export async function fetchYgoprodeckDump(): Promise<YgoCard[]> {
   return body.data ?? []
 }
 
+// One card (all its printings) by passcode — per-card refresh.
+export async function fetchYgoprodeckCard(passcode: string): Promise<YgoCard | null> {
+  let res: Response
+  try {
+    res = await fetch(`${URL}?id=${encodeURIComponent(passcode)}`, { headers: HEADERS, cache: 'no-store', signal: AbortSignal.timeout(YGO_TIMEOUT_MS) })
+  } catch (e) {
+    throw new YgoprodeckError(`YGOPRODeck unreachable: ${e instanceof Error ? e.message : String(e)}`)
+  }
+  if (res.status === 400) return null // YGOPRODeck 400s an unknown passcode
+  if (!res.ok) throw new YgoprodeckError(`YGOPRODeck ${res.status}`)
+  const body = await res.json() as { data?: YgoCard[] }
+  return body.data?.[0] ?? null
+}
+
 const money = (v: string | undefined): number | null => {
   const n = v == null ? NaN : parseFloat(v)
   return Number.isFinite(n) && n > 0 ? n : null
