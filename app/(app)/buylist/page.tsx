@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { BuyCard } from '@/components/buylist/BuyCard'
 import { BuyCart, BuyCartLine } from '@/components/buylist/BuyCart'
 import { CatalogueBrowser, type CatalogueSelection } from '@/components/catalogue/CatalogueBrowser'
+import { GameFilter } from '@/components/shared/GameFilter'
+import { useStickyGameFilter } from '@/components/shared/useStickyGameFilter'
 import { toast } from 'sonner'
 import { isCardmarketFresh } from '@/lib/pricing'
 import type { Card, PriceCache } from '@/lib/db/schema'
@@ -18,6 +20,7 @@ type PageMode = 'search' | 'browse'
 
 export default function BuylistPage() {
   const [pageMode, setPageMode] = useState<PageMode>('search')
+  const [gameFilter, setGameFilter] = useStickyGameFilter('buylist')
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<SearchResult[]>([])
@@ -38,7 +41,8 @@ export default function BuylistPage() {
     try {
       // Server bounds the live-API fallback at ~4s; this client timeout is a
       // backstop so the search UI can never get stuck waiting.
-      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}`, {
+      const gameQ = gameFilter !== 'all' ? `&game=${gameFilter}` : ''
+      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}${gameQ}`, {
         signal: AbortSignal.timeout(15_000),
       })
       const data = await res.json()
@@ -100,20 +104,23 @@ export default function BuylistPage() {
         </div>
 
         {pageMode === 'search' && (
-          <div className="flex gap-2 shrink-0">
-            <Input
-              ref={searchRef}
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSearch()}
-              placeholder="Search card name to buy…"
-              className="h-12 text-base"
-              disabled={loading}
-              autoFocus
-            />
-            <Button className="h-12 px-6" onClick={handleSearch} disabled={loading || !query.trim()}>
-              Search
-            </Button>
+          <div className="flex flex-col gap-2 shrink-0">
+            <div className="flex gap-2">
+              <Input
+                ref={searchRef}
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                placeholder="Search card name to buy…"
+                className="h-12 text-base"
+                disabled={loading}
+                autoFocus
+              />
+              <Button className="h-12 px-6" onClick={handleSearch} disabled={loading || !query.trim()}>
+                Search
+              </Button>
+            </div>
+            <GameFilter value={gameFilter} onChange={setGameFilter} />
           </div>
         )}
 

@@ -9,6 +9,9 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { formatGBP, parsePounds, pickMarketPrice } from '@/lib/pricing'
 import { useSettings } from '@/components/shared/SettingsProvider'
+import { GameFilter } from '@/components/shared/GameFilter'
+import { useStickyGameFilter } from '@/components/shared/useStickyGameFilter'
+import { GameBadge } from '@/components/shared/GameBadge'
 import { LANGUAGE_LABELS, type Language } from '@/lib/games'
 import type { Card, PriceCache } from '@/lib/db/schema'
 
@@ -36,6 +39,7 @@ interface SessionAdd {
 // stick between adds; search refocuses after each save; Ctrl/Cmd+Enter
 // repeats the last add for another copy of the same card.
 export function AddItemForm() {
+  const [gameFilter, setGameFilter] = useStickyGameFilter('inventory-add')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Card[]>([])
   const [highlight, setHighlight] = useState(0)
@@ -68,7 +72,8 @@ export function AddItemForm() {
     if (q.length < 2) return
     setSearching(true)
     lastSearched.current = q
-    const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}`)
+    const gameQ = gameFilter !== 'all' ? `&game=${gameFilter}` : ''
+    const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}${gameQ}`)
     const data = await res.json()
     setResults(data.cards ?? [])
     setPrices(data.prices ?? {})
@@ -197,9 +202,12 @@ export function AddItemForm() {
               <div className="flex-1">
                 <div className="font-semibold">{selected.name}</div>
                 <div className="text-sm text-muted-foreground">{selected.setName} · #{selected.setNumber}</div>
-                {selected.language !== 'EN' && (
-                  <Badge variant="outline">{LANGUAGE_LABELS[selected.language as Language] ?? selected.language}</Badge>
-                )}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {selected.language !== 'EN' && (
+                    <Badge variant="outline">{LANGUAGE_LABELS[selected.language as Language] ?? selected.language}</Badge>
+                  )}
+                  <GameBadge game={selected.game} />
+                </div>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>Change</Button>
             </div>
@@ -248,6 +256,7 @@ export function AddItemForm() {
               />
               <Button onClick={search} disabled={searching}>{searching ? 'Searching…' : 'Search'}</Button>
             </div>
+            <GameFilter value={gameFilter} onChange={setGameFilter} />
             {results.length > 0 && (
               <div className="border rounded-lg divide-y max-h-96 overflow-y-auto">
                 {results.map((card, i) => (
@@ -261,9 +270,12 @@ export function AddItemForm() {
                     <div>
                       <div className="font-medium">{card.name}</div>
                       <div className="text-sm text-muted-foreground">{card.setName} · #{card.setNumber}</div>
-                      {card.language !== 'EN' && (
-                        <Badge variant="outline">{LANGUAGE_LABELS[card.language as Language] ?? card.language}</Badge>
-                      )}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {card.language !== 'EN' && (
+                          <Badge variant="outline">{LANGUAGE_LABELS[card.language as Language] ?? card.language}</Badge>
+                        )}
+                        <GameBadge game={card.game} />
+                      </div>
                     </div>
                   </button>
                 ))}
