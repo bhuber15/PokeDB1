@@ -179,3 +179,17 @@ test('searchSellables scopes to a game when one is given', async () => {
   assert.equal(onlyMtg.length, 1)
   assert.equal(onlyMtg[0].card?.game, 'mtg')
 })
+
+test('a game scope still returns matching sealed products (products have no game)', async () => {
+  const dbc = await createTestDb()
+  await seedBase(dbc)
+  const [mtg] = await dbc.insert(schema.cards).values({ name: 'Lightning Bolt', game: 'mtg', language: 'EN', setName: 'Y', setNumber: '2', externalId: 'scryfall:b' }).returning()
+  await dbc.insert(schema.inventoryItems).values({ cardId: mtg.id, condition: 'NM', quantity: 1, qrCode: 'qr-mtg', isActive: true })
+  const [prod] = await dbc.insert(schema.products).values({ name: 'Bolt Booster Box', category: 'sealed' }).returning()
+  await dbc.insert(schema.inventoryItems).values({ productId: prod.id, condition: 'NA', quantity: 1, qrCode: 'qr-prod', isActive: true })
+
+  // Scoped to Magic, the product (which has no game) must NOT be filtered out.
+  const scoped = await searchSellables('Bolt', dbc, 'mtg')
+  assert.ok(scoped.some(r => r.product?.name === 'Bolt Booster Box'), 'product visible under a game scope')
+  assert.ok(scoped.some(r => r.card?.game === 'mtg'), 'the scoped-game card still matches')
+})

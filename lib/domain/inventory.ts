@@ -82,8 +82,13 @@ export async function searchSellables(q: string, dbc: Db = db, game?: Game) {
   }
   return base().where(and(
     eq(inventoryItems.isActive, true),
-    or(like(cards.name, `%${q}%`), like(cards.aliasName, `%${q}%`), like(products.name, `%${q}%`)),
-    ...scope,
+    // Scope the game filter to the card/alias match only — sealed products have
+    // no game (cards.game is NULL on a product row), so ANDing the scope onto
+    // the whole OR would silently hide every product under a game selection.
+    or(
+      and(or(like(cards.name, `%${q}%`), like(cards.aliasName, `%${q}%`)), ...scope),
+      like(products.name, `%${q}%`),
+    ),
   ))
 }
 
