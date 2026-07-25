@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getTenantDb } from '@/lib/db'
-import { getSession, requireAdmin, currentTenantId } from '@/lib/auth'
+import { getSession, requireAdmin, requireTransactingStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
 import { getCashUpSummary } from '@/lib/domain/reports'
@@ -33,7 +33,9 @@ const closeSchema = z.object({
 
 export const POST = guarded(async (req: NextRequest) => {
   const db = await getTenantDb()
-  const session = requireAdmin(await getSession(await currentTenantId()))
+  // Closing a cash-up records this session's staffId — admin-gated AND
+  // barred to impersonated support sessions.
+  const session = requireTransactingStaff(requireAdmin(await getSession(await currentTenantId())))
   const body = await parseBody(req, closeSchema)
   const record = await closeCashUp({ ...body, staffId: session.staffId }, db)
   return NextResponse.json({ close: record }, { status: 201 })

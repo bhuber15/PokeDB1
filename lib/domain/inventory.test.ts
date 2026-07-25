@@ -22,7 +22,7 @@ test('quantity change writes an append-only adjustment row', async () => {
   await dbc.insert(schema.inventoryItems).values({
     id: 1, cardId: 1, condition: 'NM', quantity: 5, costPrice: 300, qrCode: 'qr-1',
   })
-  const updated = await applyInventoryPatch(1, 1, { quantity: 3 }, 'damage', dbc)
+  const updated = await applyInventoryPatch(1, 1, 'admin', { quantity: 3 }, 'damage', dbc)
   assert.equal(updated.quantity, 3)
   const rows = await dbc.select().from(schema.stockAdjustments)
     .where(eq(schema.stockAdjustments.inventoryItemId, 1))
@@ -36,7 +36,7 @@ test('quantity increase records a positive delta', async () => {
   await dbc.insert(schema.inventoryItems).values({
     id: 1, cardId: 1, condition: 'NM', quantity: 5, costPrice: 300, qrCode: 'qr-1',
   })
-  await applyInventoryPatch(1, 1, { quantity: 9 }, 'recount', dbc)
+  await applyInventoryPatch(1, 1, 'admin', { quantity: 9 }, 'recount', dbc)
   const [row] = await dbc.select().from(schema.stockAdjustments)
   assert.equal(row.delta, 4)
   assert.equal(row.reason, 'recount')
@@ -47,7 +47,7 @@ test('quantity change without a reason is rejected and nothing is written', asyn
     id: 1, cardId: 1, condition: 'NM', quantity: 5, costPrice: 300, qrCode: 'qr-1',
   })
   await assert.rejects(
-    applyInventoryPatch(1, 1, { quantity: 3 }, undefined, dbc),
+    applyInventoryPatch(1, 1, 'admin', { quantity: 3 }, undefined, dbc),
     domainCode('INVALID_INPUT'),
   )
   const [item] = await dbc.select().from(schema.inventoryItems).where(eq(schema.inventoryItems.id, 1))
@@ -60,7 +60,7 @@ test('non-quantity edits need no reason and write no adjustment', async () => {
   await dbc.insert(schema.inventoryItems).values({
     id: 1, cardId: 1, condition: 'NM', quantity: 5, costPrice: 300, qrCode: 'qr-1',
   })
-  const updated = await applyInventoryPatch(1, 1, { location: 'Binder 3', costPrice: 250 }, undefined, dbc)
+  const updated = await applyInventoryPatch(1, 1, 'admin', { location: 'Binder 3', costPrice: 250 }, undefined, dbc)
   assert.equal(updated.location, 'Binder 3')
   assert.equal(updated.costPrice, 250)
   const rows = await dbc.select().from(schema.stockAdjustments)
@@ -71,7 +71,7 @@ test('same-quantity patch writes no adjustment row', async () => {
   await dbc.insert(schema.inventoryItems).values({
     id: 1, cardId: 1, condition: 'NM', quantity: 5, costPrice: 300, qrCode: 'qr-1',
   })
-  await applyInventoryPatch(1, 1, { quantity: 5 }, 'recount', dbc)
+  await applyInventoryPatch(1, 1, 'admin', { quantity: 5 }, 'recount', dbc)
   const rows = await dbc.select().from(schema.stockAdjustments)
   assert.equal(rows.length, 0)
 })
@@ -80,8 +80,84 @@ test('empty patch and missing item map to the right errors', async () => {
   await dbc.insert(schema.inventoryItems).values({
     id: 1, cardId: 1, condition: 'NM', quantity: 5, costPrice: 300, qrCode: 'qr-1',
   })
-  await assert.rejects(applyInventoryPatch(1, 1, {}, undefined, dbc), domainCode('INVALID_INPUT'))
-  await assert.rejects(applyInventoryPatch(99, 1, { quantity: 1 }, 'recount', dbc), domainCode('NOT_FOUND'))
+  await assert.rejects(applyInventoryPatch(1, 1, 'admin', {}, undefined, dbc), domainCode('INVALID_INPUT'))
+  await assert.rejects(applyInventoryPatch(99, 1, 'admin', { quantity: 1 }, 'recount', dbc), domainCode('NOT_FOUND'))
+})
+
+// ---------------------------------------------------------------------------
+// Staff price gate: cost is never staff-writable; sell overrides only via the
+// POS quick-set (first price on an item the market doesn't price)
+// ---------------------------------------------------------------------------
+
+test('staff cannot write costPrice, or an override on a market-priced item', async () => {
+  await dbc.insert(schema.priceCache).values({ cardId: 1, cardmarketTrend: 1200 })
+  await dbc.insert(schema.inventoryItems).values({
+    id: 1, cardId: 1, condition: 'NM', quantity: 2, qrCode: 'qr-1',
+  })
+  await assert.rejects(
+    applyInventoryPatch(1, 1, 'staff', { costPrice: 100 }, undefined, dbc),
+    domainCode('FORBIDDEN'),
+  )
+  await assert.rejects( // 1p override on a £12 card: the exact undercut attack
+    applyInventoryPatch(1, 1, 'staff', { sellPriceOverride: 1 }, undefined, dbc),
+    domainCode('FORBIDDEN'),
+  )
+  const [item] = await dbc.select().from(schema.inventoryItems).where(eq(schema.inventoryItems.id, 1))
+  assert.equal(item.costPrice, null)
+  assert.equal(item.sellPriceOverride, null)
+})
+
+test('staff can quick-set a first price on an unpriced item; changing or clearing it is admin-only', async () => {
+  // Card 1 has no price_cache row → no market price → NO_PRICE without an override.
+  await dbc.insert(schema.inventoryItems).values({
+    id: 1, cardId: 1, condition: 'NM', quantity: 1, qrCode: 'qr-1',
+  })
+  const updated = await applyInventoryPatch(1, 1, 'staff', { sellPriceOverride: 750 }, undefined, dbc)
+  assert.equal(updated.sellPriceOverride, 750)
+  await assert.rejects(
+    applyInventoryPatch(1, 1, 'staff', { sellPriceOverride: 500 }, undefined, dbc),
+    domainCode('FORBIDDEN'),
+  )
+  await assert.rejects(
+    applyInventoryPatch(1, 1, 'staff', { sellPriceOverride: null }, undefined, dbc),
+    domainCode('FORBIDDEN'),
+  )
+  const cleared = await applyInventoryPatch(1, 1, 'admin', { sellPriceOverride: null }, undefined, dbc)
+  assert.equal(cleared.sellPriceOverride, null)
+})
+
+test('cardHasMarketPrice: priced row true; missing row false (shared by PATCH gate and intake route)', async () => {
+  const { cardHasMarketPrice } = await import('./inventory')
+  assert.equal(await cardHasMarketPrice(1, dbc), false) // no price_cache row
+  await dbc.insert(schema.priceCache).values({ cardId: 1, tcgplayerMarket: 900 })
+  assert.equal(await cardHasMarketPrice(1, dbc), true) // fallback source counts too
+})
+
+test('a cached 0 price is "no data", not a market price — staff may still quick-set', async () => {
+  // TCGdex emits 0 for unpriced cards; pickMarketPrice treats it as missing.
+  await dbc.insert(schema.cards).values({ id: 2, name: 'リザードン', setName: 'テストセット', setNumber: '099' })
+  await dbc.insert(schema.priceCache).values({ cardId: 2, cardmarketTrend: 0, tcgplayerMarket: 0 })
+  await dbc.insert(schema.inventoryItems).values({
+    id: 2, cardId: 2, condition: 'NM', quantity: 1, qrCode: 'qr-2',
+  })
+  const updated = await applyInventoryPatch(2, 1, 'staff', { sellPriceOverride: 750 }, undefined, dbc)
+  assert.equal(updated.sellPriceOverride, 750)
+})
+
+test('staff keep their non-price edits (quantity with reason, condition, location, notes)', async () => {
+  await dbc.insert(schema.inventoryItems).values({
+    id: 1, cardId: 1, condition: 'NM', quantity: 5, qrCode: 'qr-1',
+  })
+  const updated = await applyInventoryPatch(
+    1, 1, 'staff',
+    { quantity: 4, condition: 'LP', location: 'Binder 2', defectNotes: 'edgewear', lowStockThreshold: 2 },
+    'damage', dbc,
+  )
+  assert.equal(updated.quantity, 4)
+  assert.equal(updated.condition, 'LP')
+  assert.equal(updated.location, 'Binder 2')
+  assert.equal(updated.defectNotes, 'edgewear')
+  assert.equal(updated.lowStockThreshold, 2)
 })
 
 // ---------------------------------------------------------------------------

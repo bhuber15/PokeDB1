@@ -23,10 +23,27 @@ export async function listStaff(dbc: Db = db): Promise<StaffSummary[]> {
   return rows as StaffSummary[]
 }
 
+// PIN login walks active staff and takes the first bcrypt match, so two
+// active members sharing a PIN would silently attribute one member's logins
+// (and every sale/buy/refund recorded under them) to the other. Hashes can't
+// carry a unique index, so collisions are rejected here at write time.
+async function assertPinAvailable(pin: string, excludeId: number | undefined, dbc: Db): Promise<void> {
+  const where = excludeId === undefined
+    ? eq(staff.isActive, true)
+    : and(eq(staff.isActive, true), ne(staff.id, excludeId))
+  const others = await dbc.select({ pinHash: staff.pinHash }).from(staff).where(where)
+  for (const member of others) {
+    if (await bcrypt.compare(pin, member.pinHash)) {
+      throw new DomainError('INVALID_INPUT', 'That PIN is already in use — choose another')
+    }
+  }
+}
+
 export async function createStaff(
   input: { name: string; pin: string; role?: StaffRole },
   dbc: Db = db,
 ): Promise<StaffSummary> {
+  await assertPinAvailable(input.pin, undefined, dbc)
   const pinHash = await bcrypt.hash(input.pin, 10)
   const [member] = await dbc.insert(staff)
     .values({ name: input.name, pinHash, role: input.role ?? 'staff' })
@@ -50,6 +67,7 @@ export async function updateStaff(
   patch: StaffPatch,
   dbc: Db = db,
 ): Promise<StaffSummary> {
+  if (patch.pin !== undefined) await assertPinAvailable(patch.pin, id, dbc)
   return dbc.transaction(async (tx) => {
     const [current] = await tx.select().from(staff).where(eq(staff.id, id)).limit(1)
     if (!current) throw new DomainError('NOT_FOUND', 'Staff member not found')

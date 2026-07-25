@@ -60,6 +60,19 @@ export function requireStaff(session: SessionData): SessionData & { staffId: num
   return session as SessionData & { staffId: number }
 }
 
+// Staff session that may record money/stock transactions (sales, buys,
+// refunds, voids, stock and credit writes). Impersonated support sessions
+// carry a synthetic staffId (-1) that references no staff row — the staff FK
+// only rejects it when the deployment happens to enforce foreign keys, so
+// refuse here rather than depend on a PRAGMA.
+export function requireTransactingStaff(session: SessionData): SessionData & { staffId: number } {
+  const s = requireStaff(session)
+  if (s.impersonated) {
+    throw new DomainError('FORBIDDEN', 'Support sessions cannot record transactions')
+  }
+  return s
+}
+
 // Admin PIN session required. Note: this deliberately tightens the old
 // hand-rolled checks, which accepted any device-unlocked session as admin.
 export function requireAdmin(session: SessionData): SessionData & { staffId: number } {

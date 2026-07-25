@@ -6,7 +6,7 @@ import { getPlatformDb } from '@/lib/platform/db'
 import { tenants, tenantSyncState } from '@/lib/platform/schema'
 import { getSettings } from '@/lib/settings'
 import { sweepTcgplayerCatalogue } from '@/lib/prices/sync'
-import { guarded } from '@/lib/api'
+import { guarded, isAuthorizedCron } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
 
 // Full catalogue sweep takes minutes — run in its own invocation with the
@@ -18,8 +18,7 @@ export const maxDuration = 300
 const seedBody = z.object({ tenantId: z.number().int().positive() })
 
 export const POST = guarded(async (req: NextRequest) => {
-  const secret = process.env.CRON_SECRET
-  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
+  if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   if (!isMultiTenant()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
