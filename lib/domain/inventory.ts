@@ -4,6 +4,8 @@ import { inventoryItems, stockAdjustments, cards, products, priceCache } from '@
 import { DomainError } from './errors'
 import { EAN_RE } from '@/lib/product-categories'
 import { generateQRId } from '@/lib/qr'
+import { pickMarketPrice } from '@/lib/pricing'
+import { getSettings } from '@/lib/settings'
 import type { AdjustmentReason } from '@/lib/adjustment-reasons'
 import type { Condition } from '@/lib/pricing'
 import { type Game } from '@/lib/games'
@@ -20,12 +22,49 @@ export interface InventoryPatch {
   lowStockThreshold?: number | null
 }
 
+// True when the shop's market source (with its fallback) prices this card —
+// i.e. createSale could quote it without an override. The same
+// pickMarketPrice call the POS and createSale use, so "unpriced" means the
+// same thing everywhere (a cached 0 is "no data", not a price).
+export async function cardHasMarketPrice(cardId: number, dbc: Db = db): Promise<boolean> {
+  const [row] = await dbc.select().from(priceCache)
+    .where(eq(priceCache.cardId, cardId)).limit(1)
+  if (!row) return false
+  const settings = await getSettings(dbc)
+  return pickMarketPrice(row, settings.primaryPriceSource) != null
+}
+
+// Staff cannot read costPrice (redactInventoryCosts below), so they must not
+// write it either. Sell-price overrides are likewise an admin call, with one
+// deliberate exception: the POS quick-set. An item with no market price and
+// no override cannot be sold at all (createSale throws NO_PRICE), so staff
+// may set its FIRST price at the till. Changing or clearing any existing
+// price — including undercutting a market-priced card — stays admin-only.
+async function assertStaffMayPatchPrices(
+  inventoryItemId: number,
+  patch: InventoryPatch,
+  dbc: Db,
+): Promise<void> {
+  if (patch.costPrice !== undefined) {
+    throw new DomainError('FORBIDDEN', 'Only admins can change cost prices')
+  }
+  if (patch.sellPriceOverride === undefined) return
+  const [current] = await dbc.select().from(inventoryItems)
+    .where(eq(inventoryItems.id, inventoryItemId)).limit(1)
+  if (!current) throw new DomainError('NOT_FOUND', 'Inventory item not found')
+  if (patch.sellPriceOverride == null || current.sellPriceOverride != null
+    || (current.cardId != null && await cardHasMarketPrice(current.cardId, dbc))) {
+    throw new DomainError('FORBIDDEN', 'Only admins can change price overrides')
+  }
+}
+
 // Applies a manual inventory edit. A quantity change is a stock movement with
 // no sale/refund/buy behind it, so it must carry a reason and leaves an
 // append-only stock_adjustments row for the audit trail.
 export async function applyInventoryPatch(
   inventoryItemId: number,
   staffId: number,
+  staffRole: 'admin' | 'staff' | undefined,
   patch: InventoryPatch,
   reason: AdjustmentReason | undefined,
   dbc: Db = db,
@@ -36,6 +75,8 @@ export async function applyInventoryPatch(
   if (Object.keys(updates).length === 0) {
     throw new DomainError('INVALID_INPUT', 'No valid fields to update')
   }
+
+  if (staffRole !== 'admin') await assertStaffMayPatchPrices(inventoryItemId, patch, dbc)
 
   return dbc.transaction(async (tx) => {
     const [current] = await tx.select().from(inventoryItems)

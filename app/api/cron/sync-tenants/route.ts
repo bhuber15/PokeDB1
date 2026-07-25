@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { getTenantDbFor, isMultiTenant } from '@/lib/db'
+import { isAuthorizedCron } from '@/lib/api'
 import { getPlatformDb } from '@/lib/platform/db'
 import { tenantSyncState } from '@/lib/platform/schema'
 import { forEachDueTenant } from '@/lib/platform/fanout'
@@ -17,10 +18,7 @@ const BUDGET_MS = 240_000
 const DUE_AFTER_S = 20 * 3600
 
 export async function GET(req: NextRequest) {
-  // Fail closed: without a configured secret there is no valid Authorization
-  // header, so an unset CRON_SECRET can never be matched by `Bearer undefined`.
-  const secret = process.env.CRON_SECRET
-  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
+  if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   if (!isMultiTenant()) {

@@ -6,7 +6,8 @@ import { eq, and } from 'drizzle-orm'
 import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody, parseIdParam } from '@/lib/validation'
-import { intakeInventory, redactInventoryCosts, searchSellables } from '@/lib/domain/inventory'
+import { cardHasMarketPrice, intakeInventory, redactInventoryCosts, searchSellables } from '@/lib/domain/inventory'
+import { DomainError } from '@/lib/domain/errors'
 import { isGame } from '@/lib/games'
 
 const createInventoryBody = z.object({
@@ -60,9 +61,17 @@ export const GET = guarded(async (req: NextRequest) => {
 
 export const POST = guarded(async (req: NextRequest) => {
   const db = await getTenantDb()
-  requireStaff(await getSession(await currentTenantId()))
+  const session = requireStaff(await getSession(await currentTenantId()))
 
   const body = await parseBody(req, createInventoryBody)
+
+  // Same rule as applyInventoryPatch: staff may give an unpriced card its
+  // first price, but overriding a market-priced card is an admin call.
+  // (Cost entry stays staff-allowed — intake requires the price paid.)
+  if (session.staffRole !== 'admin' && body.sellPriceOverride != null
+    && await cardHasMarketPrice(body.cardId, db)) {
+    throw new DomainError('FORBIDDEN', 'Only admins can set a price override on a market-priced card')
+  }
 
   // Merge on intake: one active row per card+condition — the atomic
   // update-or-insert lives in lib/domain/inventory.ts.

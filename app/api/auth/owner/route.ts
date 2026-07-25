@@ -5,7 +5,7 @@ import { getSession, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
 import { assertNotLocked, recordFailedAttempt, clearLockout } from '@/lib/domain/auth-lockout'
-import { getTenantDb } from '@/lib/db'
+import { getTenantDb, isMultiTenant } from '@/lib/db'
 import { getOwnerPasswordHash } from '@/lib/domain/staff'
 import { DomainError } from '@/lib/domain/errors'
 import { rateLimit } from '@/lib/platform/rate-limit'
@@ -22,7 +22,11 @@ export const POST = guarded(async (req: NextRequest) => {
   const db = await getTenantDb()
   await assertNotLocked('owner', db)
   const { password } = await parseBody(req, ownerLoginBody)
-  const hash = (await getOwnerPasswordHash(db)) ?? process.env.OWNER_PASSWORD_HASH
+  // The env fallback exists for single-tenant deploys with no settings row.
+  // In multi mode it would be a platform-wide skeleton key for any tenant
+  // whose ownerPasswordHash is still null — never fall back there.
+  const hash = (await getOwnerPasswordHash(db))
+    ?? (isMultiTenant() ? undefined : process.env.OWNER_PASSWORD_HASH)
   if (!hash) return NextResponse.json({ error: 'Server not configured' }, { status: 500 })
   const valid = await bcrypt.compare(password, hash)
   if (!valid) {
