@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getTenantDb } from '@/lib/db'
 import { customers, creditLedger, wantList, cards, sales, saleItems, inventoryItems } from '@/lib/db/schema'
-import { eq, desc, inArray } from 'drizzle-orm'
+import { and, eq, desc, inArray, isNull } from 'drizzle-orm'
 import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody, parseIdParam } from '@/lib/validation'
@@ -36,7 +36,8 @@ export const GET = guarded(async (_req: NextRequest, { params }: { params: Promi
       cardSetName: cards.setName,
       cardSetNumber: cards.setNumber,
     }).from(wantList).leftJoin(cards, eq(wantList.cardId, cards.id)).where(eq(wantList.customerId, id)),
-    db.select().from(sales).where(eq(sales.customerId, id)).orderBy(desc(sales.createdAt)).limit(50),
+    // Voided sales are mis-rings, not purchases — keep them out of the history.
+    db.select().from(sales).where(and(eq(sales.customerId, id), isNull(sales.voidedAt))).orderBy(desc(sales.createdAt)).limit(50),
   ])
 
   // Fetch the line items for those sales and group them back by sale.

@@ -1,7 +1,7 @@
 // app/api/sales/[id]/items/route.ts
 import { NextResponse } from 'next/server'
 import { getTenantDb } from '@/lib/db'
-import { sales, saleItems, inventoryItems, cards, products, refundItems } from '@/lib/db/schema'
+import { sales, saleItems, inventoryItems, cards, products, refundItems, customers } from '@/lib/db/schema'
 import { eq, sql } from 'drizzle-orm'
 import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
@@ -16,6 +16,11 @@ export const GET = guarded(async (_req: Request, { params }: { params: Promise<{
 
   const [sale] = await db.select().from(sales).where(eq(sales.id, saleId)).limit(1)
   if (!sale) return NextResponse.json({ error: 'Sale not found' }, { status: 404 })
+
+  // The refund dialog preselects the sale's customer for store-credit refunds.
+  const [customer] = sale.customerId
+    ? await db.select().from(customers).where(eq(customers.id, sale.customerId)).limit(1)
+    : []
 
   const rows = await db.select({
     saleItemId: saleItems.id,
@@ -39,7 +44,9 @@ export const GET = guarded(async (_req: Request, { params }: { params: Promise<{
       id: sale.id, total: sale.total, vatAmount: sale.vatAmount,
       subtotal: sale.subtotal, vatScheme: sale.vatScheme,
       paymentMethod: sale.paymentMethod, createdAt: sale.createdAt,
+      customerId: sale.customerId,
     },
+    customer: customer ?? null,
     items: rows.map(r => ({ ...r, name: r.name ?? 'Unknown card', condition: r.condition === PRODUCT_CONDITION ? null : (r.condition ?? null) })),
   })
 })

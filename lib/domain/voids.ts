@@ -9,6 +9,7 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
 import { sales, saleItems, salePayments, inventoryItems, refunds, creditLedger } from '@/lib/db/schema'
+import { isSameLondonDay } from '@/lib/trading-day'
 import { DomainError } from './errors'
 
 export interface VoidSaleInput {
@@ -27,9 +28,9 @@ export async function voidSale(
   if (!sale) throw new DomainError('NOT_FOUND', 'Sale not found')
   if (sale.voidedAt) throw new DomainError('SALE_VOIDED', 'Sale is already voided')
 
-  // Same-day only (UTC, matching createdAt's datetime('now') timezone).
-  const today = new Date().toISOString().slice(0, 10)
-  if (sale.createdAt.slice(0, 10) !== today) {
+  // Same-day only, on the Europe/London trading day (createdAt is UTC text;
+  // a UTC comparison would strand BST sales rung 00:00–00:59 local).
+  if (!isSameLondonDay(sale.createdAt)) {
     throw new DomainError('VOID_NOT_ALLOWED', 'Only same-day sales can be voided — use a refund instead')
   }
 

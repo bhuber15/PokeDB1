@@ -5,6 +5,7 @@ import { createTestDb, seedBase } from '../db/test-helpers'
 import * as schema from '../db/schema'
 import { createSale } from './sales'
 import { createRefund } from './refunds'
+import { voidSale } from './voids'
 import { DomainError } from './errors'
 import type { Db } from '../db'
 
@@ -86,6 +87,33 @@ test('store credit refund writes a positive ledger row', async () => {
   assert.equal(ledger[0].reason, 'refund')
 })
 
+test('store credit refund defaults to the sale customer when the request omits one', async () => {
+  await dbc.insert(schema.customers).values({ id: 1, name: 'Dave' })
+  await dbc.update(schema.sales).set({ customerId: 1 }).where(eq(schema.sales.id, saleId))
+
+  const { amount } = await createRefund({
+    staffId: 1, saleId, method: 'store_credit', // no customerId — the reports UI doesn't send one
+    items: [{ saleItemId, quantity: 3 }],
+  }, dbc)
+  assert.equal(amount, 2000)
+  const ledger = await dbc.select().from(schema.creditLedger).where(eq(schema.creditLedger.customerId, 1))
+  assert.equal(ledger.length, 1)
+  assert.equal(ledger[0].delta, 2000)
+})
+
+test('an explicit customerId overrides the sale customer for store credit', async () => {
+  await dbc.insert(schema.customers).values([{ id: 1, name: 'Dave' }, { id: 2, name: 'Eve' }])
+  await dbc.update(schema.sales).set({ customerId: 1 }).where(eq(schema.sales.id, saleId))
+
+  await createRefund({
+    staffId: 1, saleId, method: 'store_credit', customerId: 2,
+    items: [{ saleItemId, quantity: 1 }],
+  }, dbc)
+  const ledger = await dbc.select().from(schema.creditLedger)
+  assert.equal(ledger.length, 1)
+  assert.equal(ledger[0].customerId, 2)
+})
+
 test('cumulative refunds never exceed the amount charged', async () => {
   // Sale: 3 units × 850p = subtotal 2550p, total 2000p (550p discount)
   // Ratio = 2000/2550 ≈ 0.7843. Per-unit uncapped = round(850 × 0.7843) = 667.
@@ -128,4 +156,29 @@ test('cannot refund a voided sale', async () => {
     createRefund({ staffId: 1, saleId, method: 'cash', items: [{ saleItemId, quantity: 1 }] }, dbc),
     domainCode('SALE_VOIDED'),
   )
+})
+
+test('a void landing between the pre-check and the transaction cannot double-reverse', async () => {
+  // Simulate the race: the void commits after createRefund's voidedAt
+  // pre-check (which reads an unvoided sale) but before its transaction
+  // starts. The in-transaction claim must catch it.
+  const racingDb: Db = Object.create(dbc, {
+    transaction: {
+      value: async (fn: Parameters<Db['transaction']>[0]) => {
+        await voidSale({ staffId: 1, saleId }, dbc)
+        return dbc.transaction(fn)
+      },
+    },
+  })
+
+  await assert.rejects(
+    createRefund({ staffId: 1, saleId, method: 'cash', items: [{ saleItemId, quantity: 1 }] }, racingDb),
+    domainCode('SALE_VOIDED'),
+  )
+
+  // The void restored the 3 sold units exactly once (5 − 3 + 3); a double
+  // reversal would leave 6. No refund rows or ledger entries either.
+  assert.equal(await stockOf(1), 5)
+  assert.equal((await dbc.select().from(schema.refunds)).length, 0)
+  assert.equal((await dbc.select().from(schema.creditLedger)).length, 0)
 })

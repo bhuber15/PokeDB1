@@ -12,6 +12,9 @@ let dbc: Db
 
 const todayUTC = () => new Date().toISOString().slice(0, 10)
 const yesterdayUTC = () => new Date(Date.now() - 24 * 3600 * 1000).toISOString().slice(0, 10)
+// Current instant as SQLite UTC text — always the same London day as "now",
+// so happy-path voids can't flake in the 23:00–00:00 UTC window during BST.
+const nowUTC = () => new Date().toISOString().slice(0, 19).replace('T', ' ')
 
 beforeEach(async () => {
   dbc = await createTestDb()
@@ -41,7 +44,7 @@ async function insertSale(opts: {
     subtotal: total,
     total,
     paymentMethod: method,
-    createdAt: opts.createdAt ?? `${todayUTC()} 10:00:00`,
+    createdAt: opts.createdAt ?? nowUTC(),
   }).returning()
   await dbc.insert(schema.saleItems).values({
     saleId: sale.id, inventoryItemId: 1, quantity: 2, priceAtSale: total / 2, costAtSale: 200,
@@ -124,7 +127,32 @@ test('voidSale rejects a sale that already has a refund', async () => {
 })
 
 test('voidSale rejects a sale from a previous day', async () => {
-  const saleId = await insertSale({ createdAt: `${yesterdayUTC()} 23:59:59` })
+  // Noon UTC yesterday is the previous London day under both GMT and BST
+  // (23:59 UTC would already be "today" in London during BST).
+  const saleId = await insertSale({ createdAt: `${yesterdayUTC()} 12:00:00` })
+
+  await assert.rejects(
+    voidSale({ staffId: 1, saleId }, dbc),
+    (e: unknown) => e instanceof DomainError && e.code === 'VOID_NOT_ALLOWED',
+  )
+})
+
+test('voidSale allows a BST sale rung 00:00–00:59 local later that trading day', async (t) => {
+  // Sale at 2026-06-30 23:30 UTC = 2026-07-01 00:30 BST. "Now" is noon that
+  // same London day — a UTC comparison would call the sale "yesterday".
+  const saleId = await insertSale({ createdAt: '2026-06-30 23:30:00' })
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-07-01T11:00:00Z').getTime() })
+
+  const result = await voidSale({ staffId: 1, saleId }, dbc)
+  assert.equal(result.saleId, saleId)
+  assert.equal(await getItemQty(), 7) // stock restored
+})
+
+test('voidSale rejects a previous-London-day sale even when the UTC days match', async (t) => {
+  // Sale at 22:30 UTC = 23:30 London on 30 Jun; "now" 23:30 UTC = 00:30 London
+  // on 1 Jul. Same UTC day, different trading day — must go through a refund.
+  const saleId = await insertSale({ createdAt: '2026-06-30 22:30:00' })
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-06-30T23:30:00Z').getTime() })
 
   await assert.rejects(
     voidSale({ staffId: 1, saleId }, dbc),

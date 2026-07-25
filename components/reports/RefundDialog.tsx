@@ -2,8 +2,10 @@
 import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { CustomerPicker } from '@/components/shared/CustomerPicker'
 import { formatGBP } from '@/lib/pricing'
 import { toast } from 'sonner'
+import type { Customer } from '@/lib/db/schema'
 
 interface LineItem {
   saleItemId: number
@@ -25,6 +27,9 @@ export function RefundDialog({ saleId, open, onClose, onDone }: Props) {
   const [items, setItems] = useState<LineItem[]>([])
   const [selected, setSelected] = useState<Record<number, number>>({})
   const [method, setMethod] = useState<'cash' | 'store_credit'>('cash')
+  // Who receives a store-credit refund: preselected from the sale's customer,
+  // pickable for walk-in sales.
+  const [creditCustomer, setCreditCustomer] = useState<Customer | null>(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -32,6 +37,7 @@ export function RefundDialog({ saleId, open, onClose, onDone }: Props) {
     fetch(`/api/sales/${saleId}/items`).then(r => r.json()).then(data => {
       setItems(data.items ?? [])
       setSelected({})
+      setCreditCustomer(data.customer ?? null)
     })
   }, [open, saleId])
 
@@ -40,9 +46,10 @@ export function RefundDialog({ saleId, open, onClose, onDone }: Props) {
   }
 
   const linesToRefund = Object.entries(selected).filter(([, qty]) => qty > 0)
+  const missingCreditCustomer = method === 'store_credit' && !creditCustomer
 
   async function submit() {
-    if (!saleId || linesToRefund.length === 0 || loading) return
+    if (!saleId || linesToRefund.length === 0 || missingCreditCustomer || loading) return
     setLoading(true)
     try {
       const res = await fetch('/api/refunds', {
@@ -51,6 +58,7 @@ export function RefundDialog({ saleId, open, onClose, onDone }: Props) {
         body: JSON.stringify({
           saleId, method,
           items: linesToRefund.map(([saleItemId, quantity]) => ({ saleItemId: Number(saleItemId), quantity })),
+          ...(method === 'store_credit' && creditCustomer ? { customerId: creditCustomer.id } : {}),
         }),
       })
       if (!res.ok) {
@@ -101,10 +109,16 @@ export function RefundDialog({ saleId, open, onClose, onDone }: Props) {
             <Button size="sm" variant={method === 'cash' ? 'default' : 'outline'} onClick={() => setMethod('cash')}>Cash</Button>
             <Button size="sm" variant={method === 'store_credit' ? 'default' : 'outline'} onClick={() => setMethod('store_credit')}>Store Credit</Button>
           </div>
+          {method === 'store_credit' && (
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Credit goes to</p>
+              <CustomerPicker selected={creditCustomer} onSelect={setCreditCustomer} />
+            </div>
+          )}
         </div>
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
-          <Button onClick={submit} disabled={loading || linesToRefund.length === 0} className="flex-1">
+          <Button onClick={submit} disabled={loading || linesToRefund.length === 0 || missingCreditCustomer} className="flex-1">
             {loading ? 'Processing…' : 'Refund'}
           </Button>
         </DialogFooter>
