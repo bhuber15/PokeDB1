@@ -25,9 +25,41 @@ function singleton(): Db {
     )
   }
   if (!_singleton) {
-    _singleton = makeDb(process.env.TURSO_DATABASE_URL!, process.env.TURSO_AUTH_TOKEN)
+    const client = createClient({
+      url: process.env.TURSO_DATABASE_URL!,
+      authToken: process.env.TURSO_AUTH_TOKEN,
+    })
+    warnOnMigrationDrift(client)
+    _singleton = drizzle(client, { schema })
   }
   return _singleton
+}
+
+// Warn (never migrate) when the DB is missing migrations this code expects.
+// Deploys and merges don't auto-migrate, so the code routinely lands ahead of
+// the DB; the symptom is a silent one — getSettings() swallows the resulting
+// "no such column" and serves DEFAULT_SETTINGS, so the shop quietly loses its
+// saved margins, VAT scheme and enabled games rather than erroring.
+// Dev only: e2e (NODE_ENV=test) seeds schema without drizzle's bookkeeping
+// table and unit tests run on :memory:, so both would false-positive.
+// globalThis guard = once per process across dev-server module re-evaluation.
+//
+// The import is dynamic and inside the dev branch on purpose: migration-drift
+// reads the journal off disk, and a static import puts node:fs into the module
+// graph of everything that imports lib/db — which 404s the app's pages under
+// Turbopack (same failure mode as pulling lib/domain into a client component).
+function warnOnMigrationDrift(client: ReturnType<typeof createClient>): void {
+  const g = globalThis as typeof globalThis & { __migrationDriftChecked?: boolean }
+  if (
+    process.env.NODE_ENV === 'development' &&
+    process.env.TURSO_DATABASE_URL !== ':memory:' &&
+    !g.__migrationDriftChecked
+  ) {
+    g.__migrationDriftChecked = true
+    void import('./migration-drift')
+      .then(m => m.checkMigrationDrift(client))
+      .catch(() => {}) // the check must never take the app down
+  }
 }
 
 export const db: Db = new Proxy({} as Db, {
