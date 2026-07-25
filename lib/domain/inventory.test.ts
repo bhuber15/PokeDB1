@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { eq } from 'drizzle-orm'
 import { createTestDb, seedBase } from '../db/test-helpers'
 import * as schema from '../db/schema'
-import { applyInventoryPatch, searchSellables } from './inventory'
+import { applyInventoryPatch, intakeInventory, searchSellables } from './inventory'
 import { createProduct } from './products'
 import { DomainError } from './errors'
 import type { Db } from '../db'
@@ -82,6 +82,77 @@ test('empty patch and missing item map to the right errors', async () => {
   })
   await assert.rejects(applyInventoryPatch(1, 1, {}, undefined, dbc), domainCode('INVALID_INPUT'))
   await assert.rejects(applyInventoryPatch(99, 1, { quantity: 1 }, 'recount', dbc), domainCode('NOT_FOUND'))
+})
+
+// ---------------------------------------------------------------------------
+// intakeInventory (POST /api/inventory: atomic merge-on-intake)
+// ---------------------------------------------------------------------------
+
+test('first intake inserts a fresh row', async () => {
+  const { item, merged } = await intakeInventory({ cardId: 1, condition: 'NM', quantity: 3, costPrice: 100 }, dbc)
+  assert.equal(merged, false)
+  assert.equal(item.quantity, 3)
+  assert.equal(item.costPrice, 100)
+  assert.ok(item.qrCode)
+})
+
+test('second intake for the same card+condition merges and blends the cost', async () => {
+  const first = await intakeInventory({ cardId: 1, condition: 'NM', quantity: 3, costPrice: 100 }, dbc)
+  const second = await intakeInventory({ cardId: 1, condition: 'NM', quantity: 1, costPrice: 500 }, dbc)
+  assert.equal(second.merged, true)
+  assert.equal(second.item.id, first.item.id)
+  assert.equal(second.item.quantity, 4)
+  assert.equal(second.item.costPrice, 200) // (100×3 + 500×1) / 4
+  const rows = await dbc.select().from(schema.inventoryItems)
+  assert.equal(rows.length, 1)
+})
+
+test('blended cost rounds a half-penny up, matching Math.round', async () => {
+  await intakeInventory({ cardId: 1, condition: 'NM', quantity: 3, costPrice: 100 }, dbc)
+  const { item } = await intakeInventory({ cardId: 1, condition: 'NM', quantity: 1, costPrice: 250 }, dbc)
+  assert.equal(item.costPrice, 138) // (100×3 + 250×1) / 4 = 137.5 → 138
+})
+
+test('merging into a row with unknown cost treats it as zero', async () => {
+  await dbc.insert(schema.inventoryItems).values({
+    id: 1, cardId: 1, condition: 'NM', quantity: 2, costPrice: null, qrCode: 'qr-1',
+  })
+  const { item, merged } = await intakeInventory({ cardId: 1, condition: 'NM', quantity: 2, costPrice: 400 }, dbc)
+  assert.equal(merged, true)
+  assert.equal(item.quantity, 4)
+  assert.equal(item.costPrice, 200) // (0×2 + 400×2) / 4
+})
+
+test('a different condition gets its own row, not a merge', async () => {
+  await intakeInventory({ cardId: 1, condition: 'NM', quantity: 1, costPrice: 100 }, dbc)
+  const { merged } = await intakeInventory({ cardId: 1, condition: 'LP', quantity: 1, costPrice: 50 }, dbc)
+  assert.equal(merged, false)
+  assert.equal((await dbc.select().from(schema.inventoryItems)).length, 2)
+})
+
+test('inactive rows are not merged into', async () => {
+  await dbc.insert(schema.inventoryItems).values({
+    cardId: 1, condition: 'NM', quantity: 5, costPrice: 100, qrCode: 'qr-old', isActive: false,
+  })
+  const { item, merged } = await intakeInventory({ cardId: 1, condition: 'NM', quantity: 1, costPrice: 300 }, dbc)
+  assert.equal(merged, false)
+  assert.equal(item.quantity, 1)
+  assert.equal(item.costPrice, 300)
+})
+
+test('non-positive or fractional quantity and bad cost are rejected, nothing written', async () => {
+  await dbc.insert(schema.inventoryItems).values({
+    id: 1, cardId: 1, condition: 'NM', quantity: 5, costPrice: 300, qrCode: 'qr-1',
+  })
+  const good = { cardId: 1, condition: 'NM' as const, costPrice: 100 }
+  for (const quantity of [0, -3, 1.5]) {
+    await assert.rejects(intakeInventory({ ...good, quantity }, dbc), domainCode('INVALID_INPUT'))
+  }
+  await assert.rejects(intakeInventory({ ...good, quantity: 1, costPrice: -1 }, dbc), domainCode('INVALID_INPUT'))
+  await assert.rejects(intakeInventory({ ...good, quantity: 1, costPrice: 99.9 }, dbc), domainCode('INVALID_INPUT'))
+  const [item] = await dbc.select().from(schema.inventoryItems)
+  assert.equal(item.quantity, 5)
+  assert.equal(item.costPrice, 300)
 })
 
 // ---------------------------------------------------------------------------
