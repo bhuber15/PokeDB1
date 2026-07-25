@@ -89,6 +89,10 @@ test('validation and not-found errors', async () => {
     domainCode('INVALID_INPUT'),
   )
   await assert.rejects(
+    createBuy({ staffId: 1, items: [{ ...good, payPrice: 100.5 }], method: 'cash' }, dbc),
+    domainCode('INVALID_INPUT'),
+  )
+  await assert.rejects(
     createBuy({ staffId: 1, items: [good], method: 'store_credit' }, dbc), // no customer
     domainCode('INVALID_INPUT'),
   )

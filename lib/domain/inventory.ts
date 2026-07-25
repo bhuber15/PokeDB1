@@ -1,9 +1,11 @@
-import { eq, or, like, and } from 'drizzle-orm'
+import { eq, or, like, and, sql } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
 import { inventoryItems, stockAdjustments, cards, products, priceCache } from '@/lib/db/schema'
 import { DomainError } from './errors'
 import { EAN_RE } from '@/lib/product-categories'
+import { generateQRId } from '@/lib/qr'
 import type { AdjustmentReason } from '@/lib/adjustment-reasons'
+import type { Condition } from '@/lib/pricing'
 import { type Game } from '@/lib/games'
 
 export { ADJUSTMENT_REASONS, type AdjustmentReason } from '@/lib/adjustment-reasons'
@@ -58,6 +60,60 @@ export async function applyInventoryPatch(
       .returning()
     return updated
   })
+}
+
+// ---------------------------------------------------------------------------
+// intakeInventory (POST /api/inventory)
+// ---------------------------------------------------------------------------
+
+export interface IntakeInput {
+  cardId: number
+  condition: Condition
+  quantity: number
+  costPrice: number
+  sellPriceOverride?: number | null
+  location?: string | null
+  defectNotes?: string | null
+}
+
+// Stock intake: one active row per card+condition. If one exists, add to its
+// quantity and blend the cost basis (weighted average across every copy).
+// The merge is a single guarded UPDATE whose right-hand sides read the
+// existing row inside SQL — computing the new values in JS from a prior
+// SELECT lets two concurrent intakes overwrite each other, losing stock and
+// corrupting the blended cost.
+export async function intakeInventory(input: IntakeInput, dbc: Db = db) {
+  if (!Number.isInteger(input.quantity) || input.quantity < 1) {
+    throw new DomainError('INVALID_INPUT', 'Invalid quantity')
+  }
+  if (!Number.isInteger(input.costPrice) || input.costPrice < 0) {
+    throw new DomainError('INVALID_INPUT', 'Invalid cost price')
+  }
+  const intakeTotal = input.costPrice * input.quantity // pence paid for this intake, integer by the guards above
+  const [merged] = await dbc.update(inventoryItems)
+    .set({
+      quantity: sql`${inventoryItems.quantity} + ${input.quantity}`,
+      costPrice: sql`CAST(ROUND((COALESCE(${inventoryItems.costPrice}, 0) * ${inventoryItems.quantity} + ${intakeTotal}) * 1.0 / (${inventoryItems.quantity} + ${input.quantity})) AS INTEGER)`,
+    })
+    .where(and(
+      eq(inventoryItems.cardId, input.cardId),
+      eq(inventoryItems.condition, input.condition),
+      eq(inventoryItems.isActive, true),
+    ))
+    .returning()
+  if (merged) return { item: merged, merged: true }
+
+  const [item] = await dbc.insert(inventoryItems).values({
+    cardId: input.cardId,
+    condition: input.condition,
+    quantity: input.quantity,
+    costPrice: input.costPrice,
+    sellPriceOverride: input.sellPriceOverride ?? null,
+    qrCode: generateQRId(),
+    location: input.location ?? null,
+    defectNotes: input.defectNotes ?? null,
+  }).returning()
+  return { item, merged: false }
 }
 
 // ---------------------------------------------------------------------------
