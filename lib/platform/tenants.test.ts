@@ -47,6 +47,26 @@ test('getTenantBySlug returns null for unknown slugs (and caches the miss)', asy
   assert.equal(await getTenantBySlug('nope', { db: pdb, now: 0 }), null)
 })
 
+test('tenant cache holds its cap by evicting the oldest entry', async () => {
+  clearTenantCache()
+  const pdb = await createTestPlatformDb()
+  await pdb.insert(tenants).values({ slug: 'shop-a', name: 'Shop A', dbUrl: 'file:/tmp/a.db' })
+  const opts = { db: pdb, now: 1000, maxEntries: 3 }
+
+  assert.equal((await getTenantBySlug('shop-a', opts))!.name, 'Shop A') // oldest entry
+  await getTenantBySlug('ghost-1', opts) // negative entries count too
+  await getTenantBySlug('ghost-2', opts) // cache now at the cap
+  // Rename behind the cache: hits keep serving 'Shop A'; only a re-fetch sees this.
+  await pdb.update(tenants).set({ name: 'Renamed' }).where(eq(tenants.slug, 'shop-a'))
+
+  // A hit on a cached entry evicts nothing…
+  assert.equal((await getTenantBySlug('shop-a', opts))!.name, 'Shop A')
+  // …but caching a fourth slug pushes out the oldest (shop-a)…
+  await getTenantBySlug('ghost-3', opts)
+  // …so the next shop-a lookup goes back to the DB despite the fresh TTL.
+  assert.equal((await getTenantBySlug('shop-a', opts))!.name, 'Renamed')
+})
+
 test('getTenantById fetches without caching', async () => {
   const pdb = await createTestPlatformDb()
   const [t] = await pdb.insert(tenants).values({ slug: 'by-id', name: 'By Id', dbUrl: 'file:x.db' }).returning()

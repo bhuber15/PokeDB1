@@ -208,6 +208,49 @@ test('fuzzy suggestions score alias names too', async () => {
   assert.ok(found.some(c => c.name === 'ピカチュウ'))
 })
 
+// --- Fuzzy name cache (per-Db handle, 10-minute TTL) ---
+
+test('fuzzy name list is cached: stale within the TTL, refreshed after it', async () => {
+  const t0 = 1_000_000
+  // First fuzzy search populates the cache with the seeded names.
+  const first = await searchCards('Snorlex', dbc, { ...noLiveDeps, now: t0 })
+  assert.equal(first.fuzzy, true)
+
+  // A card inserted after that fetch is invisible to fuzzy scoring while the
+  // cached list is fresh ('Blastoize' is not a substring, so the LIKE stage
+  // misses and the query reaches the fuzzy path)…
+  await dbc.insert(schema.cards).values({ id: 9, name: 'Blastoise', setName: 'Base Set', setNumber: '2/102' })
+  const stale = await searchCards('Blastoize', dbc, { ...noLiveDeps, now: t0 + 9 * 60_000 })
+  assert.equal(stale.fuzzy, false)
+  assert.deepEqual(stale.cards, [])
+
+  // …and becomes suggestible once the TTL lapses.
+  const fresh = await searchCards('Blastoize', dbc, { ...noLiveDeps, now: t0 + 10 * 60_000 })
+  assert.equal(fresh.fuzzy, true)
+  assert.deepEqual(fresh.cards.map(c => c.name), ['Blastoise'])
+})
+
+test('fuzzy name cache is per-Db: a second shop sees its own catalogue immediately', async () => {
+  const t0 = 2_000_000
+  // Warm shop 1's cache.
+  const one = await searchCards('Snorlex', dbc, { ...noLiveDeps, now: t0 })
+  assert.equal(one.fuzzy, true)
+
+  // Shop 2 has a different catalogue. Its first fuzzy search — inside shop 1's
+  // TTL — must score shop 2's own names, not a shared cached list.
+  const db2 = await createTestDb()
+  await seedBase(db2)
+  await db2.insert(schema.cards).values({ id: 9, name: 'Blastoise', setName: 'Base Set', setNumber: '2/102' })
+  const two = await searchCards('Blastoize', db2, { ...noLiveDeps, now: t0 + 1 })
+  assert.equal(two.fuzzy, true)
+  assert.deepEqual(two.cards.map(c => c.name), ['Blastoise'])
+
+  // And shop 2's fetch must not have clobbered shop 1's entry.
+  const oneAgain = await searchCards('Snorlex', dbc, { ...noLiveDeps, now: t0 + 2 })
+  assert.equal(oneAgain.fuzzy, true)
+  assert.deepEqual(oneAgain.cards.map(c => c.id), [4, 5, 6])
+})
+
 test('non-EN language filter never hits the EN-only live API on a miss', async () => {
   const { cards: found, unavailable } = await searchCards(
     'Zzznonexistent', dbc, { fetchLive: liveNever, syncMarketPrices: syncNoop }, { language: 'JA' })
