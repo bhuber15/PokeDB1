@@ -52,17 +52,21 @@ export function Nav({ shopName = BRAND.name, staffName, staffRole, inStockWantsC
               <Link
                 key={l.href}
                 href={l.href}
-                className={`flex items-center gap-1.5 px-4 h-14 text-sm font-medium border-b-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${
+                title={l.label}
+                aria-label={l.label}
+                className={`flex items-center gap-1.5 px-4 max-xl:px-3 h-14 text-sm font-medium border-b-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${
                   active
                     ? 'border-primary text-primary'
                     : 'border-transparent text-muted-foreground hover:text-foreground'
                 }`}
               >
                 <Icon className="size-4" aria-hidden="true" />
-                {l.label}
+                {/* Labels need ~1240px all-up (measured); below xl the row goes
+                    icon-only and the title/aria-label carry the name. */}
+                <span className="hidden xl:inline">{l.label}</span>
                 {l.badge && l.badge > 0 ? (
                   <Badge
-                    className="ml-1 h-4 min-w-4 justify-center rounded-full px-1 text-[10px] leading-none"
+                    className="ml-1 max-xl:ml-0 h-4 min-w-4 justify-center rounded-full px-1 text-[10px] leading-none"
                     aria-label={`${l.badge} wanted cards in stock`}
                   >
                     {l.badge}
