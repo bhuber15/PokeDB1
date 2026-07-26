@@ -11,6 +11,10 @@ This file was reconstructed on 2026-07-26 from the git history and merged PRs of
 - `import-catalogue --only=<games>` to import just-enabled games without re-sweeping Pokémon
 - Gitignore the local MTG/YGO sandbox DB
 
+## 2026-07-26 — docs
+
+- **Comprehensive README, annotated repo treeview, and this changelog** ([#45](https://github.com/bhuber15/PokeDB1/pull/45))
+
 ## 2026-07-26 — audit close-out
 
 The last two of four PRs fixing the 2026-07-25 full-code audit (15 findings):
