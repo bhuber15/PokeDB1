@@ -55,7 +55,10 @@ export const inventoryItems = sqliteTable('inventory_items', {
   lowStockThreshold: integer('low_stock_threshold').notNull().default(1),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
-}, t => [uniqueIndex('inventory_items_product_id_unique').on(t.productId).where(sql`product_id IS NOT NULL`)])
+}, t => [
+  uniqueIndex('inventory_items_product_id_unique').on(t.productId).where(sql`product_id IS NOT NULL`),
+  index('idx_inventory_items_card_id').on(t.cardId),
+])
 
 // Daily price snapshots (pence). Only recorded for in-stock or high-value
 // cards; pruned after 90 days by the sync cron.
@@ -104,7 +107,7 @@ export const sales = sqliteTable('sales', {
   voidedByStaffId: integer('voided_by_staff_id').references(() => staff.id),
   voidReason: text('void_reason'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
-})
+}, t => [index('idx_sales_created_at').on(t.createdAt), index('idx_sales_customer_id').on(t.customerId)])
 
 // Per-method tender for a sale (split payments). Every sale has ≥ 1 row
 // (legacy rows backfilled from payment_method/total by migration 0019);
@@ -116,7 +119,7 @@ export const salePayments = sqliteTable('sale_payments', {
   saleId: integer('sale_id').notNull().references(() => sales.id),
   method: text('method').notNull(), // 'cash' | 'card' | 'store_credit' | 'other'
   amount: integer('amount').notNull(), // pence, > 0
-})
+}, t => [index('idx_sale_payments_sale_id').on(t.saleId)])
 
 export const saleItems = sqliteTable('sale_items', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -125,7 +128,7 @@ export const saleItems = sqliteTable('sale_items', {
   quantity: integer('quantity').notNull(),
   priceAtSale: integer('price_at_sale').notNull(),
   costAtSale: integer('cost_at_sale'), // cost_price snapshot; VAT-margin groundwork
-})
+}, t => [index('idx_sale_items_sale_id').on(t.saleId), index('idx_sale_items_inventory_item_id').on(t.inventoryItemId)])
 
 export const refunds = sqliteTable('refunds', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -135,14 +138,14 @@ export const refunds = sqliteTable('refunds', {
   amount: integer('amount').notNull(), // total refunded, GBP, includes reversed VAT
   reason: text('reason'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
-})
+}, t => [index('idx_refunds_sale_id').on(t.saleId)])
 
 export const refundItems = sqliteTable('refund_items', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   refundId: integer('refund_id').notNull().references(() => refunds.id),
   saleItemId: integer('sale_item_id').notNull().references(() => saleItems.id),
   quantity: integer('quantity').notNull(),
-})
+}, t => [index('idx_refund_items_sale_item_id').on(t.saleItemId)])
 
 // Single-row shop settings (always id = 1)
 export const settings = sqliteTable('settings', {
@@ -196,7 +199,7 @@ export const creditLedger = sqliteTable('credit_ledger', {
   refId: integer('ref_id'),
   staffId: integer('staff_id').references(() => staff.id),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
-})
+}, t => [index('idx_credit_ledger_customer_id').on(t.customerId)])
 
 export const buyTransactions = sqliteTable('buy_transactions', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -218,7 +221,7 @@ export const buyItems = sqliteTable('buy_items', {
   // Market price (pence) snapshotted from price_cache at buy time, for
   // overpayment auditing. Null when the card had no cached market price.
   marketAtBuy: integer('market_at_buy'),
-})
+}, t => [index('idx_buy_items_buy_id').on(t.buyId)])
 
 // Append-only audit trail for manual stock quantity edits (recounts, damage,
 // shrinkage). Sales/refunds/buys move stock through their own tables; this
