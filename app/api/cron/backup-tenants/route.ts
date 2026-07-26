@@ -13,6 +13,9 @@ import { captureException } from '@/lib/observability'
 // one DB under backups/single-tenant/.
 export const maxDuration = 300
 const BUDGET_MS = 240_000
+// Soft deadline 20s under maxDuration — see sync-tenants: a hung dump must
+// fail and advance the cursor, not wedge the queue head via a platform kill.
+const HARD_MS = 280_000
 
 export async function GET(req: NextRequest) {
   if (!isAuthorizedCron(req)) {
@@ -29,7 +32,7 @@ export async function GET(req: NextRequest) {
   }
 
   const result = await forEachDueTenant(
-    { pdb: getPlatformDb(), field: 'lastBackupAt', dueAfterSeconds: BACKUP_DUE_AFTER_S, budgetMs: BUDGET_MS },
+    { pdb: getPlatformDb(), field: 'lastBackupAt', dueAfterSeconds: BACKUP_DUE_AFTER_S, budgetMs: BUDGET_MS, hardMs: HARD_MS },
     async (tenant) => {
       await backupDatabase(store, tenant.slug, getTenantDbFor(String(tenant.id), tenant.dbUrl))
       await pruneBackups(store, tenant.slug, retentionDays)
