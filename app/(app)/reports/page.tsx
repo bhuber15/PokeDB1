@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
 import { ReceiptDialog, type ReceiptData } from '@/components/pos/ReceiptDialog'
 import { PRODUCT_CATEGORY_LABELS, type ProductCategory } from '@/lib/product-categories'
+import { isSameLondonDay } from '@/lib/trading-day'
 
 interface TodayStats {
   totalRevenue: number
@@ -275,7 +276,7 @@ export default function ReportsPage() {
                 {!sale.voidedAt && (
                   <>
                     <Button size="sm" variant="ghost" onClick={() => openReceipt(sale.id)}>Receipt</Button>
-                    {sale.createdAt.slice(0, 10) === todayISO && (
+                    {isSameLondonDay(sale.createdAt) && (
                       <Button size="sm" variant="outline" onClick={() => setVoidSaleId(sale.id)}>Void</Button>
                     )}
                     <Button size="sm" variant="outline" onClick={() => setRefundSaleId(sale.id)}>Refund</Button>
@@ -287,7 +288,10 @@ export default function ReportsPage() {
         </div>
       </div>
 
+      {/* Keyed by sale so each open remounts with fresh state — the tender
+          method and credit recipient must never carry over between sales. */}
       <RefundDialog
+        key={refundSaleId ?? 'closed'}
         saleId={refundSaleId}
         open={refundSaleId !== null}
         onClose={() => setRefundSaleId(null)}

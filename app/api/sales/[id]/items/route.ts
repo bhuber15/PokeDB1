@@ -1,10 +1,11 @@
 // app/api/sales/[id]/items/route.ts
 import { NextResponse } from 'next/server'
 import { getTenantDb } from '@/lib/db'
-import { sales, saleItems, inventoryItems, cards, products, refundItems } from '@/lib/db/schema'
+import { saleItems, inventoryItems, cards, products, refundItems } from '@/lib/db/schema'
 import { eq, sql } from 'drizzle-orm'
 import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
+import { getSaleWithCustomer } from '@/lib/domain/sales'
 import { PRODUCT_CONDITION } from '@/lib/product-categories'
 
 export const GET = guarded(async (_req: Request, { params }: { params: Promise<{ id: string }> }) => {
@@ -14,8 +15,11 @@ export const GET = guarded(async (_req: Request, { params }: { params: Promise<{
   const saleId = parseInt((await params).id)
   if (!Number.isInteger(saleId)) return NextResponse.json({ error: 'Invalid sale id' }, { status: 400 })
 
-  const [sale] = await db.select().from(sales).where(eq(sales.id, saleId)).limit(1)
-  if (!sale) return NextResponse.json({ error: 'Sale not found' }, { status: 404 })
+  // Sale + customer in one query; the refund dialog preselects the sale's
+  // customer for store-credit refunds.
+  const detail = await getSaleWithCustomer(saleId, db)
+  if (!detail) return NextResponse.json({ error: 'Sale not found' }, { status: 404 })
+  const { sale, customer } = detail
 
   const rows = await db.select({
     saleItemId: saleItems.id,
@@ -40,6 +44,7 @@ export const GET = guarded(async (_req: Request, { params }: { params: Promise<{
       subtotal: sale.subtotal, vatScheme: sale.vatScheme,
       paymentMethod: sale.paymentMethod, createdAt: sale.createdAt,
     },
+    customer,
     items: rows.map(r => ({ ...r, name: r.name ?? 'Unknown card', condition: r.condition === PRODUCT_CONDITION ? null : (r.condition ?? null) })),
   })
 })

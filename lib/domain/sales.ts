@@ -1,6 +1,6 @@
 import { and, eq, gte, inArray, sql } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
-import { sales, saleItems, salePayments, inventoryItems, priceCache, creditLedger, customers } from '@/lib/db/schema'
+import { sales, saleItems, salePayments, inventoryItems, priceCache, creditLedger, customers, type Sale, type Customer } from '@/lib/db/schema'
 import { calculateSellPrice, conditionPct, pickMarketPrice, computeSaleTotals, computeMarginVat } from '@/lib/pricing'
 import { getSettings } from '@/lib/settings'
 import { DomainError, isUniqueViolation } from './errors'
@@ -215,4 +215,21 @@ export async function createSale(
   })
 
   return { saleId, total, marginNoCostCount }
+}
+
+// Sale plus its customer in one query — the refund dialog preselects the
+// store-credit recipient from this. The preselect is display-only:
+// createRefund owns the actual recipient default (input.customerId ??
+// sale.customerId), and the dialog only sends customerId when staff pick
+// someone other than the sale's own customer.
+export async function getSaleWithCustomer(
+  saleId: number,
+  dbc: Db = db,
+): Promise<{ sale: Sale; customer: Customer | null } | null> {
+  const [row] = await dbc.select({ sale: sales, customer: customers })
+    .from(sales)
+    .leftJoin(customers, eq(customers.id, sales.customerId))
+    .where(eq(sales.id, saleId))
+    .limit(1)
+  return row ?? null
 }
