@@ -8,6 +8,7 @@ import { CheckoutDialog } from '@/components/pos/CheckoutDialog'
 import { ReceiptDialog, type ReceiptData } from '@/components/pos/ReceiptDialog'
 import type { CheckoutConfirmOptions } from '@/components/pos/CheckoutDialog'
 import { SaleQueue } from '@/components/pos/SaleQueue'
+import { OfflineChip } from '@/components/pos/OfflineChip'
 import { useSettings } from '@/components/shared/SettingsProvider'
 import { GameFilter } from '@/components/shared/GameFilter'
 import { useStickyGameFilter } from '@/components/shared/useStickyGameFilter'
@@ -316,6 +317,7 @@ export default function POSPage() {
           <div className="flex-1">
             <SearchBar onSearch={handleSearch} onQRDetected={handleQRDetected} loading={loading} />
           </div>
+          <OfflineChip />
           <GameFilter value={gameFilter} onChange={setGameFilter} />
         </div>
         {results.length === 0 && productResults.length === 0 && !loading && (

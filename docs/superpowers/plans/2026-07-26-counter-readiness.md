@@ -30,6 +30,16 @@
 - Consumes: nothing from other tasks.
 - Produces: `useOnlineStatus(): boolean` (exported named hook) and `OfflineChip(): JSX.Element | null` (exported named component, self-contained — renders `null` while online). Task 2 does not depend on either, but verifies the chip visually at tablet sizes.
 
+> **Amended 2026-07-26 after first execution.** Two toolchain conflicts in the original
+> snippets: (1) `new Event('offline')` fails under the repo's jsdom bootstrap —
+> `tests/`/`components/test-helpers.tsx` doesn't alias `global.Event`, so Node 24's
+> native `Event` is rejected by jsdom's dispatch; use testing-library's
+> `fireEvent.offline(window)` / `fireEvent.online(window)` and stub `navigator.onLine`.
+> (2) `setOnline(navigator.onLine)` inside `useEffect` trips Next 16's
+> `react-hooks/set-state-in-effect`; the hook is instead built on
+> `useSyncExternalStore` (mirroring `components/shared/useStickyGameFilter.ts`).
+> The code blocks below are the amended versions and match what shipped.
+
 - [ ] **Step 1: Write the failing test**
 
 Create `components/pos/OfflineChip.test.tsx`:
@@ -37,10 +47,18 @@ Create `components/pos/OfflineChip.test.tsx`:
 ```tsx
 import { test, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { OfflineChip } from './OfflineChip'
 
+// jsdom pins navigator.onLine at true and doesn't flip it for dispatched
+// events, so shadow the getter per-test; the hook's snapshot reads it on
+// each online/offline notification.
+function setNavigatorOnline(value: boolean) {
+  Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => value })
+}
+
 afterEach(cleanup)
+afterEach(() => setNavigatorOnline(true))
 
 test('renders nothing while online', () => {
   render(<OfflineChip />)
@@ -49,9 +67,11 @@ test('renders nothing while online', () => {
 
 test('appears on the offline event and disappears on online', () => {
   render(<OfflineChip />)
-  act(() => { fireEvent(window, new Event('offline')) })
+  setNavigatorOnline(false)
+  fireEvent.offline(window)
   assert.ok(screen.getByText('Offline — sales will queue'))
-  act(() => { fireEvent(window, new Event('online')) })
+  setNavigatorOnline(true)
+  fireEvent.online(window)
   assert.equal(screen.queryByText(/Offline — sales will queue/), null)
 })
 
@@ -74,25 +94,23 @@ Create `components/shared/useOnlineStatus.ts`:
 
 ```ts
 'use client'
-import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 
-// SSR-safe online tracker: assume online for the server render (avoids a
-// hydration mismatch), then adopt the browser's real state on mount and
-// follow the online/offline events from there.
+// Online tracker on useSyncExternalStore (same shape as useStickyGameFilter):
+// the snapshot is navigator.onLine, re-read whenever the window online/offline
+// events fire. The server snapshot is `true`, so SSR and hydration assume
+// online and the browser corrects itself immediately after mount.
+function subscribe(onChange: () => void): () => void {
+  window.addEventListener('online', onChange)
+  window.addEventListener('offline', onChange)
+  return () => {
+    window.removeEventListener('online', onChange)
+    window.removeEventListener('offline', onChange)
+  }
+}
+
 export function useOnlineStatus(): boolean {
-  const [online, setOnline] = useState(true)
-  useEffect(() => {
-    setOnline(navigator.onLine)
-    const up = () => setOnline(true)
-    const down = () => setOnline(false)
-    window.addEventListener('online', up)
-    window.addEventListener('offline', down)
-    return () => {
-      window.removeEventListener('online', up)
-      window.removeEventListener('offline', down)
-    }
-  }, [])
-  return online
+  return useSyncExternalStore(subscribe, () => navigator.onLine, () => true)
 }
 ```
 
