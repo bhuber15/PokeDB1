@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantDb, getTenantDbFor, isMultiTenant } from '@/lib/db'
+import { isAuthorizedCron } from '@/lib/api'
 import { getPlatformDb } from '@/lib/platform/db'
 import { forEachDueTenant } from '@/lib/platform/fanout'
 import { getBackupStore } from '@/lib/platform/backup-store'
@@ -14,10 +15,7 @@ export const maxDuration = 300
 const BUDGET_MS = 240_000
 
 export async function GET(req: NextRequest) {
-  // Fail closed: without a configured secret there is no valid Authorization
-  // header, so an unset CRON_SECRET can never be matched by `Bearer undefined`.
-  const secret = process.env.CRON_SECRET
-  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
+  if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const store = getBackupStore()

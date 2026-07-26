@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { eq } from 'drizzle-orm'
 import { getTenantDb } from '@/lib/db'
 import { creditLedger, customers } from '@/lib/db/schema'
-import { getSession, requireAdmin, currentTenantId } from '@/lib/auth'
+import { getSession, requireAdmin, requireTransactingStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody, parseIdParam } from '@/lib/validation'
 import { getCustomerBalance } from '@/lib/credit'
@@ -14,7 +14,9 @@ const creditAdjustmentBody = z.object({
 
 export const POST = guarded(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   const db = await getTenantDb()
-  const session = requireAdmin(await getSession(await currentTenantId()))
+  // Admin-gated AND transacting: a credit adjustment writes the ledger with
+  // this session's staffId, which impersonated support sessions must not do.
+  const session = requireTransactingStaff(requireAdmin(await getSession(await currentTenantId())))
   const customerId = parseIdParam((await params).id)
   const { delta: n } = await parseBody(req, creditAdjustmentBody)
   const [customer] = await db.select().from(customers).where(eq(customers.id, customerId)).limit(1)
