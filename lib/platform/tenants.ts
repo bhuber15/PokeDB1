@@ -18,6 +18,10 @@ export function parseTenantSlug(host: string, baseHost: string): string | null {
 }
 
 const CACHE_TTL_MS = 60_000
+// Every probed subdomain caches an entry — misses too (tenant: null), so a
+// random-subdomain scan would otherwise grow the map forever. Cap it and
+// evict the oldest entry (Map iteration order = insertion order) when full.
+const CACHE_MAX_ENTRIES = 5_000
 const cache = new Map<string, { tenant: Tenant | null; at: number }>()
 
 export function clearTenantCache(): void {
@@ -26,14 +30,19 @@ export function clearTenantCache(): void {
 
 export async function getTenantBySlug(
   slug: string,
-  opts: { db?: PlatformDb; ttlMs?: number; now?: number } = {},
+  opts: { db?: PlatformDb; ttlMs?: number; now?: number; maxEntries?: number } = {},
 ): Promise<Tenant | null> {
   const now = opts.now ?? Date.now()
   const ttl = opts.ttlMs ?? CACHE_TTL_MS
+  const max = opts.maxEntries ?? CACHE_MAX_ENTRIES
   const hit = cache.get(slug)
   if (hit && now - hit.at < ttl) return hit.tenant
   const pdb = opts.db ?? getPlatformDb()
   const [tenant] = await pdb.select().from(tenants).where(eq(tenants.slug, slug)).limit(1)
+  if (cache.size >= max) {
+    const oldest = cache.keys().next().value
+    if (oldest !== undefined) cache.delete(oldest)
+  }
   cache.set(slug, { tenant: tenant ?? null, at: now })
   return tenant ?? null
 }

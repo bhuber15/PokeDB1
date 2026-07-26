@@ -3,7 +3,7 @@ import { desc } from 'drizzle-orm'
 import { z } from 'zod'
 import { getTenantDb } from '@/lib/db'
 import { buyTransactions } from '@/lib/db/schema'
-import { getSession, requireStaff, requireAdmin, currentTenantId } from '@/lib/auth'
+import { getSession, requireTransactingStaff, requireAdmin, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
 import { createBuy } from '@/lib/domain/buys'
@@ -21,7 +21,7 @@ const createBuyBody = z.object({
 
 export const POST = guarded(async (req: NextRequest) => {
   const db = await getTenantDb()
-  const session = requireStaff(await getSession(await currentTenantId()))
+  const session = requireTransactingStaff(await getSession(await currentTenantId()))
   const body = await parseBody(req, createBuyBody)
   const result = await createBuy({
     staffId: session.staffId,

@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { getTenantDb } from '@/lib/db'
 import { inventoryItems } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
-import { getSession, requireStaff, requireAdmin, currentTenantId } from '@/lib/auth'
+import { getSession, requireTransactingStaff, requireAdmin, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody, parseIdParam } from '@/lib/validation'
 import { applyInventoryPatch, ADJUSTMENT_REASONS } from '@/lib/domain/inventory'
@@ -24,11 +24,14 @@ export const PATCH = guarded(async (
   { params }: { params: Promise<{ id: string }> }
 ) => {
   const db = await getTenantDb()
-  const session = requireStaff(await getSession(await currentTenantId()))
+  const session = requireTransactingStaff(await getSession(await currentTenantId()))
 
   const id = parseIdParam((await params).id)
   const { reason, ...patch } = await parseBody(req, patchInventoryBody)
-  const updated = await applyInventoryPatch(id, session.staffId, patch, reason, db)
+  // Cost/price authz lives in applyInventoryPatch: staff can't write the
+  // costPrice they can't read, and sell-price overrides are admin-only bar
+  // the POS quick-set on unpriced items.
+  const updated = await applyInventoryPatch(id, session.staffId, session.staffRole, patch, reason, db)
   return NextResponse.json(updated)
 })
 

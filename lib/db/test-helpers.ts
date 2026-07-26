@@ -1,7 +1,8 @@
 import { unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createClient } from '@libsql/client'
+import { after } from 'node:test'
+import { createClient, type Client } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
 import { randomBytes } from 'node:crypto'
 import * as schema from './schema'
@@ -11,6 +12,19 @@ import { applyMigrations } from './migrate'
 export { applyMigrations }
 
 const tempFiles: string[] = []
+const openClients: Client[] = []
+
+// Close every client this worker opened once its test file finishes — libsql
+// handles left open at worker exit can surface as one-off file-level 'test
+// failed' noise with all subtests passing. Guarded: scripts (e2e seed) import
+// this module outside the test runner, where node:test hooks must not run.
+if (process.env.NODE_TEST_CONTEXT) {
+  after(() => {
+    for (const client of openClients) {
+      try { client.close() } catch { /* already closed */ }
+    }
+  })
+}
 
 // Clean up temporary test database files on process exit
 process.on('exit', () => {
@@ -38,6 +52,7 @@ export async function createTestDb(): Promise<Db> {
   const dbUrl = `file:${dbPath}`
   tempFiles.push(dbPath)
   const client = createClient({ url: dbUrl })
+  openClients.push(client)
   await applyMigrations(client)
   return drizzle(client, { schema })
 }

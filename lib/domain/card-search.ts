@@ -36,6 +36,8 @@ export interface CardSearchResult {
 interface SearchDeps {
   fetchLive?: (q: string) => Promise<PokemonTCGCard[]>
   syncMarketPrices?: typeof syncMarketPricesForCard
+  // Test seam for the fuzzy name cache's TTL.
+  now?: number
 }
 
 export interface CardSearchFilters {
@@ -78,7 +80,7 @@ export async function searchCards(
     return { cards: likeMatches, prices: await pricesForFresh(likeMatches, dbc, syncMarketPrices), fuzzy: false, unavailable: false }
   }
 
-  const fuzzyMatches = await searchFuzzy(q, dbc, scope)
+  const fuzzyMatches = await searchFuzzy(q, dbc, scope, deps.now ?? Date.now())
   if (fuzzyMatches.length > 0) {
     return { cards: fuzzyMatches, prices: await pricesForFresh(fuzzyMatches, dbc, syncMarketPrices), fuzzy: true, unavailable: false }
   }
@@ -125,13 +127,34 @@ async function pricesFor(rows: Card[], dbc: Db): Promise<Record<number, PriceCac
   return Object.fromEntries(cached.map(p => [p.cardId, p]))
 }
 
+// The distinct name list is cached per Db handle for 10 minutes: at MTG scale
+// (157k+ cards) the selectDistinct dominates every fuzzy miss (~12s measured),
+// and the list only changes when the catalogue does. Keying the WeakMap by the
+// Db handle keeps tenants isolated — handles are long-lived per tenant
+// (lib/db `tenantDbs`), so entries survive across requests but a name list is
+// never shared between tenants. The durable fix is an FTS5 name index; this
+// cache just keeps misses cheap until then.
+const NAME_CACHE_TTL_MS = 10 * 60_000
+type CardNameRow = { name: string; aliasName: string | null }
+const nameCaches = new WeakMap<Db, { names: CardNameRow[]; at: number }>()
+
+// Fetched unscoped on purpose so one cache entry serves every game/language
+// filter. Names outside the caller's scope can then enter fuzzy scoring, but
+// the printings query in searchFuzzy stays scoped, so at worst an out-of-scope
+// name wastes one of the FUZZY_MAX_NAMES suggestion slots.
+async function distinctNames(dbc: Db, now: number): Promise<CardNameRow[]> {
+  const hit = nameCaches.get(dbc)
+  if (hit && now - hit.at < NAME_CACHE_TTL_MS) return hit.names
+  const names = await dbc.selectDistinct({ name: cards.name, aliasName: cards.aliasName }).from(cards)
+  nameCaches.set(dbc, { names, at: now })
+  return names
+}
+
 // Score every distinct catalogue name (and EN alias, for CJK rows) against
-// the query in memory (~20k names, a few ms — no SQLite extension needed on
-// Turso), then pull all printings of the closest few names.
-async function searchFuzzy(q: string, dbc: Db, scope: SQL[]): Promise<Card[]> {
-  const names = await dbc.selectDistinct({ name: cards.name, aliasName: cards.aliasName })
-    .from(cards)
-    .where(scope.length ? and(...scope) : undefined)
+// the query in memory (no SQLite extension needed on Turso), then pull all
+// printings of the closest few names.
+async function searchFuzzy(q: string, dbc: Db, scope: SQL[], now: number): Promise<Card[]> {
+  const names = await distinctNames(dbc, now)
   const scores = new Map<string, number>()
   for (const { name, aliasName } of names) {
     const score = Math.max(similarity(q, name), aliasName ? similarity(q, aliasName) : 0)

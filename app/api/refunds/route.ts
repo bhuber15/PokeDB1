@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getTenantDb } from '@/lib/db'
-import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
+import { getSession, requireTransactingStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
 import { createRefund } from '@/lib/domain/refunds'
@@ -20,7 +20,7 @@ const createRefundBody = z.object({
 
 export const POST = guarded(async (req: NextRequest) => {
   const db = await getTenantDb()
-  const session = requireStaff(await getSession(await currentTenantId()))
+  const session = requireTransactingStaff(await getSession(await currentTenantId()))
   const body = await parseBody(req, createRefundBody)
   const result = await createRefund({
     staffId: session.staffId,

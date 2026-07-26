@@ -50,6 +50,36 @@ test('updateStaff can rename and change role', async () => {
   assert.equal(updated.role, 'staff')
 })
 
+test('createStaff rejects a PIN already used by an active member', async () => {
+  await assert.rejects(
+    createStaff({ name: 'Cara', pin: '1111' }, dbc), // Ann's PIN
+    domainCode('INVALID_INPUT'),
+  )
+})
+
+test("createStaff allows reusing a deactivated member's PIN", async () => {
+  const eve = await createStaff({ name: 'Eve', pin: '7777', role: 'staff' }, dbc)
+  await updateStaff(eve.id, { isActive: false }, dbc)
+  const member = await createStaff({ name: 'Cara', pin: '7777' }, dbc)
+  assert.equal(member.name, 'Cara')
+})
+
+test("updateStaff rejects changing a PIN to another active member's", async () => {
+  const [bob] = await dbc.select().from(schema.staff).where(eq(schema.staff.name, 'Bob'))
+  await assert.rejects(
+    updateStaff(bob.id, { pin: '1111' }, dbc), // Ann's PIN
+    domainCode('INVALID_INPUT'),
+  )
+  const [row] = await dbc.select().from(schema.staff).where(eq(schema.staff.id, bob.id))
+  assert.equal(await bcrypt.compare('2222', row.pinHash), true) // unchanged
+})
+
+test("updateStaff allows re-setting a member's own current PIN", async () => {
+  const [ann] = await dbc.select().from(schema.staff).where(eq(schema.staff.name, 'Ann'))
+  const updated = await updateStaff(ann.id, { pin: '1111' }, dbc)
+  assert.equal(updated.id, ann.id)
+})
+
 test('updateStaff re-hashes the pin when provided', async () => {
   const [ann] = await dbc.select().from(schema.staff).where(eq(schema.staff.name, 'Ann'))
   await updateStaff(ann.id, { pin: '9999' }, dbc)

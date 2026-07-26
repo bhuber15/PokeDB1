@@ -133,39 +133,55 @@ export default function POSPage() {
 
   async function handleSearch(query: string) {
     setLoading(true)
-    const gameQ = gameFilterRef.current !== 'all' ? `&game=${gameFilterRef.current}` : ''
-    const res = await fetch(`/api/inventory?q=${encodeURIComponent(query)}${gameQ}`)
-    const rows = (await res.json()) as InvRow[]
-    const grouped = groupByCard(rows)
-    const productHits = extractProducts(rows)
-    if (grouped.length === 0 && productHits.length === 0) {
-      toast.error(`No in-stock items found for "${query}"`)
-      setResults([])
-      setProductResults([])
+    try {
+      const gameQ = gameFilterRef.current !== 'all' ? `&game=${gameFilterRef.current}` : ''
+      const res = await fetch(`/api/inventory?q=${encodeURIComponent(query)}${gameQ}`)
+      if (!res.ok) {
+        toast.error('Search failed — check you are still signed in')
+        return
+      }
+      const rows = (await res.json()) as InvRow[]
+      const grouped = groupByCard(rows)
+      const productHits = extractProducts(rows)
+      if (grouped.length === 0 && productHits.length === 0) {
+        toast.error(`No in-stock items found for "${query}"`)
+        setResults([])
+        setProductResults([])
+        return
+      }
+      setResults(grouped)
+      setProductResults(productHits)
+    } catch {
+      toast.error('Network error — search failed')
+    } finally {
       setLoading(false)
-      return
     }
-    setResults(grouped)
-    setProductResults(productHits)
-    setLoading(false)
   }
 
   async function handleQRDetected(qrCode: string) {
     setLoading(true)
-    const res = await fetch(`/api/inventory?qrCode=${encodeURIComponent(qrCode)}`)
-    const rows = (await res.json()) as InvRow[]
-    const grouped = groupByCard(rows)
-    const productHits = extractProducts(rows)
-    if (grouped.length === 0 && productHits.length === 0) {
-      toast.error('QR code not found in inventory')
-      setResults([])
-      setProductResults([])
+    try {
+      const res = await fetch(`/api/inventory?qrCode=${encodeURIComponent(qrCode)}`)
+      if (!res.ok) {
+        toast.error('Search failed — check you are still signed in')
+        return
+      }
+      const rows = (await res.json()) as InvRow[]
+      const grouped = groupByCard(rows)
+      const productHits = extractProducts(rows)
+      if (grouped.length === 0 && productHits.length === 0) {
+        toast.error('QR code not found in inventory')
+        setResults([])
+        setProductResults([])
+        return
+      }
+      setResults(grouped)
+      setProductResults(productHits)
+    } catch {
+      toast.error('Network error — search failed')
+    } finally {
       setLoading(false)
-      return
     }
-    setResults(grouped)
-    setProductResults(productHits)
-    setLoading(false)
   }
 
   // Live single-card price refresh (F10): re-fetch Cardmarket for this card

@@ -1,6 +1,7 @@
 import { eq, inArray, sql } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
 import { sales, saleItems, inventoryItems, refunds, refundItems, creditLedger, customers } from '@/lib/db/schema'
+import { claimUnvoidedSale } from './sale-claim'
 import { DomainError } from './errors'
 
 export interface CreateRefundInput {
@@ -26,16 +27,18 @@ export async function createRefund(
       throw new DomainError('INVALID_INPUT', 'Invalid quantity')
     }
   }
-  if (input.method === 'store_credit' && !input.customerId) {
-    throw new DomainError('INVALID_INPUT', 'customerId required for store credit refunds')
-  }
-
   const [sale] = await dbc.select().from(sales).where(eq(sales.id, input.saleId)).limit(1)
   if (!sale) throw new DomainError('NOT_FOUND', 'Sale not found')
   if (sale.voidedAt) throw new DomainError('SALE_VOIDED', 'Sale is voided — nothing to refund')
 
+  // Store-credit refunds default to the sale's customer, so attributed sales
+  // work without the client re-sending one; walk-ins must name a customer.
+  const creditCustomerId = input.customerId ?? sale.customerId ?? undefined
   if (input.method === 'store_credit') {
-    const [customer] = await dbc.select().from(customers).where(eq(customers.id, input.customerId!)).limit(1)
+    if (!creditCustomerId) {
+      throw new DomainError('INVALID_INPUT', 'customerId required for store credit refunds')
+    }
+    const [customer] = await dbc.select().from(customers).where(eq(customers.id, creditCustomerId)).limit(1)
     if (!customer) throw new DomainError('NOT_FOUND', 'Customer not found')
   }
 
@@ -44,6 +47,13 @@ export async function createRefund(
   const byId = new Map(originalItems.map(i => [i.id, i]))
 
   return dbc.transaction(async (tx) => {
+    // Claim the sale against a concurrent void before touching anything: the
+    // voidedAt pre-check above ran outside this transaction, so a void landing
+    // in between would otherwise be reversed twice (stock restored by both,
+    // credit returned and refund paid).
+    const claimed = await claimUnvoidedSale(tx, sale.id)
+    if (!claimed) throw new DomainError('SALE_VOIDED', 'Sale is voided — nothing to refund')
+
     let netAmount = 0 // pre-discount/VAT amount being refunded, drives proportional reversal
     // Tracks quantity already claimed by earlier lines in *this same request* that reference
     // the same saleItemId — the refundItems rows for those lines aren't inserted until after
@@ -107,7 +117,7 @@ export async function createRefund(
 
     if (input.method === 'store_credit') {
       await tx.insert(creditLedger).values({
-        customerId: input.customerId!,
+        customerId: creditCustomerId!,
         delta: amount,
         reason: 'refund',
         refType: 'sale',

@@ -34,7 +34,7 @@ export async function createBuy(
   for (const it of input.items) {
     if (!CONDITION_SET.has(it.condition)) throw new DomainError('INVALID_INPUT', 'Invalid condition')
     if (!Number.isInteger(it.quantity) || it.quantity < 1) throw new DomainError('INVALID_INPUT', 'Invalid quantity')
-    if (!(it.payPrice >= 0)) throw new DomainError('INVALID_INPUT', 'Invalid pay price')
+    if (!Number.isInteger(it.payPrice) || it.payPrice < 0) throw new DomainError('INVALID_INPUT', 'Invalid pay price')
     if (!Number.isInteger(it.cardId) || it.cardId < 1) throw new DomainError('INVALID_INPUT', 'Invalid cardId')
   }
   const total = input.items.reduce((s, i) => s + i.payPrice * i.quantity, 0)

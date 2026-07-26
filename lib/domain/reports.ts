@@ -27,6 +27,9 @@ export interface CashUpSummary {
  * Returns cash-movement totals for a single calendar day (UTC).
  * `day` must be 'YYYY-MM-DD'.  All three fields COALESCE to 0 so the caller
  * receives numbers even when no transactions exist for that day.
+ *
+ * UTC is deliberate (void eligibility runs on Europe/London days instead —
+ * see "Day windows are split on purpose" in AGENTS.md).
  */
 export async function getCashUpSummary(day: string, dbc: Db = db): Promise<CashUpSummary> {
   const from = `${day} 00:00:00`
