@@ -4,10 +4,10 @@ Newest first, dated by merge to `main`. The app is continuously deployed, so the
 
 This file was reconstructed on 2026-07-26 from the git history and merged PRs of [bhuber15/PokeDB1](https://github.com/bhuber15/PokeDB1). Keep it current: add a line under a dated heading when a PR merges.
 
-## Unreleased — branch `fix/migration-drift-visibility`
+## 2026-07-26 — migration-drift visibility ([#40](https://github.com/bhuber15/PokeDB1/pull/40))
 
 - Dev server warns on boot when the DB is behind the checked-in migrations (`lib/db/migration-drift.ts`)
-- `getSettings` never silently falls back to `DEFAULT_SETTINGS` (root cause of the 2026-07-25 demo failure)
+- `getSettings` never silently falls back to `DEFAULT_SETTINGS` — together, the two halves of the 2026-07-25 demo failure
 - `import-catalogue --only=<games>` to import just-enabled games without re-sweeping Pokémon
 - Gitignore the local MTG/YGO sandbox DB
 
