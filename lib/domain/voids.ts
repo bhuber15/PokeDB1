@@ -10,6 +10,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
 import { sales, saleItems, salePayments, inventoryItems, refunds, creditLedger } from '@/lib/db/schema'
 import { isSameLondonDay } from '@/lib/trading-day'
+import { claimUnvoidedSale } from './sale-claim'
 import { DomainError } from './errors'
 
 export interface VoidSaleInput {
@@ -39,15 +40,12 @@ export async function voidSale(
   await dbc.transaction(async (tx) => {
     // Claim the void first: the WHERE voided_at IS NULL guard makes a
     // concurrent double-void lose here and roll back its stock restore.
-    const claimed = await tx.update(sales)
-      .set({
-        voidedAt: sql`(datetime('now'))`,
-        voidedByStaffId: input.staffId,
-        voidReason: input.reason?.trim() || null,
-      })
-      .where(sql`${sales.id} = ${sale.id} AND ${sales.voidedAt} IS NULL`)
-      .returning({ id: sales.id })
-    if (claimed.length === 0) throw new DomainError('SALE_VOIDED', 'Sale is already voided')
+    const claimed = await claimUnvoidedSale(tx, sale.id, {
+      voidedAt: sql`(datetime('now'))`,
+      voidedByStaffId: input.staffId,
+      voidReason: input.reason?.trim() || null,
+    })
+    if (!claimed) throw new DomainError('SALE_VOIDED', 'Sale is already voided')
 
     // Refund check inside the transaction so a racing refund can't slip in
     // between the pre-checks and the reversal.

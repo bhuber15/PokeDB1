@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { eq } from 'drizzle-orm'
 import { createTestDb, seedBase } from '../db/test-helpers'
 import * as schema from '../db/schema'
-import { createSale, type CreateSaleInput } from './sales'
+import { createSale, getSaleWithCustomer, type CreateSaleInput } from './sales'
 import { updateSettings } from '../settings'
 import { createRefund } from './refunds'
 import { DomainError } from './errors'
@@ -517,4 +517,30 @@ test('condition ladder: a stale client expectedTotal still throws PRICE_CHANGED'
     () => createSale({ ...base, items: [{ inventoryItemId: 4, quantity: 1 }], expectedTotal: 850 }, dbc),
     domainCode('PRICE_CHANGED'),
   )
+})
+
+// ---------------------------------------------------------------------------
+// getSaleWithCustomer — feeds the refund dialog's store-credit preselect
+// ---------------------------------------------------------------------------
+
+test('getSaleWithCustomer returns the sale with its customer when attributed', async () => {
+  await dbc.insert(schema.customers).values({ id: 1, name: 'Dave' })
+  const { saleId } = await createSale({ ...base, items: [{ inventoryItemId: 1, quantity: 1 }], expectedTotal: 850, customerId: 1 }, dbc)
+
+  const detail = await getSaleWithCustomer(saleId, dbc)
+  assert.ok(detail)
+  assert.equal(detail.sale.id, saleId)
+  assert.equal(detail.customer?.name, 'Dave')
+})
+
+test('getSaleWithCustomer returns a null customer for walk-in sales', async () => {
+  const { saleId } = await createSale({ ...base, items: [{ inventoryItemId: 1, quantity: 1 }], expectedTotal: 850 }, dbc)
+
+  const detail = await getSaleWithCustomer(saleId, dbc)
+  assert.ok(detail)
+  assert.equal(detail.customer, null)
+})
+
+test('getSaleWithCustomer returns null for an unknown sale', async () => {
+  assert.equal(await getSaleWithCustomer(999, dbc), null)
 })

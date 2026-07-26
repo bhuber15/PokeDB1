@@ -1,6 +1,7 @@
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { eq, inArray, sql } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
 import { sales, saleItems, inventoryItems, refunds, refundItems, creditLedger, customers } from '@/lib/db/schema'
+import { claimUnvoidedSale } from './sale-claim'
 import { DomainError } from './errors'
 
 export interface CreateRefundInput {
@@ -49,13 +50,9 @@ export async function createRefund(
     // Claim the sale against a concurrent void before touching anything: the
     // voidedAt pre-check above ran outside this transaction, so a void landing
     // in between would otherwise be reversed twice (stock restored by both,
-    // credit returned and refund paid). The guarded no-op UPDATE re-checks
-    // voided_at atomically; voidSale's own claim is the mirror image.
-    const claimed = await tx.update(sales)
-      .set({ id: sale.id })
-      .where(and(eq(sales.id, sale.id), isNull(sales.voidedAt)))
-      .returning({ id: sales.id })
-    if (claimed.length === 0) throw new DomainError('SALE_VOIDED', 'Sale is voided — nothing to refund')
+    // credit returned and refund paid).
+    const claimed = await claimUnvoidedSale(tx, sale.id)
+    if (!claimed) throw new DomainError('SALE_VOIDED', 'Sale is voided — nothing to refund')
 
     let netAmount = 0 // pre-discount/VAT amount being refunded, drives proportional reversal
     // Tracks quantity already claimed by earlier lines in *this same request* that reference

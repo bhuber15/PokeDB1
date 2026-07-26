@@ -288,7 +288,10 @@ export default function ReportsPage() {
         </div>
       </div>
 
+      {/* Keyed by sale so each open remounts with fresh state — the tender
+          method and credit recipient must never carry over between sales. */}
       <RefundDialog
+        key={refundSaleId ?? 'closed'}
         saleId={refundSaleId}
         open={refundSaleId !== null}
         onClose={() => setRefundSaleId(null)}

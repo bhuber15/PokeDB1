@@ -7,6 +7,10 @@
 //
 // Dependency-free on purpose: used by both domain code and client components
 // (see AGENTS.md client-bundle boundary).
+//
+// Scope note: only VOID ELIGIBILITY uses the London trading day. Reports and
+// cash-up bucketing deliberately stay on UTC days — see "Day windows are
+// split on purpose" in AGENTS.md before extending this further.
 
 const londonDay = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit',

@@ -141,6 +141,13 @@ test('validation and not-found errors', async () => {
     createRefund({ staffId: 1, saleId, method: 'store_credit', items: [{ saleItemId, quantity: 1 }] }, dbc), // customerId missing
     domainCode('INVALID_INPUT'),
   )
+  // Deliberate contract: a missing sale reports NOT_FOUND even when the
+  // store-credit customerId is also missing (the sale is fetched first so
+  // its customer can back the default).
+  await assert.rejects(
+    createRefund({ staffId: 1, saleId: 999, method: 'store_credit', items: [{ saleItemId, quantity: 1 }] }, dbc),
+    domainCode('NOT_FOUND'),
+  )
   await assert.rejects(
     createRefund({ staffId: 1, saleId, method: 'cash', items: [] }, dbc),
     domainCode('INVALID_INPUT'),

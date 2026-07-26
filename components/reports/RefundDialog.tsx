@@ -30,15 +30,28 @@ export function RefundDialog({ saleId, open, onClose, onDone }: Props) {
   // Who receives a store-credit refund: preselected from the sale's customer,
   // pickable for walk-in sales.
   const [creditCustomer, setCreditCustomer] = useState<Customer | null>(null)
+  // The sale's own customer — when the picker still holds them, customerId is
+  // omitted from the request so createRefund's default stays the one source
+  // of truth; it is sent only as a staff override.
+  const [saleCustomerId, setSaleCustomerId] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
 
+  // Per-sale state carryover (tender method, items, recipient) is prevented
+  // by the parent keying this dialog by saleId — every open is a fresh mount
+  // with initial state, so no resets are needed here.
   useEffect(() => {
     if (!open || !saleId) return
-    fetch(`/api/sales/${saleId}/items`).then(r => r.json()).then(data => {
-      setItems(data.items ?? [])
-      setSelected({})
-      setCreditCustomer(data.customer ?? null)
-    })
+    let stale = false
+    fetch(`/api/sales/${saleId}/items`)
+      .then(r => r.json())
+      .then(data => {
+        if (stale) return
+        setItems(data.items ?? [])
+        setCreditCustomer(data.customer ?? null)
+        setSaleCustomerId(data.customer?.id ?? null)
+      })
+      .catch(() => { if (!stale) toast.error('Failed to load sale items — reopen to retry') })
+    return () => { stale = true }
   }, [open, saleId])
 
   function setQty(saleItemId: number, qty: number, max: number) {
@@ -58,7 +71,9 @@ export function RefundDialog({ saleId, open, onClose, onDone }: Props) {
         body: JSON.stringify({
           saleId, method,
           items: linesToRefund.map(([saleItemId, quantity]) => ({ saleItemId: Number(saleItemId), quantity })),
-          ...(method === 'store_credit' && creditCustomer ? { customerId: creditCustomer.id } : {}),
+          ...(method === 'store_credit' && creditCustomer && creditCustomer.id !== saleCustomerId
+            ? { customerId: creditCustomer.id }
+            : {}),
         }),
       })
       if (!res.ok) {
