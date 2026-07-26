@@ -19,12 +19,39 @@ afterEach(() => {
   else process.env.TENANCY_MODE = originalMode
 })
 
-test('single mode: getSettings swallows a broken DB and returns defaults', async () => {
+test('single mode: getSettings swallows a broken DB and returns defaults', async (t) => {
   delete process.env.TENANCY_MODE
+  t.mock.method(console, 'error', () => {})
   const dbc = await createTestDb()
   await dbc.run(sql`DROP TABLE settings`)
   const s = await getSettings(dbc)
   assert.deepEqual(s, DEFAULT_SETTINGS)
+})
+
+// Falling back is deliberate (the till must not crash), but doing it silently
+// cost a live demo: a pending migration reverted the shop's margins, VAT
+// scheme and enabled games with nothing in the logs to explain it.
+test('single mode: the fallback is logged, never silent', async (t) => {
+  delete process.env.TENANCY_MODE
+  const error = t.mock.method(console, 'error', () => {})
+  const dbc = await createTestDb()
+  await dbc.run(sql`DROP TABLE settings`)
+  await getSettings(dbc)
+  assert.equal(error.mock.calls.length, 1)
+  assert.match(error.mock.calls[0].arguments[0] as string, /DEFAULT_SETTINGS/)
+})
+
+test('single mode: a missing column is reported as schema drift with the fix', async (t) => {
+  delete process.env.TENANCY_MODE
+  const error = t.mock.method(console, 'error', () => {})
+  const dbc = await createTestDb()
+  // Exactly the shape of the 0023 miss: the table is there, one column is not.
+  await dbc.run(sql`ALTER TABLE settings DROP COLUMN enabled_games`)
+  const s = await getSettings(dbc)
+  assert.deepEqual(s.enabledGames, DEFAULT_SETTINGS.enabledGames)
+  const message = error.mock.calls[0].arguments[0] as string
+  assert.match(message, /schema is behind/i)
+  assert.match(message, /drizzle-kit migrate/)
 })
 
 test('multi mode: getSettings rejects on a broken DB instead of returning defaults', async () => {

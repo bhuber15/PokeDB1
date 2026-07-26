@@ -74,6 +74,7 @@ Local-only things you may see in the working directory but which are **not part 
 │   ├── sale-queue.ts            # offline sale queue (client-side, idempotent replay)
 │   ├── pos-stock.ts             # live stock counts after sales
 │   ├── credit.ts                # store-credit balance helpers
+│   ├── trading-day.ts           # Europe/London trading day (BST-safe same-day checks)
 │   ├── plan.ts / entitlements.ts   # billing plans + feature gating
 │   ├── brand.ts                 # NEXT_PUBLIC_BRAND_* white-labelling
 │   ├── observability.ts         # Sentry/PostHog helpers (no-op unless configured)
@@ -90,7 +91,9 @@ Local-only things you may see in the working directory but which are **not part 
 │   ├── domain/                  # business logic; optional Db param; throws DomainError
 │   │   ├── sales.ts             #   createSale: server-canonical pricing, VAT, split tender, replay
 │   │   ├── refunds.ts / voids.ts    # refund caps + restock; same-day void
+│   │   ├── sale-claim.ts        #   atomic in-transaction claim so void/refund can't double-reverse
 │   │   ├── buys.ts              #   buylist transactions (cash / store credit)
+│   │   ├── customers.ts         #   purchase history (voided sales excluded)
 │   │   ├── inventory.ts / products.ts
 │   │   ├── catalogue.ts / card-search.ts / sales-search.ts
 │   │   ├── cash-ups.ts / reports.ts / receipts.ts

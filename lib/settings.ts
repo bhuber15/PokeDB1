@@ -143,8 +143,38 @@ export async function getSettings(dbc: Db = db): Promise<AppSettings> {
     // Single-tenant: a briefly unreachable DB falls back to defaults. Multi-tenant:
     // silently serving another shop's defaults would mis-tax sales — fail loudly.
     if (isMultiTenant()) throw e
+    logFallback(e)
     return DEFAULT_SETTINGS
   }
+}
+
+// Drizzle reports only "Failed query: select …" on its own message and hangs
+// the real SQLite reason ("no such column: enabled_games") off .cause, so the
+// whole chain has to be flattened before it can be classified.
+function describeError(e: unknown): string {
+  const parts: string[] = []
+  let current: unknown = e
+  for (let depth = 0; current instanceof Error && depth < 5; depth++) {
+    parts.push(current.message)
+    current = current.cause
+  }
+  return parts.length > 0 ? parts.join(' — ') : String(e)
+}
+
+// The fallback keeps the till alive, but it also silently swaps the shop's
+// margins, VAT scheme, condition ladder and enabled games for defaults — so it
+// must never be quiet. Schema drift (code deployed ahead of the DB, which never
+// auto-migrates) is the usual cause and gets the actionable message.
+function logFallback(e: unknown): void {
+  const cause = describeError(e)
+  const isDrift = /no such (column|table)/i.test(cause)
+  console.error(
+    isDrift
+      ? `[settings] DB schema is behind the code — serving DEFAULT_SETTINGS, so shop name, `
+        + `margins, VAT scheme, languages and enabled games are NOT this shop's saved values. `
+        + `Fix: npx drizzle-kit migrate. Cause: ${cause}`
+      : `[settings] could not read settings — serving DEFAULT_SETTINGS. Cause: ${cause}`,
+  )
 }
 
 export async function updateSettings(patch: Partial<AppSettings>, dbc: Db = db): Promise<AppSettings> {

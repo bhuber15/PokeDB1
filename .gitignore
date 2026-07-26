@@ -55,3 +55,6 @@ next-env.d.ts
 
 # local tenant databases
 tenant-dbs/
+
+# local isolated test DB (MTG/YGO sandbox) — safe to delete
+local-sandbox.db*
