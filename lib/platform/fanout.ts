@@ -16,12 +16,34 @@ export interface FanoutResult {
   remaining: number
 }
 
+// A sweep that outlives the serverless function is killed silently: its
+// cursor never advances, and because processing is oldest-first the same
+// tenant heads every later invocation — one pathological shop stops the
+// whole fleet syncing. hardMs (wall clock from invocation start, set below
+// the route's maxDuration) turns that into a *thrown* timeout so the normal
+// failure path records it and advances the cursor. The abandoned promise may
+// keep running until the function returns; sweeps are idempotent, so that is
+// harmless.
+function withSoftDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  return Promise.race([
+    work,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`timed out after ${ms}ms (soft deadline) — sweep abandoned, will retry when next due`)),
+        Math.max(ms, 1),
+      )
+    }),
+  ]).finally(() => clearTimeout(timer))
+}
+
 export async function forEachDueTenant(
   opts: {
     pdb: PlatformDb
     field: 'lastPriceSyncAt' | 'lastBackupAt'
     dueAfterSeconds: number
     budgetMs: number
+    hardMs?: number
     nowMs?: () => number
   },
   fn: (tenant: Tenant) => Promise<void>,
@@ -44,7 +66,10 @@ export async function forEachDueTenant(
   for (const { tenant } of due) {
     if (processed.length > 0 && nowMs() - startedAt >= opts.budgetMs) break
     try {
-      await fn(tenant)
+      const work = fn(tenant)
+      await (opts.hardMs === undefined
+        ? work
+        : withSoftDeadline(work, opts.hardMs - (nowMs() - startedAt)))
       processed.push({ slug: tenant.slug, ok: true })
     } catch (e) {
       processed.push({ slug: tenant.slug, ok: false, error: e instanceof Error ? e.message : String(e) })

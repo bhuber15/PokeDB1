@@ -15,6 +15,10 @@ import { captureException } from '@/lib/observability'
 // handles a few tenants and the fleet is covered daily with lots of slack.
 export const maxDuration = 300
 const BUDGET_MS = 240_000
+// Soft deadline 20s under maxDuration: a hung sweep is abandoned as a
+// recorded failure (cursor advances, fleet keeps syncing) instead of the
+// platform killing the function with the cursor stuck on the same tenant.
+const HARD_MS = 280_000
 const DUE_AFTER_S = 20 * 3600
 
 export async function GET(req: NextRequest) {
@@ -27,7 +31,7 @@ export async function GET(req: NextRequest) {
   }
   const pdb = getPlatformDb()
   const result = await forEachDueTenant(
-    { pdb, field: 'lastPriceSyncAt', dueAfterSeconds: DUE_AFTER_S, budgetMs: BUDGET_MS },
+    { pdb, field: 'lastPriceSyncAt', dueAfterSeconds: DUE_AFTER_S, budgetMs: BUDGET_MS, hardMs: HARD_MS },
     async (tenant) => {
       await runFullPriceSync(getTenantDbFor(String(tenant.id), tenant.dbUrl))
       // The sweep refreshes the catalogue too; keep that cursor honest for

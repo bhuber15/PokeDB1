@@ -104,3 +104,27 @@ test('lastBackupAt uses its own column', async () => {
   assert.equal(s.lastBackupAt, 1000)
   assert.equal(s.lastPriceSyncAt, 500)   // untouched
 })
+
+test('a sweep that hangs past hardMs is failed, its cursor advances, and the queue moves on', async () => {
+  const pdb = await createTestPlatformDb()
+  await seedTenant(pdb, 'wedged', 'active', null)   // never synced → heads the queue
+  await seedTenant(pdb, 'behind', 'active', 1000)
+  const ran: string[] = []
+  // Real clock: the soft-deadline timer is wall-clock by nature.
+  const result = await forEachDueTenant(
+    { pdb, field: 'lastPriceSyncAt', dueAfterSeconds: 20 * HOUR, budgetMs: 60_000, hardMs: 150 },
+    async (t) => {
+      if (t.slug === 'wedged') await new Promise<never>(() => {})   // hangs forever
+      ran.push(t.slug)
+    },
+  )
+  assert.deepEqual(ran, ['behind'])
+  assert.equal(result.processed[0].slug, 'wedged')
+  assert.equal(result.processed[0].ok, false)
+  assert.match(result.processed[0].error!, /timed out after/)
+  assert.deepEqual(result.processed[1], { slug: 'behind', ok: true })
+  // Both cursors advanced — wedged cannot head the queue again until re-due.
+  const states = await pdb.select().from(tenantSyncState)
+  assert.equal(states.length, 2)
+  for (const s of states) assert.ok((s.lastPriceSyncAt ?? 0) > 1000)
+})

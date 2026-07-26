@@ -40,8 +40,8 @@ function singleton(): Db {
 // the DB; the symptom is a silent one — getSettings() swallows the resulting
 // "no such column" and serves DEFAULT_SETTINGS, so the shop quietly loses its
 // saved margins, VAT scheme and enabled games rather than erroring.
-// Dev only: e2e (NODE_ENV=test) seeds schema without drizzle's bookkeeping
-// table and unit tests run on :memory:, so both would false-positive.
+// Dev only: unit tests run on :memory: and e2e runs NODE_ENV=test — both
+// build their schema fresh per run, so there is no drift to catch there.
 // globalThis guard = once per process across dev-server module re-evaluation.
 //
 // The import is dynamic and inside the dev branch on purpose: migration-drift
