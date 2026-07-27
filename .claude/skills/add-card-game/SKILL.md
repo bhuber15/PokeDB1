@@ -5,27 +5,27 @@ description: Use when adding a new trading card game (Lorcana, One Piece, Digimo
 
 # Add a Card Game
 
-The machinery is registry-driven: game N+1 is ~9 files of lib/scripts/tests work — usually **no DB migration and no UI edits**. Mirror the newest shipped game end to end. If this page drifts from the code, `grep -rln '<newest-game-id>' lib scripts tests` regenerates the authoritative seam list — trust the grep over the table below.
+The machinery is registry-driven: game N+1 is ~8 wiring seams (plus their colocated tests) — usually **no DB migration and no UI edits**. Mirror the newest shipped game end to end (Lorcana: `docs/superpowers/specs/2026-07-27-lorcana-design.md`). If this page drifts from the code, `grep -rlnE '<game-id>|<source-name>' lib scripts tests` (e.g. `yugioh|ygoprodeck`) regenerates the authoritative seam list — trust the grep over the table below. Both terms matter: the nightly orchestration references adapters by source name only (`sweepYgoprodeck`), so a game-id grep alone misses it.
 
 Scope check: a catalogue-backed, EN-only game on the existing machinery is a focused feature (short design note + TDD), not a full plan cycle. Manual games (`hasCatalogue: false`), new languages, or schema changes break that assumption — brainstorm those first.
 
 ## Iron rule: verify the source live before any code
 
-Coding from docs/memory caused four real data bugs last time: non-EN rows inside "English" bulk data, empty rarity codes producing unparseable ids, duplicate printings, unstable page order. Curl the actual endpoints first. Record in the design note: auth, rate limits + required headers (Scryfall 403s without a User-Agent), bulk vs paged + sizes, refresh cadence, and every price field with its currency. Build test fixtures from real responses.
+Coding from docs/memory caused four real data bugs last time: non-EN rows inside "English" bulk data, empty rarity codes producing unparseable ids, duplicate printings, unstable page order. Curl the actual endpoints first — **every endpoint the adapter will touch, not just one, and diff their shapes**: the same source can wrap one endpoint in `{results}` and return a bare array from another, or quote prices as numbers on one path and strings on another (both real, Lorcast 2026-07). Record in the design note: auth, rate limits + required headers (Scryfall 403s without a User-Agent), bulk vs paged + sizes, refresh cadence, and every price field with its currency. Build test fixtures from real responses, covering each endpoint's variant of the shape.
 
 ## Decisions to record (short note in docs/superpowers/specs/)
 
 | Decision | Rule / precedent |
 |---|---|
 | Row grain | "A differently-priced printing is its own card." MTG: one row per finish; YGO: one per (passcode, set, rarity). If foil ≠ nonfoil price, they are two rows. |
-| external_id | `<source>:<id>[:qualifier]`, segments alnum-only (see `raritySlug`), must round-trip `parseExternalId`. Existing ids are never rewritten. |
+| external_id | `<source>:<id>[:qualifier]`, segments colon-free and non-empty (hyphens/underscores fine; `raritySlug` alnum-strips only the rarity segment), must round-trip `parseExternalId`. Existing ids are never rewritten. |
 | Price mapping | Native currency → integer pence in the sync layer (`PRICE_USD_TO_GBP` / `PRICE_EUR_TO_GBP`). USD-marketplace fields → `tcgplayer_*`, EUR → `cardmarket_*`. Never fabricate a figure the source doesn't honestly carry (YGO leaves Cardmarket null; `pickMarketSource` falls back). null/`0` → the no-price workflow. |
 | Sweep shape | Small catalogue → full nightly re-upsert (YGO). Huge → paged sweep with page budget + cursor persisted in `catalogue_sync_state` (MTG). The initial load is always the off-cron import script, never the cron. |
 | Languages | New games ship `['EN']`. |
 
 ## Wiring checklist — every row REQUIRED
 
-Rows 2–6 have colocated `*.test.ts` that must grow with them.
+Rows 2–7 have colocated `*.test.ts` that must grow with them.
 
 | # | File | Change |
 |---|---|---|
@@ -34,9 +34,10 @@ Rows 2–6 have colocated `*.test.ts` that must grow with them.
 | 3 | `lib/apis/<source>.ts` | fetch + normalize → `NormalizedCard[]` |
 | 4 | `lib/sources/<source>-sweep.ts` | idempotent sweep through the shared upsert |
 | 5 | `lib/sources/registry.ts` | `CATALOGUE_SOURCES` entry; `refreshPrices` if the API has a cheap per-card fetch |
-| 6 | `lib/prices/sync.ts` | extend the source→game dispatch in `syncMarketPricesForCard` — it is hardcoded per source; miss it and the game's cards silently fall through to the Pokémon path |
-| 7 | `scripts/import-catalogue.ts` | bulk pass, double-gated on `--only` AND `settings.enabledGames` |
-| 8 | `tests/e2e/seed.ts` + `tests/e2e/multi-game-checkout.spec.ts` | seed + sell one card of the new game through the till |
+| 6 | `lib/prices/sync.ts` | extend the source→game map in `syncMarketPricesForCard` — miss it and the game's cards silently fall through to the Pokémon path |
+| 7 | `lib/prices/run-sync.ts` | nightly orchestration hardcodes each sweep: add the dep, the call, and the result key (a game-id grep will NOT find this file — see the source-name grep above) |
+| 8 | `scripts/import-catalogue.ts` | bulk pass, double-gated on `--only` AND `settings.enabledGames`; update the `--only` example in its header |
+| 9 | `tests/e2e/seed.ts` + `tests/e2e/multi-game-checkout.spec.ts` | seed + sell one card of the new game through the till |
 
 Registry-driven — do NOT edit: `GameFilter`, game badges, Settings→Games toggle, `settingsPatchSchema` (`z.enum(GAME_IDS)`), `multiGame` entitlement, tenancy plumbing, `lib/sources/upsert.ts`.
 
@@ -55,13 +56,15 @@ Registry-driven — do NOT edit: `GameFilter`, game badges, Settings→Games tog
 ## Common mistakes (all real)
 
 - Skipping the live source check and coding from docs or memory.
-- Forgetting checklist #6 — everything works except prices never refresh, silently.
+- Probing one endpoint and assuming the source's other endpoints share its envelope and types.
+- Forgetting checklist #6 or #7 — everything works except prices never refresh, silently.
 - Unthrottled paged crawls: serialise (~100 ms gate) and send a User-Agent.
 - Wiring the new game into the Pokémon Cardmarket rotation — it is scoped to Pokémon on purpose.
 - Ordering a paged crawl by a mutable field — the cursor must be stable (e.g. `released:asc`).
 
 ## References
 
-- `docs/superpowers/specs/2026-07-23-multi-game-mtg-ygo-design.md` — decisions + verified source facts (the model to copy)
+- `docs/superpowers/specs/2026-07-27-lorcana-design.md` — the light path: one game on existing machinery (this skill's first validated run)
+- `docs/superpowers/specs/2026-07-23-multi-game-mtg-ygo-design.md` — decisions + verified source facts (the fuller model)
 - `docs/superpowers/specs/2026-07-22-multi-game-multi-language-catalogue-design.md` — umbrella identity rules
-- Template chain: `lib/apis/ygoprodeck.ts` → `lib/sources/ygoprodeck-sweep.ts` → its registry entry (or the scryfall chain for paged sources)
+- Template chain: `lib/apis/lorcast.ts` → `lib/sources/lorcast-sweep.ts` → its registry entry (or the scryfall chain for paged/bulk sources)
