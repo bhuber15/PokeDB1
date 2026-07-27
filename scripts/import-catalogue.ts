@@ -1,7 +1,7 @@
 // One-time full-catalogue import (and safe to re-run any time — it is the
 // same idempotent sweep the nightly cron uses).
 //   npx tsx scripts/import-catalogue.ts
-//   npx tsx scripts/import-catalogue.ts --only=mtg,yugioh
+//   npx tsx scripts/import-catalogue.ts --only=mtg,yugioh,lorcana
 import './load-env'
 import { getSettings } from '../lib/settings'
 import { sweepTcgplayerCatalogue } from '../lib/prices/sync'
@@ -9,6 +9,7 @@ import { sweepTcgdexCatalogue } from '../lib/prices/tcgdex-sweep'
 import { syncStaleCardmarket } from '../lib/prices/sync'
 import { importScryfallBulk } from '../lib/sources/scryfall-bulk'
 import { sweepYgoprodeck } from '../lib/sources/ygoprodeck-sweep'
+import { sweepLorcast } from '../lib/sources/lorcast-sweep'
 import { GAME_IDS, isGame, type Game } from '../lib/games'
 
 // --only=mtg,yugioh restricts the run to those games. Turning a new game on in
@@ -59,6 +60,11 @@ async function main() {
     const ygo = await sweepYgoprodeck(settings)
     console.log('YGOPRODeck import done:', ygo)
     if (ygo.failed > 0) process.exitCode = 1
+  }
+  if (wanted('lorcana') && settings.enabledGames.includes('lorcana')) {
+    const lorcana = await sweepLorcast(settings)
+    console.log('Lorcast (Lorcana) import done:', lorcana)
+    if (lorcana.failed > 0) process.exitCode = 1
   }
 
   // --full-prices: run the per-card rotation to completion now (prices where

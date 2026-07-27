@@ -5,8 +5,10 @@ import { parseExternalId } from '@/lib/sources/external-id'
 import { writePriceForExternalId, type SweepResult } from '@/lib/sources/upsert'
 import { sweepScryfall } from '@/lib/sources/scryfall-sweep'
 import { sweepYgoprodeck } from '@/lib/sources/ygoprodeck-sweep'
+import { sweepLorcast } from '@/lib/sources/lorcast-sweep'
 import { fetchScryfallCard, normalizeScryfallCard } from '@/lib/apis/scryfall'
 import { fetchYgoprodeckCard, normalizeYgoCard } from '@/lib/apis/ygoprodeck'
+import { fetchLorcastCard, normalizeLorcastCard } from '@/lib/apis/lorcast'
 
 export interface CatalogueSource {
   game: Game
@@ -41,9 +43,19 @@ const ygoRefresh: CatalogueSource['refreshPrices'] = async (externalId, rates, d
   if (match) await writePriceForExternalId(dbc, externalId, match.prices, rates)
 }
 
+const lorcastRefresh: CatalogueSource['refreshPrices'] = async (externalId, rates, dbc) => {
+  const parsed = parseExternalId(externalId)
+  if (parsed.source !== 'lorcast') return
+  const card = await fetchLorcastCard(parsed.id)
+  if (!card) return
+  const match = normalizeLorcastCard(card).find(r => r.externalId === externalId)
+  if (match) await writePriceForExternalId(dbc, externalId, match.prices, rates)
+}
+
 export const CATALOGUE_SOURCES: Partial<Record<Game, CatalogueSource>> = {
   mtg: { game: 'mtg', languages: GAMES.mtg.languages, sweep: (s, dbc) => sweepScryfall(s, dbc), refreshPrices: scryfallRefresh },
   yugioh: { game: 'yugioh', languages: GAMES.yugioh.languages, sweep: (s, dbc) => sweepYgoprodeck(s, dbc), refreshPrices: ygoRefresh },
+  lorcana: { game: 'lorcana', languages: GAMES.lorcana.languages, sweep: (s, dbc) => sweepLorcast(s, dbc), refreshPrices: lorcastRefresh },
 }
 
 export function getCatalogueSource(game: Game): CatalogueSource | undefined {

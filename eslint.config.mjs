@@ -17,6 +17,8 @@ const eslintConfig = defineConfig([
     "playwright-report/**",
     "test-results/**",
     ".e2e/**",
+    // Git-excluded sibling workspace (business wiki/collateral), not app code.
+    "Research/**",
   ]),
 ]);
 

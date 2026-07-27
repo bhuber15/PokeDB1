@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { tcgdexExternalId, parseExternalId, scryfallExternalId, ygoExternalId, raritySlug } from '@/lib/sources/external-id'
+import { tcgdexExternalId, parseExternalId, scryfallExternalId, ygoExternalId, lorcastExternalId, raritySlug } from '@/lib/sources/external-id'
 
 test('bare ids parse as pokemontcg (grandfathered EN rows)', () => {
   assert.deepEqual(parseExternalId('xy7-54'), { source: 'pokemontcg', id: 'xy7-54' })
@@ -46,6 +46,19 @@ test('empty rarity code falls back to the rarity name, then NA — and still rou
   const na = ygoExternalId('1', 'X-1', '', '')
   assert.equal(na, 'ygoprodeck:1:X-1:NA')
   assert.deepEqual(parseExternalId(na), { source: 'ygoprodeck', passcode: '1', setCode: 'X-1', rarity: 'NA', id: na })
+})
+
+test('lorcast base id has no suffix and parses back (crd ids carry an underscore)', () => {
+  const ext = lorcastExternalId('crd_096f0a6be34a4134aaa682c768cceeec', 'nonfoil')
+  assert.equal(ext, 'lorcast:crd_096f0a6be34a4134aaa682c768cceeec')
+  assert.deepEqual(parseExternalId(ext),
+    { source: 'lorcast', id: 'crd_096f0a6be34a4134aaa682c768cceeec', finish: 'nonfoil' })
+})
+
+test('lorcast foil ids carry the finish suffix and round-trip', () => {
+  const ext = lorcastExternalId('crd_abc', 'foil')
+  assert.equal(ext, 'lorcast:crd_abc:foil')
+  assert.deepEqual(parseExternalId(ext), { source: 'lorcast', id: 'crd_abc', finish: 'foil' })
 })
 
 test('raritySlug strips non-alphanumerics', () => {

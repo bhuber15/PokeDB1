@@ -44,9 +44,9 @@ export async function syncMarketPricesForCard(
   if (parsed.source === 'tcgdex' && parsed.language !== 'EN') {
     return syncTcgdexCard(cardId, parsed.language, parsed.id, rates, dbc, opts)
   }
-  if (parsed.source === 'scryfall' || parsed.source === 'ygoprodeck') {
-    const source = getCatalogueSource(parsed.source === 'scryfall' ? 'mtg' : 'yugioh')
-    await source?.refreshPrices?.(externalId, rates, dbc)
+  if (parsed.source === 'scryfall' || parsed.source === 'ygoprodeck' || parsed.source === 'lorcast') {
+    const game = ({ scryfall: 'mtg', ygoprodeck: 'yugioh', lorcast: 'lorcana' } as const)[parsed.source]
+    await getCatalogueSource(game)?.refreshPrices?.(externalId, rates, dbc)
     return
   }
   const cm = await fetchCardmarketPrices(externalId, variant)

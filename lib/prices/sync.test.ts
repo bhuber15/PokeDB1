@@ -40,6 +40,7 @@ function stubFetch(opts: {
   tcgdexCards?: Record<string, { dexId?: number[]; pricing?: { cardmarket?: unknown; tcgplayer?: unknown } } | 'fail' | 'missing'>
   scryfallCards?: Record<string, unknown | 'missing'>
   ygoCards?: Record<string, unknown | 'missing'>
+  lorcastCards?: Record<string, unknown | 'missing'>
 }) {
   globalThis.fetch = (async (input: string | URL | Request) => {
     const url = String(input instanceof Request ? input.url : input)
@@ -63,6 +64,12 @@ function stubFetch(opts: {
     if (url.includes('api.scryfall.com/cards/')) {
       const id = url.split('/').pop()!
       const c = opts.scryfallCards?.[id]
+      if (c === 'missing') return new Response('no', { status: 404 })
+      if (c) return Response.json(c)
+    }
+    if (url.includes('api.lorcast.com/v0/cards/')) {
+      const id = url.split('/').pop()!
+      const c = opts.lorcastCards?.[id]
       if (c === 'missing') return new Response('no', { status: 404 })
       if (c) return Response.json(c)
     }
@@ -339,6 +346,21 @@ test('a yugioh external id re-prices via YGOPRODeck (set_price → tcgplayer)', 
   await syncMarketPricesForCard(c.id, 'ygoprodeck:46986414:LOB-005:UR', 'Ultra Rare', { eur: 0.85, usd: 0.8 }, db)
   const [p] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, c.id))
   assert.equal(p.tcgplayerMarket, Math.round(120 * 0.8 * 100))
+})
+
+test('a lorcana external id re-prices via Lorcast (usd_foil → tcgplayer, no cardmarket)', async () => {
+  const [c] = await db.insert(schema.cards).values({
+    name: 'Elsa - Spirit of Winter', game: 'lorcana', language: 'EN', setName: 'Fabled', setNumber: '43', variant: 'Foil',
+    externalId: 'lorcast:crd_elsa:foil',
+  }).returning()
+  stubFetch({ lorcastCards: { crd_elsa: {
+    id: 'crd_elsa', name: 'Elsa', version: 'Spirit of Winter', rarity: 'Legendary', collector_number: '43',
+    lang: 'en', set: { code: '9', name: 'Fabled' }, prices: { usd: 1.89, usd_foil: 9.79 },
+  } } })
+  await syncMarketPricesForCard(c.id, 'lorcast:crd_elsa:foil', 'Foil', { eur: 0.85, usd: 0.8 }, db)
+  const [p] = await db.select().from(schema.priceCache).where(eq(schema.priceCache.cardId, c.id))
+  assert.equal(p.tcgplayerMarket, Math.round(9.79 * 0.8 * 100))
+  assert.equal(p.cardmarketTrend, null)
 })
 
 test('syncStaleCardmarket walks the catalogue stalest-first within its limit', async () => {
