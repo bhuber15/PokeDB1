@@ -22,9 +22,9 @@ async function seed() {
   await applyMigrations(client)
   const db = drizzle(client, { schema })
 
-  // All three games enabled so the game-first selector (GameFilter) renders
+  // All four games enabled so the game-first selector (GameFilter) renders
   // on every surface for the multi-game checkout spec (Task 12).
-  await db.insert(schema.settings).values({ id: 1, enabledGames: JSON.stringify(['pokemon', 'mtg', 'yugioh']) })
+  await db.insert(schema.settings).values({ id: 1, enabledGames: JSON.stringify(['pokemon', 'mtg', 'yugioh', 'lorcana']) })
   await db.insert(schema.staff).values({
     id: 1, name: 'Tess', pinHash: bcrypt.hashSync(STAFF_PIN, 4), role: 'staff',
   })
@@ -63,7 +63,7 @@ async function seed() {
     qrCode: 'e2e-ja-quickset',
   })
 
-  // MTG foil + YGO printing with priced stock (Task 12's multi-game
+  // MTG foil, YGO printing + Lorcana foil with priced stock (the multi-game
   // checkout). enabledGames above makes GameFilter render on every surface
   // for every spec in this shared seed, so these two names are chosen to
   // never collide with another spec's search terms ('Pikachu', the JA
@@ -90,6 +90,16 @@ async function seed() {
     cardId: ygoCard.id, condition: 'NM', quantity: 5, costPrice: 150,
     sellPriceOverride: 350, // £3.50
     qrCode: 'e2e-ygo-printing-qr',
+  })
+
+  const [lorcanaCard] = await db.insert(schema.cards).values({
+    name: 'Elsa - Spirit of Winter', game: 'lorcana', language: 'EN', variant: 'Foil',
+    setName: 'Fabled', setNumber: '43', externalId: 'lorcast:e2e-lorcana-0001:foil',
+  }).returning()
+  await db.insert(schema.inventoryItems).values({
+    cardId: lorcanaCard.id, condition: 'NM', quantity: 3, costPrice: 300,
+    sellPriceOverride: 800, // £8.00
+    qrCode: 'e2e-lorcana-foil-qr',
   })
 
   client.close()

@@ -7,11 +7,15 @@ export type MtgFinish = 'nonfoil' | 'foil' | 'etched'
 //   tcgdex:<lang>:<raw id>                          (phase 1)
 //   scryfall:<uuid>[:foil|:etched]                  (MTG; nonfoil has no suffix)
 //   ygoprodeck:<passcode>:<set_code>:<rarity_slug>  (YGO; one row per printing)
+//   lorcast:<crd_id>[:foil]                         (Lorcana; base has no suffix)
+export type LorcanaFinish = 'nonfoil' | 'foil'
+
 export type ParsedExternalId =
   | { source: 'pokemontcg'; id: string }
   | { source: 'tcgdex'; language: Language; id: string }
   | { source: 'scryfall'; id: string; finish: MtgFinish }
   | { source: 'ygoprodeck'; passcode: string; setCode: string; rarity: string; id: string }
+  | { source: 'lorcast'; id: string; finish: LorcanaFinish }
 
 export function tcgdexExternalId(language: Exclude<Language, 'EN'>, rawId: string): string {
   return `tcgdex:${language.toLowerCase()}:${rawId}`
@@ -35,6 +39,12 @@ export function ygoExternalId(passcode: string, setCode: string, rarityCode: str
   return `ygoprodeck:${passcode}:${setCode}:${slug}`
 }
 
+// Lorcast card ids ("crd_<hex>") are colon-free, so the scryfall suffix trick
+// applies unchanged.
+export function lorcastExternalId(crdId: string, finish: LorcanaFinish): string {
+  return finish === 'foil' ? `lorcast:${crdId}:foil` : `lorcast:${crdId}`
+}
+
 export function parseExternalId(externalId: string): ParsedExternalId {
   if (externalId.startsWith('tcgdex:')) {
     const rest = externalId.slice('tcgdex:'.length)
@@ -55,6 +65,14 @@ export function parseExternalId(externalId: string): ParsedExternalId {
       }
     }
     if (rest) return { source: 'scryfall', id: rest, finish: 'nonfoil' }
+  }
+  if (externalId.startsWith('lorcast:')) {
+    const rest = externalId.slice('lorcast:'.length)
+    const sep = rest.lastIndexOf(':')
+    if (sep > 0 && rest.slice(sep + 1) === 'foil') {
+      return { source: 'lorcast', id: rest.slice(0, sep), finish: 'foil' }
+    }
+    if (rest) return { source: 'lorcast', id: rest, finish: 'nonfoil' }
   }
   if (externalId.startsWith('ygoprodeck:')) {
     const [passcode, setCode, rarity] = externalId.slice('ygoprodeck:'.length).split(':')
