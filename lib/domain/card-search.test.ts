@@ -1,6 +1,6 @@
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { createTestDb, seedBase } from '../db/test-helpers'
 import * as schema from '../db/schema'
 import { searchCards } from './card-search'
@@ -208,9 +208,80 @@ test('fuzzy suggestions score alias names too', async () => {
   assert.ok(found.some(c => c.name === 'ピカチュウ'))
 })
 
-// --- Fuzzy name cache (per-Db handle, 10-minute TTL) ---
+// --- FTS5 trigram index (migration 0025) ---
 
-test('fuzzy name list is cached: stale within the TTL, refreshed after it', async () => {
+// Throws SQLITE_CORRUPT when the FTS index disagrees with the cards table
+// (rank=1 selects the external-content comparison; 0 checks only the index's
+// internal structure and passes even when desynced).
+async function assertFtsInSync(dbc: Db): Promise<void> {
+  await dbc.run(sql`INSERT INTO cards_fts(cards_fts, rank) VALUES ('integrity-check', 1)`)
+}
+
+test('fuzzy suggestions see a newly inserted card immediately — no cache staleness', async () => {
+  const t0 = 3_000_000
+  // Warm the (fallback) name cache so a regression to the cached-scan path
+  // would surface as staleness below.
+  const warm = await searchCards('Snorlex', dbc, { ...noLiveDeps, now: t0 })
+  assert.equal(warm.fuzzy, true)
+
+  await dbc.insert(schema.cards).values({ id: 9, name: 'Blastoise', setName: 'Base Set', setNumber: '2/102' })
+  const res = await searchCards('Blastoize', dbc, { ...noLiveDeps, now: t0 + 1 })
+  assert.equal(res.fuzzy, true)
+  assert.deepEqual(res.cards.map(c => c.name), ['Blastoise'])
+})
+
+test('renames and deletes keep the FTS index in sync with the catalogue', async () => {
+  await dbc.update(schema.cards).set({ name: 'Munchlax' }).where(eq(schema.cards.id, 5))
+  const renamed = await searchCards('Munchlex', dbc, noLiveDeps)
+  assert.equal(renamed.fuzzy, true)
+  assert.deepEqual(renamed.cards.map(c => c.id), [5])
+
+  await dbc.delete(schema.cards).where(eq(schema.cards.id, 4))
+  const gone = await searchCards('Snorlex', dbc, noLiveDeps)
+  assert.deepEqual(gone.cards.map(c => c.name), ['Snorunt'])
+  await assertFtsInSync(dbc)
+})
+
+test('nightly-sweep-shaped upserts leave the FTS index consistent, without duplicates', async () => {
+  // Same write shape as lib/sources/upsert.ts: every catalogue row re-upserted
+  // with unchanged values — the trigger's WHEN guard must skip these.
+  for (let i = 0; i < 2; i++) {
+    await dbc.insert(schema.cards).values({
+      name: 'Snorlax', setName: 'Sweep Set', setNumber: 'S1', externalId: 'sweep-1',
+    }).onConflictDoUpdate({
+      target: schema.cards.externalId,
+      set: { name: sql`excluded.name`, setName: sql`excluded.set_name` },
+    })
+  }
+  const cardCount = await dbc.get<{ n: number }>(sql`SELECT count(*) AS n FROM cards`)
+  const ftsCount = await dbc.get<{ n: number }>(sql`SELECT count(*) AS n FROM cards_fts`)
+  assert.equal(ftsCount?.n, cardCount?.n)
+  await assertFtsInSync(dbc)
+})
+
+test('short queries still fuzzy-match short names exactly (below the one-trigram floor)', async () => {
+  // "n." can't produce a trigram, but similarity() scores it 1.0 against the
+  // card "N" via normalized equality — served by the scan path, not FTS.
+  await dbc.insert(schema.cards).values({ id: 9, name: 'N', setName: 'Noble Victories', setNumber: '92/101' })
+  const res = await searchCards('n.', dbc, noLiveDeps)
+  assert.equal(res.fuzzy, true)
+  assert.deepEqual(res.cards.map(c => c.name), ['N'])
+})
+
+// --- Fallback: cached name scan (per-Db handle, 10-minute TTL) ---
+// Fleet migrations run after deploys, so a tenant DB without migration 0025
+// (no cards_fts) is a real state; fuzzy search must degrade to the cached
+// full-name scan, whose staleness semantics these tests pin.
+
+async function dropFtsIndex(dbc: Db): Promise<void> {
+  await dbc.run(sql`DROP TRIGGER cards_fts_ai`)
+  await dbc.run(sql`DROP TRIGGER cards_fts_au`)
+  await dbc.run(sql`DROP TRIGGER cards_fts_ad`)
+  await dbc.run(sql`DROP TABLE cards_fts`)
+}
+
+test('without the FTS index, fuzzy falls back to the name cache: stale within the TTL, refreshed after it', async () => {
+  await dropFtsIndex(dbc)
   const t0 = 1_000_000
   // First fuzzy search populates the cache with the seeded names.
   const first = await searchCards('Snorlex', dbc, { ...noLiveDeps, now: t0 })
@@ -230,7 +301,8 @@ test('fuzzy name list is cached: stale within the TTL, refreshed after it', asyn
   assert.deepEqual(fresh.cards.map(c => c.name), ['Blastoise'])
 })
 
-test('fuzzy name cache is per-Db: a second shop sees its own catalogue immediately', async () => {
+test('fallback name cache is per-Db: a second shop sees its own catalogue immediately', async () => {
+  await dropFtsIndex(dbc)
   const t0 = 2_000_000
   // Warm shop 1's cache.
   const one = await searchCards('Snorlex', dbc, { ...noLiveDeps, now: t0 })
@@ -240,6 +312,7 @@ test('fuzzy name cache is per-Db: a second shop sees its own catalogue immediate
   // TTL — must score shop 2's own names, not a shared cached list.
   const db2 = await createTestDb()
   await seedBase(db2)
+  await dropFtsIndex(db2)
   await db2.insert(schema.cards).values({ id: 9, name: 'Blastoise', setName: 'Base Set', setNumber: '2/102' })
   const two = await searchCards('Blastoize', db2, { ...noLiveDeps, now: t0 + 1 })
   assert.equal(two.fuzzy, true)
