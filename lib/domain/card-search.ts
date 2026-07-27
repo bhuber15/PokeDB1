@@ -6,7 +6,7 @@ import { searchPokemonCards, extractBestPrice, type PokemonTCGCard } from '@/lib
 import { getSettings } from '@/lib/settings'
 import { usdToGbp } from '@/lib/pricing'
 import { syncMarketPricesForCard, refreshStaleCardmarket } from '@/lib/prices/sync'
-import { similarity } from '@/lib/fuzzy'
+import { normalizeName, similarity } from '@/lib/fuzzy'
 
 // Catalogue searches return up to 100 rows — enough for every printing of a
 // single name (Snorlax has 57) without paginating. The live-API price lookup
@@ -127,13 +127,66 @@ async function pricesFor(rows: Card[], dbc: Db): Promise<Record<number, PriceCac
   return Object.fromEntries(cached.map(p => [p.cardId, p]))
 }
 
+// --- Fuzzy candidate retrieval ---------------------------------------------
+// Primary path: the cards_fts FTS5 trigram index (migration 0025), kept in
+// sync by triggers on `cards`. The query's trigrams OR-ed together retrieve
+// every name sharing at least one trigram, bm25-ranked so the closest names
+// surface first; that small candidate set is then re-scored with
+// similarity(), so FUZZY_THRESHOLD semantics are identical to the full scan.
+// The index tokenizes raw text (it sees the punctuation/spaces that
+// normalizeName strips), so in principle a pair sharing only trigrams that
+// span stripped characters can slip past retrieval — real card names are
+// long enough that this doesn't bite, and the scorer still has the last word.
+
+// Distinct (name, alias) groups to retrieve before re-scoring. Generous
+// headroom over FUZZY_MAX_NAMES for bm25 and similarity() disagreeing about
+// the ordering.
+const FTS_CANDIDATE_LIMIT = 200
+// Bounds MATCH cost for pathological input; 64 trigrams covers a ~66-char
+// query, longer ones are matched on their prefix and re-scored in full.
+const FTS_MAX_QUERY_TRIGRAMS = 64
+
+function trigramMatchExpr(q: string): string {
+  const s = q.toLowerCase()
+  const grams = new Set<string>()
+  for (let i = 0; i + 3 <= s.length && grams.size < FTS_MAX_QUERY_TRIGRAMS; i++) grams.add(s.slice(i, i + 3))
+  return [...grams].map(g => `"${g.replaceAll('"', '""')}"`).join(' OR ')
+}
+
+async function fuzzyCandidates(q: string, dbc: Db, now: number): Promise<CardNameRow[]> {
+  // Below one trigram the scorer can only match by normalized equality
+  // (e.g. "n." → the card "N"), which the index cannot retrieve — scan.
+  if (normalizeName(q).length < 3) return distinctNames(dbc, now)
+  try {
+    return await dbc.all<CardNameRow>(sql`
+      SELECT name, alias_name AS aliasName FROM cards_fts
+      WHERE cards_fts MATCH ${trigramMatchExpr(q)} AND name IS NOT NULL
+      GROUP BY name, alias_name ORDER BY min(rank) LIMIT ${FTS_CANDIDATE_LIMIT}`)
+  } catch (e) {
+    logFtsFallback(dbc, e)
+    return distinctNames(dbc, now)
+  }
+}
+
+// Fleet migrations run after deploys, so "no such table: cards_fts" is a
+// routine (if temporary) tenant state — say so once per Db handle rather than
+// on every fuzzy miss. Anything else is a real bug worth every occurrence.
+const ftsFallbackLogged = new WeakSet<Db>()
+function logFtsFallback(dbc: Db, e: unknown): void {
+  const missingTable = e instanceof Error && e.message.includes('no such table')
+  if (missingTable && ftsFallbackLogged.has(dbc)) return
+  ftsFallbackLogged.add(dbc)
+  console[missingTable ? 'warn' : 'error']('Fuzzy search fell back to the name scan:', e)
+}
+
+// --- Fallback: cached full-name scan ---------------------------------------
+// Serves tenants whose DB predates migration 0025, and sub-trigram queries.
 // The distinct name list is cached per Db handle for 10 minutes: at MTG scale
 // (157k+ cards) the selectDistinct dominates every fuzzy miss (~12s measured),
 // and the list only changes when the catalogue does. Keying the WeakMap by the
 // Db handle keeps tenants isolated — handles are long-lived per tenant
 // (lib/db `tenantDbs`), so entries survive across requests but a name list is
-// never shared between tenants. The durable fix is an FTS5 name index; this
-// cache just keeps misses cheap until then.
+// never shared between tenants.
 const NAME_CACHE_TTL_MS = 10 * 60_000
 type CardNameRow = { name: string; aliasName: string | null }
 const nameCaches = new WeakMap<Db, { names: CardNameRow[]; at: number }>()
@@ -150,11 +203,10 @@ async function distinctNames(dbc: Db, now: number): Promise<CardNameRow[]> {
   return names
 }
 
-// Score every distinct catalogue name (and EN alias, for CJK rows) against
-// the query in memory (no SQLite extension needed on Turso), then pull all
-// printings of the closest few names.
+// Retrieve candidate names (and EN aliases, for CJK rows), score them against
+// the query with similarity(), then pull all printings of the closest few.
 async function searchFuzzy(q: string, dbc: Db, scope: SQL[], now: number): Promise<Card[]> {
-  const names = await distinctNames(dbc, now)
+  const names = await fuzzyCandidates(q, dbc, now)
   const scores = new Map<string, number>()
   for (const { name, aliasName } of names) {
     const score = Math.max(similarity(q, name), aliasName ? similarity(q, aliasName) : 0)

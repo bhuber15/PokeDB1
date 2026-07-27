@@ -46,6 +46,16 @@ test('dump → replay round-trips schema and data, including hostile strings', a
   assert.equal(card.setName, '=EVIL()+1')
   const [cust] = await rdb.select().from(customers)
   assert.equal(cust.name, 'Ünïcødé 🃏')
+
+  // The FTS index itself is never dumped (derived state, and its shadow-table
+  // DDL would collide with CREATE VIRTUAL TABLE on replay) — the restored DB
+  // rebuilds it from content and it must answer queries and pass the
+  // external-content integrity check (rank=1 form; throws on desync).
+  assert.ok(!dump.includes('cards_fts_data'), 'shadow tables must not be dumped')
+  await rdb.run(sql`INSERT INTO cards_fts(cards_fts, rank) VALUES ('integrity-check', 1)`)
+  const hits = await rdb.all<{ name: string }>(
+    sql`SELECT name FROM cards_fts WHERE cards_fts MATCH '"mal" OR "all" OR "lle"'`)
+  assert.ok(hits.some(h => h.name.startsWith("O'Malley")), 'restored FTS index answers queries')
 })
 
 test('replaying a dump onto itself again fails loudly (no silent double-restore)', async () => {

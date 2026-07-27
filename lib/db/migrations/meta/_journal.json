@@ -176,6 +176,13 @@
       "when": 1785011901516,
       "tag": "0024_perf-indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1785178186700,
+      "tag": "0025_cards-fts",
+      "breakpoints": true
     }
   ]
 }
