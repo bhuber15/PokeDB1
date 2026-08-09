@@ -72,6 +72,23 @@ PokeDB is a point-of-sale and inventory system for a UK Pokémon card shop: sell
 - **Day windows are split on purpose:** void eligibility runs on the Europe/London trading day (`lib/trading-day.ts`), while reports/cash-up bucketing stays on UTC days (matching `createdAt` text). During BST the two disagree 23:00–00:00 UTC. Don't "fix" one side to match the other piecemeal — moving reports to London days is a deliberate product decision that must cover cash-up, tiles, ranges and exports together.
 - **Client components never value-import from `lib/domain/` or anything that touches `lib/db`.** That drags the libsql client into the browser bundle, which breaks the dev server in misleading ways (CI smoke saw unrelated API routes 404). `import type` is fine (erased at compile). Constants shared between domain and UI go in dependency-free modules — pattern: `lib/adjustment-reasons.ts`.
 
+## Design principles
+
+- Choose the simplest implementation that fully meets current requirements — no speculative
+  abstractions, configuration, or indirection. Simplicity never excuses breaking a domain rule.
+- Grow the system in layers: thin end-to-end slices on top of a product that already works.
+  `main` must stay shippable for the pilot shop at all times.
+- No compatibility shims or silent fallbacks in application code — remove obsolete paths and
+  fail loudly. Two standing exceptions: schema changes always ship a drizzle migration (tenant
+  DBs are long-lived; deploys never auto-migrate), and till endpoints must keep accepting
+  request shapes the offline sale queue may replay from before a deploy.
+- Lean on dependencies already in the project before writing your own or adding new ones; never
+  assume a library lacks a capability without checking its docs and types. Add a dependency only
+  when it reduces overall complexity — and never one that handles money in floats.
+- Make long-term decisions where they're load-bearing: money, credit ledger, tenancy, migration
+  bookkeeping. Elsewhere a deliberate stopgap is fine when it's explicit and tracked — e.g.
+  wizard-of-oz single-tenant deploys are strategy, not debt.
+
 ## How to work in this repo
 
 - **Match the effort to the task.** Small fixes and tweaks: just make the change with a test. Only use the full plan → implement → review workflow (superpowers skills) for large multi-file features, or when asked.
