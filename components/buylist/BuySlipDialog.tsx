@@ -1,8 +1,9 @@
 'use client'
 import { useState } from 'react'
+import Link from 'next/link'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { formatGBP } from '@/lib/pricing'
 import { printLabelSheet, type LabelData } from '@/components/shared/printLabelSheet'
@@ -13,6 +14,7 @@ export interface BuySlipData {
   at: string // ISO
   method: 'cash' | 'store_credit'
   total: number
+  customerId: number | null
   customerName: string | null
   lines: { cardName: string; condition: string; quantity: number; payPrice: number }[]
 }
@@ -123,6 +125,16 @@ export function BuySlipDialog({ slip, onClose }: { slip: BuySlipData | null; onC
               <span>{formatGBP(slip.total)}</span>
             </div>
             {slip.customerName && <div className="text-muted-foreground">From {slip.customerName}</div>}
+            {/* Trade-in handoff: the credit just posted is spendable right away,
+                so offer the natural next step — ring up their purchase. */}
+            {slip.method === 'store_credit' && slip.customerId != null && (
+              <Link
+                href={`/pos?customerId=${slip.customerId}`}
+                className={buttonVariants({ className: 'w-full' })}
+              >
+                Sell to {slip.customerName ?? 'customer'} — {formatGBP(slip.total)} credit →
+              </Link>
+            )}
           </div>
         )}
         <DialogFooter className="gap-2">

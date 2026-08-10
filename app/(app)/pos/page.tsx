@@ -18,7 +18,7 @@ import {
   readQueue, enqueueSale, removeSale, setConflict, clearConflict, type QueuedSale,
 } from '@/lib/sale-queue'
 import { applySaleToCardResults, applySaleToProductResults, type SoldLine } from '@/lib/pos-stock'
-import type { Card, PriceCache, Product } from '@/lib/db/schema'
+import type { Card, Customer, PriceCache, Product } from '@/lib/db/schema'
 
 interface SearchState {
   card: Card
@@ -77,6 +77,7 @@ export default function POSPage() {
   const [loading, setLoading] = useState(false)
   const [queue, setQueue] = useState<QueuedSale[]>([])
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
+  const [tradeIn, setTradeIn] = useState<{ customer: Customer; balance: number | null } | null>(null)
 
   // Arriving via a link like /pos?q=Pikachu (e.g. the want list's Sell button)
   // runs the search immediately. Timer defers past the effect's sync phase.
@@ -85,6 +86,25 @@ export default function POSPage() {
     if (!q) return
     const t = setTimeout(() => handleSearch(q), 0)
     return () => clearTimeout(t)
+  }, [])
+
+  // Trade-in handoff (/pos?customerId=N from the buy slip): preselect the
+  // seller so checkout starts with them and their just-posted credit. The
+  // param is stripped once consumed — unlike ?q, leaving it would silently
+  // re-attach this customer to whatever sale a later reload rings up.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const id = Number(params.get('customerId'))
+    if (!Number.isInteger(id) || id < 1) return
+    params.delete('customerId')
+    const rest = params.toString()
+    window.history.replaceState(null, '', rest ? `${window.location.pathname}?${rest}` : window.location.pathname)
+    fetch(`/api/customers/${id}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then((data: { customer: Customer; balance: number } | null) => {
+        if (data?.customer) setTradeIn({ customer: data.customer, balance: data.balance ?? null })
+      })
+      .catch(() => {})
   }, [])
 
   // Replay queued offline sales: on load, when the browser comes back
@@ -266,6 +286,7 @@ export default function POSPage() {
       applySaleToResults(body.items) // goods left the till even though the POST is queued
       setCart([])
       setCheckoutOpen(false)
+      setTradeIn(null)
       toast.info('Offline — sale queued, will send automatically when back online')
       return
     }
@@ -290,6 +311,7 @@ export default function POSPage() {
       applySaleToResults(body.items)
       setCart([])
       setCheckoutOpen(false)
+      setTradeIn(null) // trade-in interaction complete
       toast.success(
         changeDue != null && changeDue > 0
           ? `Sale complete — ${formatGBP(total)} · Change ${formatGBP(changeDue)}`
@@ -345,6 +367,21 @@ export default function POSPage() {
         ))}
       </div>
       <div>
+        {tradeIn && (
+          <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-sm">
+            <span className="truncate">
+              Selling to <span className="font-medium">{tradeIn.customer.name}</span>
+              {tradeIn.balance != null && <> · {formatGBP(tradeIn.balance)} credit</>}
+            </span>
+            <button
+              onClick={() => setTradeIn(null)}
+              aria-label="Clear trade-in customer"
+              className="shrink-0 text-muted-foreground hover:text-destructive"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         <SaleQueue
           queue={queue}
           onRetry={uuid => {
@@ -368,6 +405,7 @@ export default function POSPage() {
         items={cart}
         onClose={() => setCheckoutOpen(false)}
         onConfirm={handleCheckoutConfirm}
+        initialCustomer={tradeIn?.customer ?? null}
       />
       <ReceiptDialog receipt={receipt} onClose={() => setReceipt(null)} />
     </div>

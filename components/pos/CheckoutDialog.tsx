@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,6 +35,9 @@ interface CheckoutDialogProps {
   items: CartItem[]
   onClose: () => void
   onConfirm: (opts: CheckoutConfirmOptions) => Promise<void>
+  // Preselected customer for the trade-in handoff (/pos?customerId=N). The
+  // POS page owns this; clearing the banner there stops the preselection.
+  initialCustomer?: Customer | null
 }
 
 const QUICK_TENDER = [500, 1000, 2000, 5000] // pence: £5 £10 £20 £50
@@ -44,7 +47,7 @@ interface SplitRow {
   amount: string // pounds, as typed
 }
 
-export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDialogProps) {
+export function CheckoutDialog({ open, items, onClose, onConfirm, initialCustomer }: CheckoutDialogProps) {
   const { vatScheme } = useSettings()
   const [method, setMethod] = useState('cash')
   const [splitMode, setSplitMode] = useState(false)
@@ -55,8 +58,17 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
   const [discount, setDiscount] = useState('')
   const [received, setReceived] = useState('')
   const [loading, setLoading] = useState(false)
-  const [customer, setCustomer] = useState<Customer | null>(null)
-  const [customerBalance, setCustomerBalance] = useState<number | null>(null)
+  // 'unset' = staff haven't touched the picker this open-cycle, so the
+  // trade-in handoff customer (if any) applies; picking or clearing overrides
+  // it until the dialog resets. Derived, so no state-syncing effect is needed.
+  const [customerOverride, setCustomerOverride] = useState<Customer | null | 'unset'>('unset')
+  const customer = customerOverride === 'unset' ? initialCustomer ?? null : customerOverride
+  // Balance is derived from the last fetch result so a slow response for a
+  // previously selected customer can never show against the current one
+  // (same pattern as CustomerPicker).
+  const [balanceInfo, setBalanceInfo] = useState<{ customerId: number; balance: number | null } | null>(null)
+  const customerBalance = customer != null && balanceInfo?.customerId === customer.id
+    ? balanceInfo.balance : null
 
   const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0)
   // Same arithmetic as createSale — keeps expectedTotal in agreement with the server
@@ -90,17 +102,35 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
     || tenderShort
     || splitBlocked
 
-  // When CustomerPicker calls onSelect, also fetch the balance so we can
-  // access it here for the balance guard. CustomerPicker shows the balance
-  // in its own UI; we also need it to check sufficiency.
-  function handleCustomerSelect(c: Customer | null) {
-    setCustomer(c)
-    setCustomerBalance(null)
-    if (c) {
-      fetch(`/api/customers/${c.id}`)
-        .then(r => r.json())
-        .then((data: { balance: number }) => setCustomerBalance(data.balance ?? null))
-        .catch(() => setCustomerBalance(null))
+  // Fetch the balance whichever way a customer arrives (picker or trade-in
+  // handoff). CustomerPicker shows the balance in its own UI; we also need it
+  // here for the sufficiency guard and the apply-credit shortcut.
+  useEffect(() => {
+    const id = customer?.id
+    if (id == null) return
+    let stale = false
+    fetch(`/api/customers/${id}`)
+      .then(r => r.json())
+      .then((data: { balance: number }) => { if (!stale) setBalanceInfo({ customerId: id, balance: data.balance ?? null }) })
+      .catch(() => { if (!stale) setBalanceInfo({ customerId: id, balance: null }) })
+    return () => { stale = true }
+  }, [customer?.id])
+
+  // One-tap trade-in settlement: cover as much of the total as the balance
+  // allows; any remainder becomes a card line staff can retender. Amounts are
+  // display strings here — the server re-verifies both balance and sum.
+  function applyStoreCredit() {
+    if (customerBalance == null || customerBalance <= 0 || total <= 0) return
+    const credit = Math.min(customerBalance, total)
+    if (credit >= total) {
+      setSplitMode(false)
+      setMethod('store_credit')
+    } else {
+      setSplitMode(true)
+      setSplitRows([
+        { method: 'store_credit', amount: (credit / 100).toFixed(2) },
+        { method: 'card', amount: ((total - credit) / 100).toFixed(2) },
+      ])
     }
   }
 
@@ -120,8 +150,7 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
     setMethod('cash')
     setSplitMode(false)
     setSplitRows([{ method: 'cash', amount: '' }, { method: 'card', amount: '' }])
-    setCustomer(null)
-    setCustomerBalance(null)
+    setCustomerOverride('unset')
   }
 
   async function confirm() {
@@ -149,8 +178,7 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
   }
 
   function handleClose() {
-    setCustomer(null)
-    setCustomerBalance(null)
+    setCustomerOverride('unset')
     onClose()
   }
 
@@ -297,9 +325,15 @@ export function CheckoutDialog({ open, items, onClose, onConfirm }: CheckoutDial
 
           <div className="space-y-2">
             <Label>Customer {usesStoreCredit ? '' : <span className="text-muted-foreground font-normal">(optional)</span>}</Label>
-            <CustomerPicker onSelect={handleCustomerSelect} selected={customer} />
+            <CustomerPicker onSelect={c => setCustomerOverride(c)} selected={customer} />
             {usesStoreCredit && !customer && (
               <p className="text-xs text-muted-foreground">Select a customer to pay with their store credit.</p>
+            )}
+            {customer && !usesStoreCredit && customerBalance != null && customerBalance > 0 && total > 0 && (
+              <Button type="button" variant="outline" size="sm" className="w-full" onClick={applyStoreCredit}>
+                Apply store credit — {formatGBP(Math.min(customerBalance, total))}
+                {customerBalance < total ? ', rest by card' : ''}
+              </Button>
             )}
             {!usesStoreCredit && !customer && (
               <p className="text-xs text-muted-foreground">Attach a customer to record this sale in their purchase history.</p>
