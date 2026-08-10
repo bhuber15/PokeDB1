@@ -66,6 +66,7 @@ export function BuyCart({ lines, onRemove, onClear }: BuyCartProps) {
         at: new Date().toISOString(),
         method,
         total: confirmedTotal,
+        customerId: customer?.id ?? null,
         customerName: customer?.name ?? null,
         lines: lines.map(l => ({
           cardName: l.cardName,

@@ -5,6 +5,7 @@ import { createTestDb, seedBase } from '../db/test-helpers'
 import * as schema from '../db/schema'
 import { createSale, getSaleWithCustomer, type CreateSaleInput } from './sales'
 import { updateSettings } from '../settings'
+import { createBuy } from './buys'
 import { createRefund } from './refunds'
 import { DomainError } from './errors'
 import type { Db } from '../db'
@@ -138,6 +139,36 @@ test('INSUFFICIENT_CREDIT rolls back and restores stock', async () => {
   )
   assert.equal(await stockOf(1), 5)
   assert.deepEqual(await dbc.select().from(schema.sales), [])
+})
+
+test('trade-in flow: credit from a buy is spendable on a sale in the same interaction', async () => {
+  await dbc.insert(schema.customers).values({ id: 1, name: 'Dave' })
+  // Customer trades in a card for £6.50 of store credit…
+  const { buyId } = await createBuy({
+    staffId: 1,
+    items: [{ cardId: 1, condition: 'LP', quantity: 1, payPrice: 650 }],
+    method: 'store_credit',
+    customerId: 1,
+  }, dbc)
+  // …and puts it straight toward an £8.50 card, remainder on card.
+  const { saleId, total } = await createSale({
+    ...base,
+    paymentMethod: undefined,
+    payments: [{ method: 'store_credit', amount: 650 }, { method: 'card', amount: 200 }],
+    customerId: 1,
+    items: [{ inventoryItemId: 1, quantity: 1 }],
+    expectedTotal: 850,
+  }, dbc)
+  assert.equal(total, 850)
+  const ledger = await dbc.select().from(schema.creditLedger).where(eq(schema.creditLedger.customerId, 1))
+  assert.equal(ledger.length, 2)
+  assert.equal(ledger[0].delta, 650)
+  assert.equal(ledger[0].refType, 'buy')
+  assert.equal(ledger[0].refId, buyId)
+  assert.equal(ledger[1].delta, -650)
+  assert.equal(ledger[1].refType, 'sale')
+  assert.equal(ledger[1].refId, saleId)
+  assert.equal(ledger.reduce((s, r) => s + r.delta, 0), 0) // balance fully spent
 })
 
 test('VAT scheme "standard" adds 20% VAT on the post-discount subtotal', async () => {

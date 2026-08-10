@@ -28,8 +28,9 @@ test('want list lives under Customers: add a want, see it cross-customer, Sell l
   await page.getByRole('button', { name: 'Create customer' }).click()
   await expect(page.getByRole('cell', { name: 'Ash Ketchum' })).toBeVisible()
 
-  // Add a want for the seeded, in-stock Pikachu card
-  await page.getByRole('link', { name: 'View' }).click()
+  // Add a want for the seeded, in-stock Pikachu card. Scope View to Ash's
+  // row — other specs (tradein) put more customers in this shared DB.
+  await page.getByRole('row', { name: /Ash Ketchum/ }).getByRole('link', { name: 'View' }).click()
   await page.getByRole('button', { name: 'Search card' }).click()
   await page.getByPlaceholder(/search card name/i).fill('Pikachu')
   await page.getByRole('button', { name: 'Search', exact: true }).click()
