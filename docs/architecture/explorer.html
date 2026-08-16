@@ -1,0 +1,860 @@
+<title>How PokeDB Works</title>
+
+<script type="application/json" id="map-data">{"repo":"pokedb","title":"How PokeDB Works","subtitle":"six things the system does, and the reason behind every guard in the way","coverage":"47 parts across 6 areas, with 20 more inside them","audienceNote":"What it does = what you'd say to a shop owner. How it's built = what you'd say to a developer.","thesis":["PokeDB is a till and stock system for a UK card shop. It sells cards, buys them from customers, keeps a catalogue of about a quarter of a million cards across four games, tracks store credit, and can run many shops at once from one codebase.","Pick an area along the top. Each one is a separate story with its own diagram, its own walkthrough, and its own cast of parts. ==Nothing here is a summary of the code — it is the reasons behind it==, the things you cannot work out by reading any single file.","The one idea that explains most of the system: ==the hard problems were almost never about pricing==. They were about two things happening at the same moment, and about what a fraction of a penny does when you round it. Nearly every guard exists because of one of those two."],"howToRead":["==Every part has two descriptions.== \"What it does\" is plain English — that is the version you'd give a shop owner, an investor, or a friend. \"How it's built\" names the actual file and mechanism — that is the version you'd give a developer. Some parts also have a \"Condition\" tab, which is an honest note about what is unfinished or deliberately odd.","In the picture: ==height of the tick marks== in a box's corner is how many separate jobs it does. A ==broken outline== means it runs in the customer-facing browser, which is the one place the server assumes could be lying. A ==red box== is one that exists to survive a race or a rounding penny.","Lines only appear for the box you click, because showing all of them at once is unreadable. The side panel also lists every connection in words. ==Run it== walks the whole story one step at a time with a plain-English caption."],"stats":[{"label":"money","value":"integer pence, no floats"},{"label":"api routes","value":"55"},{"label":"domain modules","value":"19"},{"label":"tables","value":"21"},{"label":"migrations","value":"26 · at 0025"},{"label":"test files","value":"88"},{"label":"mapped","value":"47 parts · 6 areas"}],"views":[{"id":"sale","label":"Selling a card","blurb":"from the shelf to the ledger","intro":"A customer buys a card. This is the path that money takes, and every check it passes on the way. The thing to notice: the till never sends a price — the server works out every price itself and then checks whether the till agreed.","groups":[{"label":"the shop counter","nodes":["till","queue"]},{"label":"getting in the door","nodes":["route"]},{"label":"working out the money","nodes":["createSale","pricing","settings","pricecache","totals"]},{"label":"making it true","nodes":["tx","inventory","saletables","ledger","receipt"]}],"flow":[{"node":"till","note":"A card is scanned into the basket. The screen shows a total so the cashier can say a number out loud — but that number is a claim, not an instruction."},{"node":"route","note":"The sale is posted as a small piece of JSON: which stock items, how many, how it was paid, what the till expected to charge. No prices are sent."},{"node":"route","note":"Four checks, all before any logic runs: wrapped so nothing leaks a stack trace, the shop decided from the web address, the shape validated, the staff member confirmed as allowed to take money."},{"node":"createSale","note":"The server takes over. First question: has this exact sale already been recorded? A replayed offline sale stops here and hands back the original."},{"node":"settings","note":"Read the shop's dials — margin, which price source to quote, VAT scheme, condition ladder."},{"node":"pricing","note":"Each line is priced for real: a manual override if there is one, otherwise market price adjusted for condition and multiplied by margin, rounded up."},{"node":"pricecache","note":"The market number comes from the cache. A cached zero means no data, not free."},{"node":"totals","note":"Discount is clamped, VAT applied per the shop's scheme. Under the second-hand margin scheme the customer total is unchanged — what the shop owes is worked out separately."},{"node":"createSale","note":"Now the check that matters: does the server's total match what the till expected? If not, the sale stops and reports the real number."},{"node":"tx","note":"One transaction opens. From here it is all of it or none of it."},{"node":"inventory","note":"Stock comes down — but only if there is enough, checked in the same statement that takes it. Two tills selling the last copy cannot both win."},{"node":"ledger","note":"If store credit is being spent, the balance is summed and checked inside the transaction, then a negative entry is appended."},{"node":"saletables","note":"The sale, its lines with prices and costs frozen, and one row per tender. Committed together."},{"node":"receipt","note":"Printed from the stored sale, not from the screen. The customer leaves with the shop's record, not the till's guess."}],"run":"Run the sale"},{"id":"back","label":"Money back out","blurb":"refunds, voids, end of day","intro":"Money leaving the till again. A refund is a customer transaction; a void is a staff mistake being erased. They look similar and are deliberately kept apart, because the arithmetic of a refund is delicate and the arithmetic of a void is not.","groups":[{"label":"the record","nodes":["saletables"]},{"label":"reversing a sale","nodes":["refund","void","claim","tradingday"]},{"label":"what it touches","nodes":["inventory","ledger"]},{"label":"end of day","nodes":["cashup","reports"]}],"flow":[{"node":"saletables","note":"A customer comes back with one card out of the five they bought. The original sale is looked up — the prices and costs on it were frozen at the moment of sale."},{"node":"refund","note":"How much is left to refund on that line? Original quantity, minus everything already refunded, minus anything claimed by an earlier line in this same request."},{"node":"claim","note":"Before anything is reversed, the sale is claimed inside the transaction. If a void lands at the same moment, one of the two loses here and rolls back."},{"node":"refund","note":"VAT and discount are reversed in proportion to what was actually charged — then capped, so the total ever refunded can never exceed what the sale took."},{"node":"inventory","note":"The card goes back on the shelf."},{"node":"ledger","note":"If the refund is store credit, a positive entry is appended. Nothing is ever edited — a balance is the sum of its history."},{"node":"void","note":"A void is the other path: a full reversal of a mis-ring, same day only, and only if nothing has been refunded already."},{"node":"tradingday","note":"Same day means the same London day, not the same UTC day. In summer those disagree between 11pm and midnight, and getting it wrong would stop a cashier undoing their own mistake."},{"node":"cashup","note":"At close, the system works out what should be in the drawer and someone counts what is. The difference is recorded, whatever it is."},{"node":"reports","note":"Every total excludes voided sales and nets off refunds. Exports use the same queries as the screen, so the two cannot disagree."}],"run":"Run a refund"},{"id":"intake","label":"Buying cards in","blurb":"the buylist counter","intro":"A customer sells cards to the shop. This is the other half of the business and the one with the most obvious fraud risk, because a staff member decides what to pay — so there is a hard ceiling on what they can offer without an admin.","groups":[{"label":"the counter","nodes":["buypage","createBuy"]},{"label":"what it checks","nodes":["settings","pricecache","customers"]},{"label":"what it writes","nodes":["buytables","inventory","ledger"]},{"label":"afterwards","nodes":["wants"]}],"flow":[{"node":"buypage","note":"Cards are searched, graded by condition, and an offer is entered per card. The screen suggests a price; the person at the counter can haggle."},{"node":"createBuy","note":"The server prices every line itself from the cache, exactly as the till does — the screen's numbers are never trusted."},{"node":"pricecache","note":"The reference is the condition-adjusted market price, not the mint price. Offering full mint money for a battered card is the mistake being prevented."},{"node":"createBuy","note":"The ceiling: staff cannot pay more than 110% of that. Over it, the buy is refused and names the maximum. An admin can override; that gap is where buylist fraud lives."},{"node":"inventory","note":"The cards join stock. If the shop already holds that card in that condition, the row is topped up and the cost blended, rather than a second row appearing."},{"node":"buytables","note":"The buy is recorded with the market price at the time stamped on every line — so a suspicious purchase can be judged later against what the card was actually worth then."},{"node":"ledger","note":"If the customer took store credit instead of cash, a positive entry is appended — the same ledger the till spends from."},{"node":"wants","note":"Anything a customer has asked to be told about is now in stock, and shows up as ready to sell."}],"run":"Run a buy"},{"id":"catalogue","label":"The card catalogue","blurb":"a quarter of a million cards","intro":"Every card the shop can sell has to exist in the system first, with a price attached. Four games, five outside data sources, and a nightly sweep that has to be safe to run twice. This is the part with the most moving pieces and the least danger — nothing here touches money directly.","groups":[{"label":"which games","nodes":["gamesreg","sources"]},{"label":"getting the cards in","nodes":["apis","sweep","cronprices","syncprices"]},{"label":"where they live","nodes":["cardstable","pricecache"]},{"label":"finding one","nodes":["search","browse"]}],"flow":[{"node":"gamesreg","note":"The shop turns games on in Settings. A shop that only sells Pokémon never sees, searches, or downloads anything else."},{"node":"sources","note":"Each game has exactly one place its cards come from. Adding a fifth game is mostly filling in this one table of wiring."},{"node":"apis","note":"The outside world: five services, each with its own quirks — one needs a browser-like identifier or it refuses, one returns prices as text where another returns numbers."},{"node":"sweep","note":"Cards are written in batches, keyed on the source's own id, so running the sweep twice changes nothing. That matters: it runs every night."},{"node":"cardstable","note":"One row per differently-priced printing. A foil and a non-foil of the same card are two rows, because they are two prices."},{"node":"pricecache","note":"Prices arrive in dollars or euros and are converted to pence right here, so no other part of the system ever handles a foreign currency."},{"node":"syncprices","note":"Price history is only kept for cards someone could care about — in stock, or flagged high value. Ninety days of the full catalogue would be millions of useless rows."},{"node":"search","note":"Searching goes local first, then tries close-spelling matches, then asks the live service for cards newer than the last sweep."}],"run":"Run the sweep"},{"id":"platform","label":"Running many shops","blurb":"one codebase, separate shops","intro":"PokeDB can run as one shop or as a service with many. The decision that shapes everything: each shop gets its own separate database. Nothing is shared, so no bug can ever show one shop another's takings.","groups":[{"label":"becoming a shop","nodes":["signup","provision","setupflow"]},{"label":"the shop's own data","nodes":["tenantdb","registry"]},{"label":"every request","nodes":["proxyn","plans"]},{"label":"paying","nodes":["stripe"]},{"label":"keeping it running","nodes":["fanout","migrate","backup","admin"]}],"flow":[{"node":"signup","note":"A shop signs up and picks a name. That name becomes their web address."},{"node":"provision","note":"A brand new database is created just for them, the full structure is built inside it, and a welcome email goes out. Run it twice and you still get one shop."},{"node":"tenantdb","note":"Their cards, sales, staff and customers live here and nowhere else. There is no shared table with a shop column in it."},{"node":"setupflow","note":"The welcome link lets the owner set their password and their own PIN in one step, then drops them into a working till."},{"node":"proxyn","note":"From now on, every single request works out which shop it is from the web address — before reading anything the request itself claims."},{"node":"registry","note":"The lookup goes to a separate registry that knows every shop, its plan, and whether it is paid up. Answers are cached for a minute."},{"node":"stripe","note":"Payment events drive the shop's status. Stop paying and the till locks; the shop's data is untouched, and the app says so plainly rather than erroring."},{"node":"fanout","note":"Background jobs work through the fleet a few shops at a time, oldest first, on a timer. A shop that fails still advances the queue — one broken shop must never stop the rest."},{"node":"backup","note":"Every shop gets its own compressed dump, on a schedule, restorable independently of the hosting provider."}],"run":"Run a signup"},{"id":"offline","label":"When the wifi dies","blurb":"the shop keeps trading","intro":"A card shop on a Saturday cannot stop selling because the broadband dropped. Sales that fail to reach the server are held in the browser and sent again later — which creates the risk of charging someone twice, and most of this area exists to make that impossible.","groups":[{"label":"at the counter","nodes":["till","queue","conflict"]},{"label":"catching up","nodes":["replay"]},{"label":"the safety net","nodes":["route","createSale","saletables"]}],"flow":[{"node":"till","note":"A sale is rung up as normal. Every sale is given a unique ticket number by the till before it is sent — this is the thing that makes everything else safe."},{"node":"queue","note":"The network is down. The sale is not lost and not failed: it goes into a queue in the browser's own storage, and the cashier carries on."},{"node":"replay","note":"The queue retries when the connection returns, when the browser says it is back online, and every thirty seconds regardless."},{"node":"route","note":"The old request shape is still accepted, deliberately. A sale queued before an update can come back after it, and must still work."},{"node":"createSale","note":"The ticket number is checked first. If that sale is already recorded, the original is handed straight back — no second charge, no second card off the shelf."},{"node":"saletables","note":"And if two retries race each other, one of them loses on a uniqueness rule in the database and is handed the winner's sale instead of an error."},{"node":"conflict","note":"A real rejection — the card sold out while you were offline — is never retried automatically. It is flagged for a human, because only a human can decide what to do."}],"run":"Run the outage"}],"nodes":[{"id":"till","label":"Till screen","kind":"screen","layers":2,"file":"components/pos/","sub":"runs in the browser","pos":{"sale":[0,0],"offline":[0,0]},"what":["The screen the cashier actually touches. Cards get searched, added to a basket, discounted, and paid for — cash, card, store credit, or a split across several.","It shows a running total so the cashier can tell the customer a number. But ==that total is a prediction, not a decision==. When the sale is sent, the till says which items and how much was tendered — never what anything costs."],"how":["React client components under `components/pos/`. The total shown comes from `computeSaleTotals` in `lib/pricing.ts` — ==the same function the server uses==, which is why the two normally agree.","This is where the client-bundle rule in `AGENTS.md` bites: client components may never value-import anything under `lib/domain/`, because that drags the database client into the browser and breaks the dev server in ways that look like unrelated pages returning 404."],"condition":["Shared code is deliberately split into dependency-free modules (`lib/pricing.ts`, `lib/trading-day.ts`, `lib/adjustment-reasons.ts`) so both sides can use it. Nothing stops a future import crossing that line except a code review."]},{"id":"queue","label":"Offline queue","kind":"screen","layers":1,"file":"lib/sale-queue.ts","sub":"when the wifi dies","pos":{"sale":[0,1.3],"offline":[0,1.5]},"what":["If the network drops mid-sale, the sale does not fail — it goes into a queue in the browser's own storage and is sent again when the connection comes back. ==The shop keeps trading==.","Only genuine network failures are queued. If the server answers and says no, that is a real answer and a human deals with it."],"how":["`localStorage`-backed under the key `pokedb.saleQueue`. Each entry carries a `clientUuid` generated at the till, which is what makes replay safe.","A corrupt entry returns an empty queue rather than throwing — a broken blob of JSON must never take the till down. Storage is injectable so tests run without a browser."],"condition":["This is why the sales endpoint must keep accepting old request shapes. `AGENTS.md` names it as one of only two standing exceptions to the no-compatibility-shims rule."]},{"id":"replay","label":"Catching up","kind":"screen","layers":2,"file":"app/(app)/pos/page.tsx","sub":"the retry loop","pos":{"offline":[1,0.8]},"what":["The part that empties the queue. It tries when the page loads, when the browser announces the connection is back, and every thirty seconds anyway — because browsers lie about being online.","Anything the server definitely rejected is skipped rather than retried forever."],"how":["A loop in the POS page: it walks `readQueue()` filtered to entries without a conflict, re-posts each, and removes the ones that succeed. Driven by a timer, an `online` event listener, and a kick when staff resolve a conflict by hand.","A 401 breaks the loop rather than dropping the sale — the cashier has been logged out, and the queue survives to replay after they sign back in."]},{"id":"conflict","label":"Needs a human","kind":"screen","layers":1,"file":"lib/sale-queue.ts","sub":"never auto-retried","pos":{"offline":[1,2.4]},"what":["Sometimes the answer is a real no: the last copy sold in the shop while the card reader was offline, or a price changed underneath. ==Retrying that forever would never help==.","Those sales are marked and shown to staff, who decide — re-ring it at the new price, or drop it. Nothing is silently discarded and nothing is silently retried."],"how":["`setConflict` stamps the entry with the server's error code (`INSUFFICIENT_STOCK`, `PRICE_CHANGED`); the replay loop skips anything carrying one. `clearConflict` puts it back in the queue when staff choose to retry."]},{"id":"route","label":"POST /api/sales","kind":"route","layers":4,"file":"app/api/sales/route.ts","sub":"one of 55 endpoints","pos":{"sale":[1,0],"offline":[2,0]},"what":["The door. A sale arrives here as a small piece of JSON: which stock items, how many, how the customer paid, and what the till thinks the total is.","The endpoint itself does ==almost nothing==. It opens the right shop's database, checks who is asking, checks the shape of what was sent, and hands the whole thing to the part that knows the rules."],"how":["Thin by policy: `AGENTS.md` requires endpoints to delegate to `lib/domain/` rather than hold logic. This one is 55 lines and most of that is the schema.","Every endpoint is wrapped in `guarded()` and validates its body with a zod schema through `parseBody()`. New endpoints must do both."],"children":[{"id":"guarded","label":"Route guard","sub":"guarded()","layers":1,"col":0,"row":0,"what":["A wrapper around every endpoint, so ==the shop never sees a stack trace==. Expected failures come back as a clean message with the right status code; anything unexpected is reported to error tracking and becomes a plain 500."],"how":["`guarded()` catches, maps `DomainError` to its status, otherwise reports to Sentry and returns a generic 500. The same file holds the cron secret check, which ==fails closed==: with no secret configured, nothing is authorised."]},{"id":"tenant","label":"Which shop","sub":"getTenantDb()","layers":1,"col":1,"row":0,"what":["When PokeDB runs many shops, ==the shop is decided by the web address==, before any of the request body is read. A shop cannot ask for another shop's data by putting an id in the JSON."],"how":["Endpoints call `await getTenantDb()` and thread that handle through every call. Importing the shared database singleton inside an endpoint is a bug: in multi-shop mode it ==throws on purpose==, and `tests/tenancy-guard.test.ts` fails the build if an endpoint does it."]},{"id":"schema","label":"Shape check","sub":"parseBody()","layers":1,"col":0,"row":1,"what":["Wrong types, missing fields and more than four payment lines are rejected before any logic runs. This catches malformed requests, not wrong ones — a well-formed request to sell stock that doesn't exist gets through here and is stopped later."],"how":["A zod schema per endpoint. For sales: integer ids and quantities, payment methods from a fixed list, amounts as positive integers in pence, at most four payment lines. Note what is missing from the shape: ==there is nowhere to put a price==."]},{"id":"session","label":"Who is asking","sub":"requireTransactingStaff()","layers":1,"col":1,"row":1,"what":["Staff sign in with a PIN, the owner with a password. Taking money needs an active staff session, and the staff member's id is stamped on the sale, so every transaction has a name against it."],"how":["iron-session cookies. Roles are `admin` and `staff`. PINs are bcrypt-hashed in the `staff` table; repeated bad PINs are rate-limited by `lib/domain/auth-lockout.ts`."]}]},{"id":"createSale","label":"createSale","kind":"logic","layers":6,"file":"lib/domain/sales.ts","sub":"the only place a sale is made","pos":{"sale":[2,0],"offline":[3,0]},"what":["The heart of the till. Everything a sale needs to be true passes through this one function, and ==there is no other way to make a sale==.","It works out the real price of every line itself, applies the shop's VAT scheme, checks its own answer against what the till expected, and only then opens a transaction to make any of it real.","The order of those steps is deliberate. Prices are computed before the total is checked, so a genuine price change reports itself as a price change instead of hiding behind some other error."],"how":["235 lines, one exported entry point, six distinct stages. Its test file is the largest in the domain layer.","Takes an optional database handle so tests run against an in-memory database, and throws `DomainError(code, message)` for every expected failure so the endpoint wrapper can map it to a status code.","Returns `{ saleId, total, marginNoCostCount }` — that last count is how the till knows to warn about margin-scheme items with no cost recorded."],"children":[{"id":"cs-shape","label":"Shape rules","col":0,"row":0,"layers":1,"what":["Exactly one of a single payment or a split — ==never both, never neither==. At most four payment lines, at most one store-credit line among them.","Paying with store credit without naming a customer is refused here: credit belongs to a person, and an anonymous deduction would have nowhere to come from."]},{"id":"cs-idem","label":"Already done?","col":1,"row":0,"layers":1,"accent":true,"what":["If the request carries a ticket number that has been seen before, the original sale is handed straight back. ==A replayed offline sale never charges twice or takes stock twice.==","This runs before anything else, so a replay costs one query and stops."]},{"id":"cs-price","label":"Real prices","col":2,"row":0,"layers":2,"what":["Every line is priced from the database: a manual override if the shop set one, otherwise market price adjusted for condition and multiplied by margin.","A line with no price at all is a hard stop rather than a free card."]},{"id":"cs-vat","label":"VAT","col":0,"row":1,"layers":2,"what":["Discount first, then VAT according to the shop's scheme: none, standard 20% on top, or the second-hand margin scheme where VAT is already inside the price.","Under the margin scheme the customer total is identical to no-VAT. What changes is what the shop owes, computed from cost snapshots, ==server-side only==."]},{"id":"cs-expect","label":"Do we agree?","col":1,"row":1,"layers":1,"accent":true,"what":["The server's total is compared with the number the till was showing. If they differ, the sale stops and reports the real total.","This is the whole reason the till is allowed to compute a total at all: it is a claim to be checked, not an instruction to be followed."]},{"id":"cs-sum","label":"Payments add up","col":2,"row":1,"layers":1,"what":["A split payment must sum to exactly the total. Checked ==after== the total check, so genuine price drift reports itself as price drift rather than as bad arithmetic."]}]},{"id":"pricing","label":"Price maths","kind":"pure","layers":3,"file":"lib/pricing.ts","sub":"pure, no database","pos":{"sale":[3,-2]},"what":["How a number on a card becomes a number on a receipt. Market price, adjusted for how beaten-up the card is, multiplied by the shop's margin, rounded up.","Two rounding rules that look small and are not. A sell price rounds ==up==, a buy-in offer rounds ==down== — the shop never loses a penny to arithmetic in either direction. And a condition-adjusted price is floored at 1p, because a penny card rounding to zero would slip past the no-price guard and sell for free."],"how":["No database imports at all, which is what lets the till screen use the same functions.","`conditionPct` is deliberately tolerant: an unknown condition or an out-of-range value prices at ==full market==, never a silent discount. Bad data must cost the shop nothing.","`computeMarginVat` spreads a discount across lines by value using largest-remainder allocation, so integer pence sum to exactly the discount. Each line's margin floors at zero — a loss on one card cannot offset another, because pooling is only permitted under HMRC's Global Accounting Scheme, which is not implemented.","`parsePounds` is the only pounds-to-pence conversion in the codebase."],"condition":["`computeMarginVat` takes cost data and must never be imported by a client component — costs stay out of the browser. Nothing enforces that mechanically beyond the general client-bundle rule."]},{"id":"settings","label":"Shop settings","kind":"table","layers":2,"file":"lib/settings.ts","sub":"one row","pos":{"sale":[3,-3],"intake":[2,-2.6]},"what":["The dials each shop can turn: margin, which price source to quote from, VAT scheme, what to do about margin-scheme items with no cost, and the condition ladder — how much less a played card is worth than a mint one.","Defaults are conservative. VAT scheme starts at none, and the condition ladder starts at 100% across the board, meaning condition pricing is off until a shop deliberately turns it on."],"how":["A single settings row read through `getSettings(dbc)`. The recommended ladder (100/85/70/50/35) is offered as a preset in the Settings screen and is ==never a database default==.","This used to fail quietly. A missing settings row fell back to defaults silently, and a shop demo in July 2026 showed the wrong behaviour for an hour because a migration had not been applied and nobody could see it. It now fails loudly."]},{"id":"pricecache","label":"price_cache","kind":"table","layers":3,"file":"lib/prices/sync.ts","sub":"what the world says a card is worth","pos":{"sale":[4,-2],"intake":[2,-1.5],"catalogue":[3,1.6]},"what":["Market prices pulled in from outside and stored in pence. This is the number every sell price and every buy-in offer is built from.","A cached zero is ==not a price==. One of the sources emits 0 for cards it has no data on, so a zero is treated as missing and the other source gets to answer. Without that, a £0 quote would leak straight into the till."],"how":["Refreshed by a nightly job, plus an on-demand refresh when the buylist prices a stale card. Foreign currency is converted at configured rates.","`pickMarketSource` and `marketPriceSyncedAt` must always agree about which source won — they share one implementation for exactly that reason."],"condition":["Currency rates are settings, not live rates. That is a deliberate choice: a stable rate is auditable, a live rate would make yesterday's prices impossible to reproduce."]},{"id":"totals","label":"Totals + VAT","kind":"pure","layers":2,"file":"lib/pricing.ts","sub":"computeSaleTotals","pos":{"sale":[3,-1]},"what":["Turns a pile of line prices into the number the customer pays. Discount is clamped so it can never exceed the subtotal, and VAT is added only under the standard scheme.","Under the second-hand margin scheme the customer total is ==exactly the same as if there were no VAT at all==, because the VAT is already inside the price. What differs is what the shop owes, worked out separately from cost data the customer never sees."],"how":["One function used by both the till and the server, which is what makes the expected-total check meaningful rather than a coincidence.","The VAT rate is defined once and the margin divisor is derived from it, so a rate change is a single edit and the two cannot drift apart."]},{"id":"tx","label":"The transaction","kind":"logic","layers":4,"accent":true,"file":"lib/domain/sales.ts","sub":"all of it, or none of it","pos":{"sale":[3,0]},"what":["Everything that actually changes happens inside one transaction. Stock comes down, store credit is checked and spent, the sale and its lines and its payments are written. ==If any part fails, none of it happened==.","Two guards in here exist purely because two tills can be used at once. Stock is decremented with a condition attached — take one only if there is at least one — so stock can never go negative even if two cashiers sell the last copy at the same instant. And the customer's credit balance is checked ==inside== the transaction, not before it, so two simultaneous spends cannot both see the same balance and both be allowed."],"how":["`UPDATE … SET quantity = quantity - n WHERE id = ? AND quantity >= n RETURNING id` — an empty return means someone else got there first, and the whole thing rolls back.","The credit check is a `SUM(delta)` over the ledger inside the same transaction, compared against the credit portion of the payment — on a split, the rest of the money is arriving by other means and is not the ledger's problem.","If two replays of the same queued sale race, the loser's insert hits the unique index on the ticket number; the catch block looks up the winner's sale and hands that back instead of erroring."],"children":[{"id":"tx-stock","label":"Stock down","col":0,"row":0,"layers":1,"accent":true,"what":["A conditional decrement per line. The condition is the whole point: ==stock can never go negative==, no matter how many tills are open.","Done first, so a stock failure costs nothing else."]},{"id":"tx-credit","label":"Credit check","col":1,"row":0,"layers":1,"accent":true,"what":["The balance is summed and compared ==inside== the transaction. A check done beforehand would let two concurrent spends both pass, and the customer would spend the same £20 twice."]},{"id":"tx-sale","label":"Write the sale","col":2,"row":0,"layers":1,"what":["One row holding subtotal, discount, VAT, the scheme in force at the time, the total, and a summary payment method — which reads `split` when there was more than one tender."]},{"id":"tx-lines","label":"Write the lines","col":0,"row":1,"layers":2,"what":["One row per line, each carrying ==the price at the time and the cost at the time==. Those snapshots are what make refunds and margin-scheme VAT reproducible years later, whatever happens to the card's price since.","Plus one row per tender."]},{"id":"tx-ledger","label":"Spend the credit","col":1,"row":1,"layers":1,"what":["A negative entry in the credit ledger, tagged with the sale it belongs to. Nothing is ever overwritten — a balance is always the sum of its history."]}]},{"id":"inventory","label":"inventory_items","kind":"table","layers":3,"file":"lib/db/schema.ts","sub":"what is on the shelf","pos":{"sale":[4,-1],"back":[3,-1.3],"intake":[3,0.6]},"what":["One row per physical thing the shop owns: which card, what condition, how many, what it cost to acquire, and optionally a manual price that overrides the market.","The cost figure matters more than it looks. It is what makes the second-hand VAT scheme possible, and a line without one cannot be in that scheme at all."],"how":["Quantity is only ever moved by guarded SQL, never read-then-write. Selling decrements conditionally; refunds and voids increment.","An inactive line cannot be sold even if its id is sent directly."]},{"id":"saletables","label":"sales · items · payments","kind":"table","layers":3,"file":"lib/db/schema.ts","sub":"the permanent record","pos":{"sale":[4,0],"back":[0,0],"offline":[4,0]},"what":["What happened, split across three tables: the sale itself, the individual lines with their prices and costs frozen at the moment of sale, and one row per way the customer paid.","A voided sale is ==never deleted==. It keeps its row, gains a stamp saying who voided it and why, and is excluded from every report total. The audit trail survives the mistake."],"how":["The ticket number carries a unique index — that single index is what makes offline replay safe under a race.","Splitting payments into their own table rather than a column is what lets a void return exactly the store-credit portion of a mixed payment."]},{"id":"ledger","label":"credit_ledger","kind":"table","layers":2,"file":"lib/credit.ts","sub":"append-only","pos":{"sale":[4,1],"back":[3,0],"intake":[3,2]},"what":["Every movement of store credit, ever: earned by selling cards to the shop, spent at the till, given back by a refund, returned by a void. ==A customer's balance is not stored anywhere== — it is the sum of this list.","Nothing in here is ever updated or deleted. To undo something you add its opposite, and both entries stay visible."],"how":["Rows carry customer, amount, reason, and what they refer to. A balance is `COALESCE(SUM(delta), 0)` — a sum of integer pence, which is still integer pence.","Because a balance is a query and not a column, there is no stored number that can drift out of agreement with its history. The cost is that the check has to happen inside a transaction to be safe."]},{"id":"receipt","label":"Receipt","kind":"route","layers":1,"file":"lib/receipt-html.ts","sub":"what the customer takes home","pos":{"sale":[5,0]},"what":["Printed from the stored sale, not from whatever the till had on screen. If the two ever disagreed, the receipt shows what was actually recorded.","Under the second-hand margin scheme the receipt cannot show a VAT line — that is a legal requirement of the scheme, not a design choice."],"how":["Rendered as HTML from the stored rows, sized for an 80mm thermal roll and printed from the browser."]},{"id":"refund","label":"Refund","kind":"logic","layers":3,"accent":true,"file":"lib/domain/refunds.ts","sub":"customer changed their mind","pos":{"back":[1,-0.7]},"what":["Money back to a customer, in cash or as store credit, for some or all of a sale. Partial refunds are normal — one card out of five.","The hard part is not the refund, it is the ==tenth refund==. Each one reverses VAT and discount in proportion to how the original total related to its subtotal, and that division does not land on whole pennies. Rounded up ten times in a row, a shop could refund a penny more than it ever charged.","So a blunter rule sits behind the arithmetic: ==the total ever refunded against a sale can never exceed what that sale actually took==. Whatever the proportional maths says, it is capped there."],"how":["The reversal is proportional, then clamped to what is left of the sale total. The residual cap is the line that stops rounding from compounding.","Quantities are checked against what remains: original quantity, minus everything already refunded, minus anything claimed by an earlier line ==in the same request== — those rows are not inserted yet, so an in-memory tally is needed alongside the database sum.","Store-credit refunds default to the sale's own customer, so an attributed sale works without the till re-sending one. A walk-in must name someone."]},{"id":"void","label":"Void","kind":"logic","layers":2,"file":"lib/domain/voids.ts","sub":"the cashier mis-rang it","pos":{"back":[1,0.7]},"what":["A full reversal of a sale that should never have happened — a wrong scan, a double tap. Distinct from a refund, which is a customer transaction.","Voiding is only allowed ==the same day==, and only if nothing has been refunded against the sale already. A sale from yesterday, or one partly refunded, has to go through the refund path where the arithmetic is careful."],"how":["The sale row survives and gains who voided it, when, and why; every report total excludes it.","Store credit is returned by reading the store-credit line out of the payments table, so a mixed cash-and-credit sale returns exactly the credit portion and not a penny more."]},{"id":"claim","label":"Sale claim","kind":"gate","layers":1,"accent":true,"file":"lib/domain/sale-claim.ts","sub":"claimUnvoidedSale()","pos":{"back":[2,0]},"what":["Thirty-five lines that exist because of one specific disaster: a refund and a void landing on the same sale at the same moment. Both check first, both see an un-voided sale, both proceed — and the stock gets put back twice while the customer is paid and credited.","The fix is to stop asking and start ==claiming==. Any flow that reverses a sale must take the sale inside its own transaction with a lock that re-checks the state as part of the same statement. The loser finds nothing to claim and rolls back."],"how":["A guarded `UPDATE … WHERE id = ? AND voided_at IS NULL RETURNING id`. Voiding writes its own columns in that same statement; refunding passes a self-assignment so the update is a no-op write that still takes the row through the guard.","The file's own comment states the rule plainly: ==do not reintroduce the pre-check-only style==. It is the kind of bug that passes every test written before you knew about it."]},{"id":"tradingday","label":"Trading day","kind":"pure","layers":1,"file":"lib/trading-day.ts","sub":"London, not UTC","pos":{"back":[2,1.6]},"what":["The shop's day runs on London time. The database stores UTC. For half the year those agree, and for the British Summer Time half they disagree ==between 11pm and midnight==.","A sale rung at 11:30pm on a July evening is stored with tomorrow's UTC date. Compare the raw text and the cashier cannot void their own mistake sixty seconds after making it."],"how":["Both timestamps are formatted as London calendar days and compared. Twenty-seven lines, dependency-free on purpose so both server and browser can use it.","==Only void eligibility uses this.== Reports and cash-up bucketing deliberately stay on UTC days. The two windows disagreeing for one hour a night is a known, accepted state — moving reports to London days is a product decision that would have to cover cash-up, tiles, ranges and exports together, and half-doing it would be worse than the split."],"condition":["This is the single most likely thing in the map to be 'fixed' by someone who has only read one side of it. `AGENTS.md` carries an explicit warning not to."]},{"id":"cashup","label":"Cash-up","kind":"logic","layers":2,"file":"lib/domain/cash-ups.ts","sub":"counting the drawer","pos":{"back":[3,1.8]},"what":["End of day. The system works out what should be in the till — opening float, plus cash sales, minus cash refunds, minus cash paid out for cards bought from customers — and the person closing up types in what is actually there. The difference is recorded, whatever it is.","The close is a ==snapshot, not a live figure==. Once a day is closed the numbers stay as they were counted, even if a late transaction lands on that day afterwards. A closed day is evidence of what was counted, not a rolling total."],"how":["One row per day with a unique index on the day, which is what makes a double-close race-safe rather than merely unlikely.","Buckets on UTC days — see the trading-day note for why this deliberately differs from void eligibility."]},{"id":"reports","label":"Reports","kind":"logic","layers":3,"file":"lib/domain/reports.ts","sub":"what the shop reads","pos":{"back":[4,1.8]},"what":["Sales by day, by staff member, by game; margin and stock valuation; the figures the cash-up is measured against. Every total excludes voided sales and nets off refunds.","These are read-only sums over the same rows everything else wrote. There is no separate reporting store to fall out of step."],"how":["SQL aggregates over sales, lines and refunds, bucketed on UTC day text. The margin stock book uses the cost snapshots frozen on each sale line.","CSV exports share the same query functions as the on-screen tiles, so an exported figure and a displayed figure cannot disagree."]},{"id":"buypage","label":"Buy screen","kind":"screen","layers":2,"file":"components/buylist/","sub":"runs in the browser","pos":{"intake":[0,0]},"what":["Where a customer's cards get valued. Search or browse to the card, pick its condition, and the screen suggests what to offer. The person at the counter can change that number — haggling is part of the job.","Like the till, this screen's numbers are a suggestion. The server prices everything again before recording anything."],"how":["Client components under `components/buylist/`. Suggested offers come from `calculateBuyPrice` in `lib/pricing.ts` — dependency-free, so the browser can use it without dragging the database client in.","Cards with a stale cached price trigger an on-demand refresh before quoting, so a customer is not offered money against a six-month-old figure."]},{"id":"createBuy","label":"createBuy","kind":"logic","layers":4,"accent":true,"file":"lib/domain/buys.ts","sub":"the only place stock is bought","pos":{"intake":[1,0]},"what":["Records a purchase from a customer: pays them, puts the cards into stock, and writes down what was paid against what the card was worth at that moment.","The guard that matters is a ==ceiling on generosity==. Staff cannot pay more than 110% of the card's market value for its condition. Over that, the buy is refused and tells them the maximum. An admin can override.","That gap is the whole point. Buylist fraud is a staff member paying a friend £200 for a £20 card, and a ceiling is the only thing that catches it without accusing anyone of anything."],"how":["The comparison is deliberately integer: pay × 10 against market × 11, so no float ever touches the decision.","The reference is the ==condition-adjusted== market price, not raw mint market. Otherwise the cap would happily allow mint money for a damaged card.","A card with no cached market price cannot be capped at all, and passes through with the market recorded as unknown."],"children":[{"id":"cb-cap","label":"The 110% ceiling","col":0,"row":0,"layers":1,"accent":true,"what":["Integer arithmetic against the condition-adjusted price, skipped for admins, skipped when no market price is known. Refusing names the actual maximum, so staff aren't left guessing."]},{"id":"cb-merge","label":"Merge into stock","col":1,"row":0,"layers":2,"what":["If the shop already holds that card in that condition, the existing row is topped up and its cost blended, rather than a second row appearing beside it. Two rows for the same thing is how stock counts start lying.","The blend divides, so it rounds to the nearest penny."]},{"id":"cb-cost","label":"Missing cost","col":2,"row":0,"layers":1,"what":["A blended cost treats a missing old cost as zero, which ==understates== the cost and therefore ==overstates== the VAT the shop will owe later. Deliberately the safe direction — it can never under-charge HMRC.","Note this is the opposite of the sale path, where a missing cost is preserved so the line drops out of the margin scheme instead of being treated as free."]},{"id":"cb-write","label":"Record it","col":0,"row":1,"layers":2,"what":["The buy, and one line per card carrying ==the market price at the time of purchase==. That snapshot is what lets a suspicious buy be judged months later against what the card was actually worth then, rather than what it is worth now."]},{"id":"cb-pay","label":"Pay them","col":1,"row":1,"layers":1,"what":["Cash out of the drawer, which the end-of-day count expects to be missing — or store credit, which appends a positive entry to the same ledger the till spends from."]}]},{"id":"buytables","label":"buy_transactions · buy_items","kind":"table","layers":2,"file":"lib/db/schema.ts","sub":"what was bought, and for how much","pos":{"intake":[3,-0.8]},"what":["The record of every purchase from a customer: who served it, who sold it, what was paid, and — the important bit — ==what the card was worth on the day==.","That last figure is what makes the buylist auditable. Without it you can only ever compare a past payment against today's price, which proves nothing."],"how":["Each line links back to the stock row it created or topped up, so a card in stock can be traced to the purchase it came from.","Exportable as CSV for the accountant, and for the record-keeping obligations that come with buying second-hand goods from the public."],"condition":["UK second-hand dealing carries real legal duties around records and, in some areas, holding periods and seller identity. The data is captured; the policy side is a business decision that has not been made yet."]},{"id":"customers","label":"Customers","kind":"logic","layers":2,"file":"lib/domain/customers.ts","sub":"who the credit belongs to","pos":{"intake":[2,1.5]},"what":["A light address book. Most sales are anonymous and stay that way; a customer record only becomes necessary when store credit is involved, because credit has to belong to someone.","It is also what makes the want list work — knowing who to tell when a card comes in."],"how":["Name, phone, email, notes. Balances are never stored here — a balance is always summed from the ledger at the moment it is asked for."]},{"id":"wants","label":"Want list","kind":"logic","layers":2,"file":"lib/domain/wants.ts","sub":"who's waiting for what","pos":{"intake":[4,0.6]},"what":["Customers ask for cards the shop doesn't have. This keeps that list, and — the useful part — ==tells staff the moment one of those cards is actually in stock==, whether it arrived by purchase or was already sitting there.","It is the single most direct link between buying cards in and selling them again: the shop knows it already has a buyer before the card hits the shelf."],"how":["Open wants are joined against active stock to produce an in-stock flag, and the count drives a badge in the navigation.","A want can name a card in the catalogue or just be free text, for things the catalogue doesn't cover."],"condition":["Automatic notification is ==not wired up==. The function that would send an email or text exists, is called by nothing, and honestly reports that no provider is configured. Staff currently contact people by hand. That is a deliberate unfinished seam, not an oversight."]},{"id":"gamesreg","label":"Which games","kind":"pure","layers":2,"file":"lib/games.ts","sub":"four, per shop","pos":{"catalogue":[0,0]},"what":["Pokémon, Magic: The Gathering, Yu-Gi-Oh! and Lorcana. Each shop turns on only the ones it sells, and a shop that only does Pokémon never sees, searches, or downloads anything else.","Pokémon also carries other languages — Japanese, Korean, both Chinese scripts — because Japanese cards are a real part of the trade."],"how":["A dependency-free list of game and language constants, importable by both server and browser. Which games a shop has on is a setting; more than one requires a paid plan.","Because the list is data rather than scattered conditionals, adding a fifth game is mostly wiring rather than surgery."]},{"id":"sources","label":"Card sources","kind":"pure","layers":2,"file":"lib/sources/registry.ts","sub":"one per game","pos":{"catalogue":[1,0]},"what":["Each game has exactly one place its cards come from, and one way of refreshing a single card's price. This is the table that says which is which.","Adding a new game is mostly a matter of filling in a new row here plus the code it points at — about eight places, usually with ==no database change at all==."],"how":["A registry mapping game to a sweep function and an optional price refresher. Magic, Yu-Gi-Oh! and Lorcana are fully registry-driven.","Pokémon is deliberately absent and keeps its own older path, because its multi-language handling does not fit the same shape. Callers fall back to the Pokémon-specific machinery when the registry has no entry."],"condition":["That Pokémon exception is real inconsistency. It is tolerated because unifying it would mean rewriting the most-used, best-tested path in the catalogue for tidiness alone."]},{"id":"apis","label":"The outside world","kind":"route","layers":3,"file":"lib/apis/","sub":"five services","pos":{"catalogue":[2,-0.9]},"what":["Five services publish what cards exist and what they sell for. None of them agree on anything: shapes, currencies, or how to say a card has no price.","The rule learned the hard way: ==check the real service before writing any code against it==. Four separate data bugs came from trusting documentation — non-English rows inside supposedly English data, blank codes producing unusable ids, duplicate printings, and page ordering that changed between requests."],"how":["One adapter per service, each with tests built from ==real recorded responses== rather than invented ones.","Every endpoint an adapter touches gets checked, not just one: the same service can wrap one endpoint's results in an object and return a bare list from another, or quote prices as numbers on one path and text on another. Both of those are real, and both were found this way.","One service refuses requests outright without a browser-like identifier."]},{"id":"sweep","label":"The nightly sweep","kind":"logic","layers":3,"file":"lib/sources/upsert.ts","sub":"safe to run twice","pos":{"catalogue":[2,0.9]},"what":["Every night the system walks each turned-on game's catalogue and writes in anything new or changed. It has to be ==safe to run twice==, because it will be — jobs get retried, and a half-finished run must be resumable.","The huge catalogues are done a page at a time with a bookmark, so no single run has to finish the whole thing."],"how":["Batched inserts keyed on the source's own id, so a repeat run updates rather than duplicates. Prices convert from dollars or euros to pence right here, which is what keeps money server-canonical.","Rows are de-duplicated ==within a batch== as well: one supplier lists a few cards twice with the same identifying fields, and without that step SQLite refuses the whole insert and the sweep dies."]},{"id":"cronprices","label":"Nightly job","kind":"route","layers":1,"file":"app/api/cron/sync-prices/route.ts","sub":"runs itself","pos":{"catalogue":[0,2.2]},"what":["The alarm clock. A scheduled call each night that kicks off the catalogue sweep and the price refresh for every game the shop has on.","It is a normal web address, so it must be locked — otherwise anyone could trigger a shop's entire catalogue download."],"how":["Protected by a shared secret compared in constant time, and ==fails closed==: with no secret configured, nothing is authorised at all, so a request carrying the literal text `Bearer undefined` can never match."]},{"id":"syncprices","label":"Price refresh","kind":"logic","layers":3,"file":"lib/prices/sync.ts","sub":"and a bit of history","pos":{"catalogue":[1,2.2]},"what":["Re-asks the outside world what cards are worth now. Everything in stock is refreshed nightly; the rest of the catalogue is refreshed on a rotation, or on demand when someone actually looks at it.","Price ==history== is only kept for cards anyone could care about the trend of — in stock, or flagged as high value. Ninety days of history for a quarter of a million cards would be millions of rows nobody would ever read."],"how":["Per-card sync branching on which service the card came from. When a service answers but has no price, the check itself is recorded — otherwise the rotation would ask the same unanswerable cards forever.","432 lines, the largest single file in this area, and the one most worth reading before changing anything price-related."]},{"id":"cardstable","label":"cards","kind":"table","layers":3,"file":"lib/db/schema.ts","sub":"~227,000 rows","pos":{"catalogue":[3,0]},"what":["Every card the shop could possibly sell, across every game it has turned on. Around 227,000 rows once all four games are loaded.","The rule for what counts as a row: ==a differently-priced printing is its own card==. A foil and a non-foil are two rows, because they are two prices, and a stock system that can't tell them apart will value the shelf wrongly."],"how":["Each row carries the source's own id in a structured form, which is the key everything is healed against on re-import. Existing ids are never rewritten.","An alias column lets an English search find Japanese and Chinese printings of the same species."]},{"id":"search","label":"Finding a card","kind":"logic","layers":4,"file":"lib/domain/card-search.ts","sub":"must feel instant","pos":{"catalogue":[4,-0.6]},"what":["A cashier types a few letters with a customer waiting. This has to be fast, and it has to cope with people spelling Pokémon names wrong.","Three attempts in order: look it up locally, which is instant; if nothing matches, try ==close spellings== (\"snorlex\" finds Snorlax); if still nothing, ask the live service, because the card might be newer than last night's sweep.","If that last step fails, the answer is ==\"try again\", not \"no such card\"== — a network problem must never look like a missing card."],"how":["Ranked local matching first: exact name, then prefix, then anything containing it. Fuzzy matching scores candidates on three-letter fragments and needs to clear a threshold tuned so one-letter typos pass and unrelated names don't.","Fuzzy search was rewritten onto a proper search index (migration 0025) after misses were taking seconds on the full catalogue. They now take between 20 and 375 milliseconds.","Hostile input is escaped rather than swallowed, and query size is bounded — a pathological search must not be able to hang the till."],"condition":["The search index is created by a migration, so a shop database that has not been migrated has no index. The code notices and falls back rather than erroring, logging once."]},{"id":"browse","label":"Browsing","kind":"logic","layers":2,"file":"lib/domain/catalogue.ts","sub":"read-only","pos":{"catalogue":[4,1]},"what":["For when you don't know the name: pick a set, see everything in it, in the right order. Also every printing of one card, which is how you find out that the Snorlax the customer is holding is one of 57.","Sets are grouped by era, oldest first, which is how collectors actually think about them."],"how":["The only module here with ==no rules to enforce==: it is pure reading, so unlike sales or buys it has no invariants of its own.","Set numbers sort naturally, so 9 comes before 10 rather than after it. Eras not on the known list sort last into an \"Other\" bucket rather than disappearing."]},{"id":"signup","label":"Signing up","kind":"route","layers":2,"file":"lib/platform/signup.ts","sub":"picking a name","pos":{"platform":[0,0]},"what":["A shop signs up and chooses a short name. That name becomes their web address — `their-shop.<the service>` — which is what every later request uses to work out who they are.","Some names are reserved because the platform already uses them for itself."],"how":["Name rules are shared between the signup form and the command-line tool that creates shops by hand, so the two cannot disagree about what is valid.","Rate-limited, because the endpoint is public and creates databases."]},{"id":"provision","label":"Setting up a shop","kind":"logic","layers":4,"file":"lib/platform/provision.ts","sub":"safe to run twice","pos":{"platform":[1,0]},"what":["Creates the shop: a brand new database of its own, the full table structure built inside it, a record in the registry, and a welcome email.","It is ==safe to run twice==. Payment systems retry, and a retry that created a second shop — or wiped the first — would be a disaster. Run it again with the same name and you still have exactly one shop."],"how":["Idempotent on the shop's name. Migrations are applied to the fresh database immediately, so a new shop is never behind.","Without cloud credentials the \"database\" is just a local file, so the whole signup → provision → setup path runs end to end on a laptop with nothing configured."]},{"id":"setupflow","label":"First run","kind":"logic","layers":2,"file":"lib/platform/setup.ts","sub":"the welcome link","pos":{"platform":[2,-1.9]},"what":["The one-time link in the welcome email. The owner sets the shop password and their own staff PIN in a single step and lands in a working till.","Getting someone from paying to selling without a phone call is the point."],"how":["The link's token is compared in constant time and burned on use. Setting the password and creating the first admin happen together, so there is no window where a shop exists with no way in."]},{"id":"tenantdb","label":"The shop's database","kind":"table","layers":3,"accent":true,"file":"lib/platform/turso.ts","sub":"one each, separate","pos":{"platform":[2,0]},"what":["==Each shop gets its own database.== Their cards, sales, staff, customers and takings live there and nowhere else.","This is the most consequential decision in the whole system. There is no shared table with a shop column in it, which means no query can accidentally omit a filter and show one shop another's takings. The cost is that every shop has to be migrated and backed up separately — and that cost is paid deliberately."],"how":["One database per shop, created in an EU region. The registry stores its address; nothing else does.","In development or tests the database is a local file, so multi-shop behaviour is testable with no cloud account."]},{"id":"registry","label":"The registry","kind":"table","layers":3,"file":"lib/platform/schema.ts","sub":"who exists, and are they paid up","pos":{"platform":[1,-1.9]},"what":["A separate small database that knows every shop: its name, where its database lives, its plan, and whether it is in good standing.","It holds ==no shop data at all==. It is the phone book, not the filing cabinet."],"how":["Its own schema and its own migration history, generated separately from the shop schema.","Lookups are cached for a minute. The cache is capped and evicts oldest-first, because misses are cached too — otherwise scanning random subdomains would grow it forever."]},{"id":"proxyn","label":"Every request","kind":"gate","layers":3,"accent":true,"file":"proxy.ts","sub":"decides who you are","pos":{"platform":[3,-1.9]},"what":["The first thing every single request meets. It works out which shop this is ==from the web address==, before reading anything the request itself claims.","It also strips any shop-identifying headers that arrived from outside. ==The only thing allowed to say which shop this is, is this file.== Otherwise anyone could add a header and read another shop's data.","A suspended shop gets a lock screen — and a till that is still open gets a machine-readable answer rather than a page of HTML it cannot understand."],"how":["Deletes the tenant headers first, unconditionally, then resolves the subdomain against the registry and sets them itself.","Sessions are checked against the resolved shop, so a cookie from one shop is useless on another's address.","The founders' admin dashboard lives on its own hostname with its own cookie and its own routing table, and is a 404 everywhere else."]},{"id":"plans","label":"Plans","kind":"pure","layers":2,"file":"lib/plan.ts","sub":"what each tier allows","pos":{"platform":[2,1.9]},"what":["Three tiers, differing in how many staff can be set up and whether the shop can run more than one card game.","The rule is written once and used twice: ==the screen greys out what you cannot have, and the server refuses it anyway==. A hidden button is not security."],"how":["A dependency-free mapping from plan to entitlements, importable by both browser and server.","Per-shop overrides stored in the registry win field by field, which is how founding-shop deals and one-off seat bumps work without special-casing code. Malformed override data is ignored rather than breaking the shop's ability to load."],"condition":["The prices in this file are display-only; the real amounts live in the payment provider. Two of the three entitlements are placeholders for features not built yet."]},{"id":"stripe","label":"Paying","kind":"logic","layers":3,"file":"lib/platform/billing.ts","sub":"drives the shop's status","pos":{"platform":[0,1.9]},"what":["Payment events decide whether a shop is trialing, active, behind, or suspended. Stop paying and the till locks — but ==the shop's data is untouched== and comes straight back when payment resumes.","The shop is told plainly what has happened rather than being shown a broken app."],"how":["Webhook-driven, and ==idempotent on the event id==: providers deliver the same event more than once, and processing it twice must not change the outcome.","One narrow set of events owns status and plan, so two different messages can never fight over the shop's state."]},{"id":"fanout","label":"Fleet jobs","kind":"logic","layers":3,"accent":true,"file":"lib/platform/fanout.ts","sub":"a few shops at a time","pos":{"platform":[3,0.6]},"what":["Background work — refreshing prices, taking backups — has to happen for every shop, and there is a time limit on any single run. So each run takes the shops that have waited longest, works through as many as it can, and leaves a bookmark.","The important detail: ==a shop that fails still advances the bookmark==. Otherwise one permanently broken shop sits at the head of the queue forever and nothing behind it ever runs again."],"how":["Cursor-staggered fan-out over shops in good standing, oldest first, inside a time budget.","There is a hard deadline as well as a soft one, because a run that outlives its host is killed ==silently== — its bookmark never advances, and since work is oldest-first the same shop heads every later run. The hard deadline turns that invisible stall into a normal, recorded failure."]},{"id":"migrate","label":"Updating every shop","kind":"logic","layers":2,"file":"lib/platform/fleet-migrate.ts","sub":"run it after every deploy","pos":{"platform":[3,2.2]},"what":["When the structure of the data changes, every shop's database has to be updated separately. ==Deploying the code does not do this.== It is a deliberate second step, run on purpose.","This has bitten before: new code against an un-updated database produced a demo where the app looked fine and behaved wrongly for an hour."],"how":["Walks the fleet applying any migrations a shop has not had, tracked per shop. Databases created before that tracking existed need a one-time marker saying they are current.","The startup check now shouts if the code and the database disagree, so the silent version of this failure cannot happen again."],"condition":["This is the sharpest operational edge in the system. `AGENTS.md` states the contract: run it after every deploy that added a migration."]},{"id":"backup","label":"Backups","kind":"logic","layers":2,"file":"lib/platform/backup.ts","sub":"belt and braces","pos":{"platform":[4,0.6]},"what":["Each shop gets its own compressed dump on a schedule, stored privately, restorable on its own.","The hosting provider has its own point-in-time recovery, and that is the primary route back. These dumps exist so that recovery does not ==depend== on the provider still being there."],"how":["A logical SQL dump per shop, gzipped, on roughly a daily cadence, driven by the same fan-out machinery as the price sync.","There is a written restore drill, because a backup nobody has ever restored is a rumour."]},{"id":"admin","label":"Founders' dashboard","kind":"route","layers":2,"file":"lib/platform/impersonation.ts","sub":"its own hostname","pos":{"platform":[4,-1.9]},"what":["The view across all shops, on its own web address with its own login. From it, support can open a shop as its owner to see what the owner is seeing.","That power is deliberately awkward: ==every use is single-use, expires in a minute, and is written down at both ends==. Support access that leaves no trace is how support access gets abused."],"how":["The dashboard mints a one-time grant; the shop's own address burns it and creates the session. ==Only a hash of the token ever touches the registry==, so the registry itself cannot be used to impersonate anyone.","The dashboard returns 404 on every hostname except its own."]}],"edges":[{"from":"till","to":"route","kind":"flow","label":"items + total"},{"from":"till","to":"queue","kind":"read","label":"if offline"},{"from":"queue","to":"route","kind":"flow","label":"replay"},{"from":"queue","to":"replay","kind":"flow","label":"when back"},{"from":"replay","to":"route","kind":"flow","label":"re-sends"},{"from":"replay","to":"conflict","kind":"guard","label":"a definite no"},{"from":"route","to":"createSale","kind":"flow","label":"hands over"},{"from":"createSale","to":"pricing","kind":"read","label":"price each line"},{"from":"createSale","to":"settings","kind":"read","label":"the shop's dials"},{"from":"pricing","to":"pricecache","kind":"read","label":"market price"},{"from":"createSale","to":"totals","kind":"read","label":"discount, VAT"},{"from":"createSale","to":"tx","kind":"flow","label":"totals agree"},{"from":"createSale","to":"saletables","kind":"write","label":"one per ticket"},{"from":"tx","to":"inventory","kind":"write","label":"stock down"},{"from":"tx","to":"saletables","kind":"write","label":"writes the rows"},{"from":"tx","to":"ledger","kind":"write","label":"credit spent"},{"from":"saletables","to":"receipt","kind":"flow","label":"prints"},{"from":"refund","to":"claim","kind":"guard","label":"claim first"},{"from":"void","to":"claim","kind":"guard","label":"claim first"},{"from":"void","to":"tradingday","kind":"guard","label":"same day?"},{"from":"refund","to":"inventory","kind":"write","label":"stock back"},{"from":"void","to":"inventory","kind":"write","label":"stock back"},{"from":"refund","to":"ledger","kind":"write","label":"credit back"},{"from":"void","to":"ledger","kind":"write","label":"credit back"},{"from":"refund","to":"saletables","kind":"read","label":"frozen prices"},{"from":"void","to":"saletables","kind":"read","label":"same day only"},{"from":"cashup","to":"reports","kind":"read","label":"the day's cash"},{"from":"saletables","to":"reports","kind":"read","label":"minus voids"},{"from":"buypage","to":"createBuy","kind":"flow","label":"the offer"},{"from":"createBuy","to":"pricecache","kind":"read","label":"what's it worth"},{"from":"createBuy","to":"settings","kind":"read","label":"condition ladder"},{"from":"createBuy","to":"customers","kind":"read","label":"who's selling"},{"from":"createBuy","to":"buytables","kind":"write","label":"paid vs worth"},{"from":"createBuy","to":"inventory","kind":"write","label":"merge or add"},{"from":"createBuy","to":"ledger","kind":"write","label":"credit given"},{"from":"inventory","to":"wants","kind":"read","label":"in stock now?"},{"from":"gamesreg","to":"sources","kind":"flow","label":"what's turned on"},{"from":"sources","to":"apis","kind":"flow","label":"one per game"},{"from":"apis","to":"sweep","kind":"flow","label":"raw cards"},{"from":"sweep","to":"cardstable","kind":"write","label":"safe to repeat"},{"from":"sweep","to":"pricecache","kind":"write","label":"converted to pence"},{"from":"cronprices","to":"syncprices","kind":"flow","label":"every night"},{"from":"syncprices","to":"pricecache","kind":"write","label":"fresh prices"},{"from":"search","to":"cardstable","kind":"read","label":"local first"},{"from":"search","to":"pricecache","kind":"read","label":"with prices"},{"from":"browse","to":"cardstable","kind":"read","label":"by set"},{"from":"signup","to":"provision","kind":"flow","label":"a name"},{"from":"provision","to":"tenantdb","kind":"write","label":"creates it"},{"from":"provision","to":"registry","kind":"write","label":"records it"},{"from":"provision","to":"setupflow","kind":"flow","label":"welcome email"},{"from":"setupflow","to":"tenantdb","kind":"write","label":"owner + PIN"},{"from":"proxyn","to":"registry","kind":"read","label":"which shop?"},{"from":"proxyn","to":"tenantdb","kind":"flow","label":"hands over"},{"from":"stripe","to":"registry","kind":"write","label":"plan + status"},{"from":"plans","to":"registry","kind":"read","label":"what's allowed"},{"from":"fanout","to":"tenantdb","kind":"flow","label":"oldest first"},{"from":"fanout","to":"backup","kind":"flow","label":"one dump each"},{"from":"migrate","to":"tenantdb","kind":"write","label":"after deploys"},{"from":"admin","to":"registry","kind":"read","label":"every shop"}]}</script>
+
+<style>
+  :root {
+    --paper:      #e4e7df;
+    --paper-2:    #dbdfd4;
+    --panel:      #eaede5;
+    --card:       #f2f4ee;
+    --ink:        #1b1f1a;
+    --ink-2:      #59604f;
+    --ink-3:      #858c7c;
+    --rule:       #b1b8a6;
+    --rule-2:     #c9cec0;
+    --grid:       #d5d9cc;
+    --accent:     #a8411c;
+    --accent-bg:  #f4e3dc;
+    --mark:       #e8c547;
+    --mark-ink:   #1b1f1a;
+
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+
+    --rail: 236px;
+    --read: 404px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #15180f;
+      --paper-2:    #1b1f16;
+      --panel:      #191d13;
+      --card:       #212619;
+      --ink:        #e0e5d5;
+      --ink-2:      #99a28c;
+      --ink-3:      #6b7462;
+      --rule:       #3a4230;
+      --rule-2:     #272d20;
+      --grid:       #212619;
+      --accent:     #e07440;
+      --accent-bg:  #33200f;
+      --mark:       #6a5712;
+      --mark-ink:   #f5ecca;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:      #15180f;
+    --paper-2:    #1b1f16;
+    --panel:      #191d13;
+    --card:       #212619;
+    --ink:        #e0e5d5;
+    --ink-2:      #99a28c;
+    --ink-3:      #6b7462;
+    --rule:       #3a4230;
+    --rule-2:     #272d20;
+    --grid:       #212619;
+    --accent:     #e07440;
+    --accent-bg:  #33200f;
+    --mark:       #6a5712;
+    --mark-ink:   #f5ecca;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+    height: 100vh;
+    height: 100dvh;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  mark { background: var(--mark); color: var(--mark-ink); padding: 0 .18em; }
+
+  code {
+    font-family: var(--mono); font-size: .88em;
+    background: var(--paper-2); border: 1px solid var(--rule-2);
+    padding: 0 .28em; white-space: nowrap;
+  }
+
+  .lbl {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--ink-3);
+  }
+
+  header {
+    border-bottom: 1px solid var(--rule);
+    background: var(--panel);
+    display: flex; align-items: stretch;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  header::-webkit-scrollbar { display: none; }
+
+  .stat {
+    padding: 6px 14px; border-right: 1px solid var(--rule-2);
+    display: flex; flex-direction: column; gap: 1px;
+    white-space: nowrap; flex: 0 0 auto;
+  }
+  .stat b { font-weight: 500; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .stat.id b { color: var(--accent); }
+
+  .controls { margin-left: auto; display: flex; gap: 6px; align-items: center; padding: 0 12px; flex: 0 0 auto; }
+
+  button {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .11em;
+    text-transform: uppercase; color: var(--ink);
+    background: var(--paper); border: 1px solid var(--rule);
+    padding: 5px 9px; cursor: pointer;
+  }
+  button:hover { background: var(--paper-2); border-color: var(--ink-3); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+  main { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr) var(--read); min-height: 0; }
+
+  .rail { border-right: 1px solid var(--rule); overflow-y: auto; background: var(--panel); padding-bottom: 24px; }
+  .rail-group { padding-top: 10px; }
+  .rail-group > .lbl { padding: 0 12px 4px; display: block; }
+
+  .rail button {
+    display: flex; gap: 8px; align-items: baseline; width: 100%;
+    text-align: left; border: 0; border-top: 1px solid var(--rule-2);
+    background: transparent; padding: 6px 12px; font-size: 11px;
+    letter-spacing: 0; text-transform: none; color: var(--ink-2);
+  }
+  .rail button:hover { background: var(--paper-2); color: var(--ink); }
+  .rail button[aria-current="true"] { background: var(--ink); color: var(--paper); }
+  .rail button[aria-current="true"] .n { color: var(--paper); opacity: .6; }
+  .rail .n { font-size: 9px; color: var(--ink-3); font-variant-numeric: tabular-nums; flex: 0 0 auto; width: 14px; }
+  .rail .dot { margin-left: auto; width: 5px; height: 5px; background: var(--accent); flex: 0 0 auto; align-self: center; }
+
+  .stage { position: relative; min-width: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; background: var(--paper); }
+
+  .views { display: flex; border-bottom: 1px solid var(--rule); background: var(--panel); overflow-x: auto; scrollbar-width: none; }
+  .views::-webkit-scrollbar { display: none; }
+  .views button {
+    flex: 1 0 auto; border: 0; border-right: 1px solid var(--rule-2);
+    padding: 7px 14px; background: transparent; text-align: left;
+    text-transform: none; letter-spacing: 0; display: flex; flex-direction: column; gap: 1px;
+  }
+  .views button:last-child { border-right: 0; }
+  .views button b { font-weight: 500; font-size: 12px; }
+  .views button i { font-style: normal; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+  .views button[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+  .views button[aria-selected="true"] i { color: var(--paper); opacity: .55; }
+  .canvas-wrap { position: relative; min-height: 0; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  canvas.dragging { cursor: grabbing; }
+
+  .crumb { position: absolute; top: 10px; left: 12px; display: flex; gap: 6px; align-items: center; pointer-events: none; }
+  .crumb span {
+    background: var(--panel); border: 1px solid var(--rule); padding: 3px 7px;
+    font-size: 9px; letter-spacing: .11em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .crumb span.here { color: var(--accent); border-color: var(--accent); }
+
+  .zoomers { position: absolute; top: 10px; right: 12px; display: flex; flex-direction: column; gap: 4px; }
+  .zoomers button { width: 24px; height: 24px; padding: 0; font-size: 12px; line-height: 1; }
+
+  .hint {
+    position: absolute; bottom: 10px; left: 12px; right: 12px;
+    text-align: center; pointer-events: none;
+  }
+  .hint span { background: var(--panel); border: 1px solid var(--rule-2); padding: 3px 9px; }
+
+  .legend {
+    border-top: 1px solid var(--rule); padding: 5px 12px;
+    display: flex; flex-wrap: wrap; gap: 4px 16px; background: var(--panel); align-items: center;
+  }
+  .legend .k { display: inline-flex; gap: 5px; align-items: center; }
+  .legend i { width: 16px; height: 0; border-top: 1.5px solid var(--ink-2); display: inline-block; }
+  .legend i.dash { border-top-style: dotted; }
+  .legend i.acc { border-top-color: var(--accent); }
+  .legend i.sw { width: 9px; height: 9px; border: 1.5px solid var(--accent); background: var(--accent-bg); }
+  .legend .sep { color: var(--rule); }
+
+  .ticker {
+    border-top: 1px solid var(--rule); background: var(--ink); color: var(--paper);
+    padding: 8px 12px; display: none; gap: 10px; align-items: baseline;
+  }
+  .ticker.on { display: flex; }
+  .ticker .step { font-size: 9px; letter-spacing: .13em; opacity: .55; flex: 0 0 auto; }
+  .ticker p { margin: 0; font-family: var(--serif); font-size: 14px; line-height: 1.4; }
+
+  .reader { border-left: 1px solid var(--rule); background: var(--panel); overflow-y: auto; display: flex; flex-direction: column; }
+  .tabs { display: flex; position: sticky; top: 0; background: var(--panel); border-bottom: 1px solid var(--rule); z-index: 2; }
+  .tabs button { flex: 1; border: 0; border-right: 1px solid var(--rule-2); padding: 7px 4px; background: var(--paper-2); }
+  .tabs button:last-child { border-right: 0; }
+  .tabs button[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+  .tabs button[hidden] { display: none; }
+
+  .read-body { padding: 16px 18px 40px; }
+  .eyebrow { display: block; margin-bottom: 6px; }
+  .read-body h1 {
+    font-family: var(--serif); font-weight: 500; font-size: 25px; line-height: 1.15;
+    margin: 0 0 5px; text-wrap: balance; letter-spacing: -.01em;
+  }
+  .sub { font-family: var(--serif); font-style: italic; font-size: 14px; color: var(--ink-2); margin: 0 0 4px; }
+  .prose p { font-family: var(--serif); font-size: 14.5px; line-height: 1.62; margin: 0 0 11px; max-width: 62ch; }
+  .prose p:last-child { margin-bottom: 0; }
+
+  .file {
+    font-size: 10.5px; color: var(--ink-2); border: 1px solid var(--rule-2);
+    background: var(--paper-2); padding: 4px 7px; margin-top: 8px;
+    display: block; overflow-x: auto; white-space: nowrap;
+  }
+  /* The audience note is a sentence, not a path — let it wrap. */
+  .file.note { white-space: normal; overflow-x: visible; line-height: 1.5; border-left: 2px solid var(--accent); }
+
+  .links { margin-top: 16px; }
+  .links h3 {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 400; margin: 0 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--rule-2);
+  }
+  .links button {
+    display: flex; width: 100%; gap: 7px; align-items: baseline; text-align: left;
+    border: 0; border-bottom: 1px solid var(--rule-2); background: transparent;
+    padding: 5px 0; text-transform: none; letter-spacing: 0; font-size: 11px; color: var(--ink-2);
+  }
+  .links button:hover { color: var(--accent); }
+  .links .dir { color: var(--ink-3); flex: 0 0 auto; font-size: 9px; letter-spacing: .1em; width: 34px; }
+  .links .via { color: var(--ink-3); margin-left: auto; font-size: 10px; text-align: right; }
+
+  .inside { margin-top: 14px; width: 100%; border-color: var(--accent); color: var(--accent); }
+  .inside:hover { background: var(--accent); color: var(--paper); }
+
+  .cond { padding-left: 17px; margin: 0; }
+  .cond li { font-family: var(--serif); font-size: 14px; line-height: 1.55; margin-bottom: 9px; max-width: 62ch; }
+  .cond li::marker { color: var(--accent); }
+
+  .keys { margin-top: 26px; padding-top: 10px; border-top: 1px solid var(--rule-2); display: grid; gap: 3px; }
+  .keys div { display: flex; gap: 8px; font-size: 10px; color: var(--ink-3); }
+  .keys b { font-weight: 500; color: var(--ink-2); flex: 0 0 62px; }
+
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  @media (max-width: 1180px) { :root { --read: 340px; --rail: 200px; } }
+  @media (max-width: 900px) {
+    body { overflow: auto; height: auto; }
+    main { grid-template-columns: 1fr; }
+    .rail { border-right: 0; border-bottom: 1px solid var(--rule); display: flex; overflow-x: auto; padding-bottom: 0; max-height: 96px; }
+    .rail-group { flex: 0 0 auto; border-right: 1px solid var(--rule-2); padding-top: 6px; min-width: 150px; }
+    .rail button { border-top: 0; padding: 3px 12px; }
+    .canvas-wrap { height: 58vh; }
+    .reader { border-left: 0; border-top: 1px solid var(--rule); }
+  }
+</style>
+
+<header>
+  <div class="stat id"><span class="lbl">repository</span><b id="s-repo">—</b></div>
+  <div id="stats" style="display:contents"></div>
+  <div class="controls">
+    <button id="play" aria-pressed="false">▶ Run it</button>
+    <button id="step">Step</button>
+    <button id="reset">Reset view</button>
+  </div>
+</header>
+
+<main>
+  <nav class="rail" id="rail" aria-label="Parts of the system"></nav>
+
+  <div class="stage">
+    <div class="views" id="views" role="tablist" aria-label="Areas of the system"></div>
+    <div class="canvas-wrap">
+      <canvas id="cv"></canvas>
+      <div class="crumb" id="crumb"></div>
+      <div class="zoomers">
+        <button id="zin" aria-label="Zoom in">+</button>
+        <button id="zout" aria-label="Zoom out">−</button>
+        <button id="zall" aria-label="See the whole map" title="See the whole map">▣</button>
+      </div>
+      <div class="hint" id="hint"><span class="lbl">Drag sideways to follow the path · click a box to see what it connects to</span></div>
+    </div>
+    <div class="ticker" id="ticker"><span class="step" id="tick-n"></span><p id="tick-t"></p></div>
+    <div class="legend">
+      <span class="k"><i></i><span class="lbl">the sale's path</span></span>
+      <span class="k"><i class="dash"></i><span class="lbl">looks something up</span></span>
+      <span class="k"><i class="acc"></i><span class="lbl">changes money or stock</span></span>
+      <span class="sep">·</span>
+      <span class="k"><i class="sw"></i><span class="lbl">red box = survives a race or a rounding penny</span></span>
+    </div>
+  </div>
+
+  <aside class="reader" id="reader">
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-what" aria-selected="true">What it does</button>
+      <button role="tab" id="tab-how" aria-selected="false">How it's built</button>
+      <button role="tab" id="tab-cond" aria-selected="false" hidden>Condition</button>
+    </div>
+    <div class="read-body" id="read"></div>
+  </aside>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const MAP = JSON.parse(document.getElementById('map-data').textContent);
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const $ = s => document.querySelector(s);
+
+  const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const fmt = s => esc(s).replace(/==([^=]+)==/g, '<mark>$1</mark>').replace(/`([^`]+)`/g, '<code>$1</code>');
+  const paras = a => (a || []).map(p => `<p>${fmt(p)}</p>`).join('');
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  // ── layout ──────────────────────────────────────────────
+  // Flat, column-based. Cards never overlap and lines only ever run through
+  // the gaps between them, so nothing can hide a connection.
+  const CW = 176, CH = 62, COL = 258, ROW = 104;
+
+  // Each area of the system is its own diagram. A node carries one set of prose
+  // and a position per area it appears in, so shared parts (stock, the ledger)
+  // show up in several stories without being described twice.
+  let viewId = MAP.views[0].id;
+  const VIEW = () => MAP.views.find(v => v.id === viewId);
+  const nodesInView = () => MAP.nodes.filter(n => n.pos && n.pos[viewId]);
+  const FLOW = () => VIEW().flow;
+
+  let level = { nodes: nodesInView(), parent: null };
+  let EDGES = [];
+  let sel = null, hover = null, tab = 'what';
+  let view = { ox: 0, oy: 0, k: 1 };
+  let flowIdx = -1, playing = false, anim = 0, lastT = 0;
+
+  let numbers = new Map();
+  function reindex() {
+    const here = new Set(nodesInView().map(n => n.id));
+    // An edge belongs to an area when both its ends are drawn there.
+    EDGES = MAP.edges.filter(e => here.has(e.from) && here.has(e.to));
+    numbers = new Map();
+    VIEW().groups.forEach((g, gi) => g.nodes.forEach((id, i) => numbers.set(id, `${gi + 1}.${i + 1}`)));
+  }
+  reindex();
+
+  const posOf = n => (level.parent ? [n.col, n.row] : n.pos[viewId]);
+  const rectOf = n => { const [c, r] = posOf(n); return { x: c * COL, y: r * ROW, w: CW, h: CH }; };
+  const S = p => ({ x: p.x * view.k + view.ox, y: p.y * view.k + view.oy });
+  const nodeById = id => level.nodes.find(n => n.id === id);
+
+  const edgesOf = id => EDGES.filter(e => e.from === id || e.to === id);
+
+  // ── edge routing ────────────────────────────────────────
+  // Short hops bend once in the gap beside the target. Long hops drop to a
+  // channel below everything and travel there, so they cross no cards at all.
+  function route(e) {
+    const a = nodeById(e.from), b = nodeById(e.to);
+    if (!a || !b) return null;
+    const ra = rectOf(a), rb = rectOf(b);
+    const far = Math.abs(b.col - a.col) > 1 && Math.abs(b.row - a.row) > 1;
+
+    if (far) {
+      // Out into the gutter, down to a channel below everything, along, then
+      // up the gutter beside the target. Verticals only ever run between
+      // columns, so a long line can never pass under a card.
+      const maxRow = Math.max(...level.nodes.map(n => n.row));
+      const ring = maxRow * ROW + CH + 40 + (Math.abs(hashCode(e.from + e.to)) % 3) * 13;
+      const gutterAfter = ra.x + ra.w + (COL - CW) / 2;
+      const gutterBefore = rb.x - (COL - CW) / 2;
+      return [
+        { x: ra.x + ra.w, y: ra.y + ra.h / 2 },
+        { x: gutterAfter, y: ra.y + ra.h / 2 },
+        { x: gutterAfter, y: ring },
+        { x: gutterBefore, y: ring },
+        { x: gutterBefore, y: rb.y + rb.h / 2 },
+        { x: rb.x, y: rb.y + rb.h / 2 },
+      ];
+    }
+
+    if (a.col === b.col) {                       // straight up or down
+      const down = b.row > a.row;
+      return [
+        { x: ra.x + ra.w / 2, y: down ? ra.y + ra.h : ra.y },
+        { x: rb.x + rb.w / 2, y: down ? rb.y : rb.y + rb.h },
+      ];
+    }
+
+    const right = b.col > a.col;
+    const sx = right ? ra.x + ra.w : ra.x;
+    const ex = right ? rb.x : rb.x + rb.w;
+    const gap = (sx + ex) / 2;                   // the empty gutter between columns
+    return [
+      { x: sx, y: ra.y + ra.h / 2 },
+      { x: gap, y: ra.y + ra.h / 2 },
+      { x: gap, y: rb.y + rb.h / 2 },
+      { x: ex, y: rb.y + rb.h / 2 },
+    ];
+  }
+
+  function hashCode(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
+  function segLen(p) { let L = 0; for (let i = 1; i < p.length; i++) L += Math.hypot(p[i].x - p[i - 1].x, p[i].y - p[i - 1].y); return L; }
+  function pointAt(p, t) {
+    let d = t * segLen(p);
+    for (let i = 1; i < p.length; i++) {
+      const s = Math.hypot(p[i].x - p[i - 1].x, p[i].y - p[i - 1].y);
+      if (d <= s || i === p.length - 1) { const u = s ? d / s : 0; return { x: p[i - 1].x + (p[i].x - p[i - 1].x) * u, y: p[i - 1].y + (p[i].y - p[i - 1].y) * u }; }
+      d -= s;
+    }
+    return p[p.length - 1];
+  }
+
+  function flowPair() {
+    if (flowIdx <= 0 || level.parent) return null;
+    const from = FLOW()[flowIdx - 1].node, to = FLOW()[flowIdx].node;
+    return EDGES.some(e => e.from === from && e.to === to) ? { from, to } : null;
+  }
+
+  // How loudly to draw each edge. Showing all of them at once is what made the
+  // first version unreadable, so most stay nearly invisible until asked for.
+  function edgeWeight(e) {
+    const fp = flowPair();
+    if (fp && fp.from === e.from && fp.to === e.to) return 'live';
+    if (sel) return (e.from === sel || e.to === sel) ? 'on' : 'off';
+    if (flowIdx >= 0) return 'off';
+    return e.kind === 'flow' ? 'on' : 'faint';
+  }
+
+  function drawEdges(C) {
+    if (level.parent) return;
+    const order = { off: 0, faint: 1, on: 2, live: 3 };
+    [...EDGES].sort((a, b) => order[edgeWeight(a)] - order[edgeWeight(b)]).forEach(e => {
+      const w = edgeWeight(e);
+      if (w === 'off') return;
+      const pts = route(e); if (!pts) return;
+      const p = pts.map(S);
+      const strong = w === 'on' || w === 'live';
+
+      ctx.save();
+      ctx.globalAlpha = w === 'faint' ? 0.2 : 1;
+      ctx.lineWidth = w === 'live' ? 2.4 : strong ? 1.6 : 1;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = e.kind === 'write' ? C.accent : strong ? C.ink2 : C.rule;
+      ctx.setLineDash(e.kind === 'read' || e.kind === 'guard' ? [3, 4] : []);
+      ctx.beginPath(); p.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke();
+
+      const tip = p[p.length - 1], prev = p[p.length - 2];
+      const ang = Math.atan2(tip.y - prev.y, tip.x - prev.x);
+      ctx.setLineDash([]); ctx.beginPath();
+      ctx.moveTo(tip.x, tip.y);
+      ctx.lineTo(tip.x - Math.cos(ang - 0.42) * 8, tip.y - Math.sin(ang - 0.42) * 8);
+      ctx.lineTo(tip.x - Math.cos(ang + 0.42) * 8, tip.y - Math.sin(ang + 0.42) * 8);
+      ctx.closePath(); ctx.fillStyle = ctx.strokeStyle; ctx.fill();
+
+      if (w === 'live') {
+        const q = pointAt(p, anim);
+        ctx.beginPath(); ctx.arc(q.x, q.y, 4.5, 0, 7); ctx.fillStyle = C.accent; ctx.fill();
+      }
+      ctx.restore();
+    });
+  }
+
+  // Labels are a pass of their own, run AFTER the cards — drawn with the lines
+  // they were painted over by every card that came later.
+  function drawEdgeLabels(C) {
+    if (level.parent) return;
+    EDGES.forEach(e => {
+      if (!e.label) return;
+      const w = edgeWeight(e);
+      if (!(w === 'live' || (sel && w === 'on'))) return;
+      const pts = route(e); if (!pts) return;
+      const p = pts.map(S);
+
+      // Sit on the longest straight run, which is always clear of the cards.
+      let a = p[0], b = p[1], best = -1;
+      for (let i = 1; i < p.length; i++) {
+        const len = Math.hypot(p[i].x - p[i - 1].x, p[i].y - p[i - 1].y);
+        if (len > best) { best = len; a = p[i - 1]; b = p[i]; }
+      }
+      const q = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+
+      ctx.save();
+      ctx.font = `${Math.max(10, Math.min(12.5, 11 * view.k))}px ${css('--mono')}`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const tw = ctx.measureText(e.label).width, bw = tw + 12, bh = 18;
+      ctx.fillStyle = C.paper;
+      ctx.fillRect(q.x - bw / 2, q.y - bh / 2, bw, bh);
+      ctx.strokeStyle = e.kind === 'write' ? C.accent : C.ink2;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(q.x - bw / 2, q.y - bh / 2, bw, bh);
+      ctx.fillStyle = C.ink;
+      ctx.fillText(e.label, q.x, q.y);
+      ctx.restore();
+    });
+  }
+
+  const KIND = { route: 'endpoint', gate: 'check', logic: 'logic', table: 'stored', pure: 'maths', screen: 'in the browser' };
+
+  function drawNode(n, C) {
+    const r = rectOf(n), p = S({ x: r.x, y: r.y });
+    const w = r.w * view.k, h = r.h * view.k;
+    const isSel = sel === n.id, isHov = hover === n.id;
+    const isFlow = flowIdx >= 0 && FLOW()[flowIdx] && FLOW()[flowIdx].node === n.id;
+    const near = sel ? (sel === n.id || edgesOf(sel).some(e => e.from === n.id || e.to === n.id)) : true;
+    const accent = n.accent || isFlow;
+
+    ctx.save();
+    ctx.globalAlpha = near ? 1 : 0.26;
+
+    ctx.fillStyle = accent || isSel ? C.accentBg : C.card;
+    ctx.fillRect(p.x, p.y, w, h);
+    ctx.strokeStyle = accent || isSel ? C.accent : C.rule;
+    ctx.lineWidth = isSel || isHov ? 2 : 1;
+    ctx.setLineDash(n.kind === 'screen' ? [5, 3] : []);
+    ctx.strokeRect(p.x, p.y, w, h);
+    ctx.setLineDash([]);
+    if (n.kind === 'table') {                    // a stored thing gets its plates back
+      ctx.beginPath();
+      ctx.moveTo(p.x + 1, p.y + 4 * view.k); ctx.lineTo(p.x + w - 1, p.y + 4 * view.k);
+      ctx.strokeStyle = accent || isSel ? C.accent : C.rule2; ctx.lineWidth = 1; ctx.stroke();
+    }
+
+    const px = p.x + 10 * view.k;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+
+    ctx.font = `9px ${css('--mono')}`;
+    ctx.fillStyle = C.ink3;
+    ctx.fillText((KIND[n.kind] || '').toUpperCase(), px, p.y + 16 * view.k);
+
+    ctx.font = `500 ${13 * view.k}px ${css('--mono')}`;
+    ctx.fillStyle = accent || isSel ? C.accent : C.ink;
+    let label = n.label;
+    while (ctx.measureText(label).width > w - 20 * view.k && label.length > 4) label = label.slice(0, -2);
+    if (label !== n.label) label += '…';
+    ctx.fillText(label, px, p.y + 34 * view.k);
+
+    // The bottom line is either the one-liner or the way in — never both, so
+    // they can't collide.
+    const openable = n.children && n.children.length;
+    if (openable) {
+      ctx.font = `9px ${css('--mono')}`;
+      ctx.fillStyle = C.accent;
+      ctx.fillText(`▸ GO INSIDE — ${n.children.length} PARTS`, px, p.y + 48 * view.k);
+    } else if (n.sub) {
+      ctx.font = `9px ${css('--mono')}`;
+      ctx.fillStyle = C.ink3;
+      let sub = n.sub;
+      while (ctx.measureText(sub).width > w - 20 * view.k && sub.length > 4) sub = sub.slice(0, -2);
+      ctx.fillText(sub === n.sub ? sub : sub + '…', px, p.y + 48 * view.k);
+    }
+
+    // ticks in the corner = how many separate jobs it does
+    const layers = n.layers || 1;
+    for (let i = 0; i < layers; i++) {
+      ctx.fillStyle = accent || isSel ? C.accent : C.rule;
+      ctx.fillRect(p.x + w - (8 + i * 4) * view.k, p.y + 9 * view.k, 2 * view.k, 7 * view.k);
+    }
+
+    ctx.restore();
+  }
+
+  function draw() {
+    const C = {
+      ink: css('--ink'), ink2: css('--ink-2'), ink3: css('--ink-3'), rule: css('--rule'),
+      rule2: css('--rule-2'), accent: css('--accent'), accentBg: css('--accent-bg'),
+      paper: css('--paper'), card: css('--card'), grid: css('--grid'),
+    };
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== w * dpr || cv.height !== h * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = C.paper; ctx.fillRect(0, 0, w, h);
+
+    drawEdges(C);
+    level.nodes.forEach(n => drawNode(n, C));
+    drawEdgeLabels(C);
+  }
+
+  // Shrinking to fit everything makes the labels unreadable, which is worse
+  // than not seeing it all at once. Below MIN_K the view stops shrinking and
+  // opens at the start of the sale instead, and you pan from there.
+  const MIN_K = 0.78;
+
+  function fit(showAll = false) {
+    if (!level.nodes.length) return;
+    const rs = level.nodes.map(rectOf);
+    const minX = Math.min(...rs.map(r => r.x)), maxX = Math.max(...rs.map(r => r.x + r.w));
+    const minY = Math.min(...rs.map(r => r.y)), maxY = Math.max(...rs.map(r => r.y + r.h));
+    const pad = 52, w = cv.clientWidth, h = cv.clientHeight;
+    const ideal = Math.min((w - pad * 2) / (maxX - minX || 1), (h - pad * 2) / (maxY - minY || 1), 1.15);
+    view.k = showAll ? ideal : Math.max(ideal, MIN_K);
+
+    if (showAll || ideal >= MIN_K) {
+      view.ox = w / 2 - ((minX + maxX) / 2) * view.k;
+      view.oy = h / 2 - ((minY + maxY) / 2) * view.k;
+    } else {
+      view.ox = pad - minX * view.k;                       // start at the left
+      view.oy = h / 2 - (CH / 2) * view.k;                 // row 0 centred
+    }
+    draw();
+  }
+
+  function pick(mx, my) {
+    for (const n of level.nodes) {
+      const r = rectOf(n), p = S({ x: r.x, y: r.y });
+      if (mx >= p.x && mx <= p.x + r.w * view.k && my >= p.y && my <= p.y + r.h * view.k) return n.id;
+    }
+    return null;
+  }
+
+  // ── reader ──────────────────────────────────────────────
+  function linksPanel(n) {
+    const rows = edgesOf(n.id).map(e => {
+      const out = e.from === n.id;
+      const other = MAP.nodes.find(x => x.id === (out ? e.to : e.from));
+      if (!other) return '';
+      return `<button data-go="${other.id}">
+        <span class="dir">${out ? 'TO' : 'FROM'}</span>
+        <span>${esc(other.label)}</span>
+        <span class="via">${esc(e.label || e.kind)}</span></button>`;
+    }).join('');
+    return rows ? `<div class="links"><h3>Connects to</h3>${rows}</div>` : '';
+  }
+
+  function renderReader() {
+    const el = $('#read'), tW = $('#tab-what'), tH = $('#tab-how'), tC = $('#tab-cond');
+    const n = sel ? nodeById(sel) : null;
+
+    if (!n) {
+      tH.hidden = false; tC.hidden = true;
+      tW.textContent = 'What this is'; tH.textContent = 'How to read it';
+      const v = VIEW();
+      el.innerHTML = `
+        <span class="lbl eyebrow">${esc(MAP.repo)} · ${esc(MAP.coverage)}</span>
+        <h1>${esc(v.label)}</h1>
+        <p class="sub">${esc(v.blurb)}</p>
+        <span class="file note">${esc(MAP.audienceNote)}</span>
+        <div class="prose" style="margin-top:16px">${
+          tab === 'how' ? paras(MAP.howToRead) : paras([v.intro, ...MAP.thesis])
+        }</div>
+        <div class="keys">
+          <div><b>click</b><span>read a part, and see what it connects to</span></div>
+          <div><b>↑ ↓</b><span>move through the list</span></div>
+          <div><b>enter</b><span>go inside a part</span></div>
+          <div><b>esc</b><span>come back out</span></div>
+          <div><b>space</b><span>run the sale</span></div>
+          <div><b>drag / scroll</b><span>pan and zoom</span></div>
+        </div>`;
+      return;
+    }
+
+    tW.textContent = 'What it does';
+    tH.textContent = "How it's built";
+    tH.hidden = !n.how;
+    tC.hidden = !(n.condition && n.condition.length);
+    if (tab === 'how' && !n.how) tab = 'what';
+    if (tab === 'cond' && tC.hidden) tab = 'what';
+    syncTabs();
+
+    let body = '';
+    if (tab === 'what') body = `<div class="prose">${paras(n.what)}</div>${level.parent ? '' : linksPanel(n)}`;
+    if (tab === 'how') body = `<div class="prose">${paras(n.how)}</div>${n.file ? `<span class="file">${esc(n.file)}</span>` : ''}`;
+    if (tab === 'cond') body = `<ul class="cond">${n.condition.map(c => `<li>${fmt(c)}</li>`).join('')}</ul>`;
+
+    el.innerHTML = `
+      <span class="lbl eyebrow">${numbers.get(n.id) ? numbers.get(n.id) + ' · ' : ''}${esc(n.sub || '')}</span>
+      <h1>${esc(n.label)}</h1>
+      ${body}
+      ${n.children && n.children.length ? `<button class="inside" id="go-in">▸ Go inside — ${n.children.length} parts</button>` : ''}`;
+
+    const go = $('#go-in');
+    if (go) go.onclick = () => enter(n);
+    el.querySelectorAll('[data-go]').forEach(b => { b.onclick = () => select(b.dataset.go); });
+  }
+
+  function syncTabs() {
+    ['what', 'how', 'cond'].forEach(t => $('#tab-' + t).setAttribute('aria-selected', String(tab === t)));
+  }
+
+  function renderRail() {
+    $('#rail').innerHTML = VIEW().groups.map(g => `
+      <div class="rail-group">
+        <span class="lbl">${esc(g.label)}</span>
+        ${g.nodes.map(id => {
+          const n = MAP.nodes.find(x => x.id === id);
+          return n ? `<button data-id="${id}" aria-current="false"><span class="n">${numbers.get(id)}</span><span>${esc(n.label)}</span>${n.children ? '<span class="dot"></span>' : ''}</button>` : '';
+        }).join('')}
+      </div>`).join('');
+    $('#rail').querySelectorAll('button').forEach(b => { b.onclick = () => { if (level.parent) exit(); select(b.dataset.id); }; });
+  }
+
+  const syncRail = () => document.querySelectorAll('#rail button').forEach(b => b.setAttribute('aria-current', String(b.dataset.id === sel)));
+
+  function renderCrumb() {
+    $('#crumb').innerHTML = level.parent
+      ? `<span>${esc(VIEW().label)}</span><span>inside</span><span class="here">${esc(level.parent.label)}</span>`
+      : `<span class="here">${esc(VIEW().label)}</span>`;
+  }
+
+  function renderViews() {
+    $('#views').innerHTML = MAP.views.map(v =>
+      `<button role="tab" data-view="${v.id}" aria-selected="${v.id === viewId}"><b>${esc(v.label)}</b><i>${esc(v.blurb)}</i></button>`).join('');
+    $('#views').querySelectorAll('button').forEach(b => { b.onclick = () => switchView(b.dataset.view); });
+  }
+
+  function switchView(id) {
+    if (id === viewId) return;
+    viewId = id;
+    stop(); flowIdx = -1; ticker.classList.remove('on');
+    sel = null; tab = 'what';
+    reindex();
+    level = { nodes: nodesInView(), parent: null };
+    $('#hint').style.display = '';
+    $('#play').textContent = runLabel();
+    renderViews(); renderRail(); renderCrumb(); syncTabs(); renderReader(); fit();
+  }
+
+  // Picking something from the list has to bring it on screen, or choosing a
+  // part that happens to be off to the right looks like nothing happened.
+  function ensureVisible(id) {
+    const n = nodeById(id); if (!n) return;
+    const r = rectOf(n), p = S({ x: r.x, y: r.y });
+    const w = r.w * view.k, h = r.h * view.k, m = 96;
+    const cw = cv.clientWidth, ch = cv.clientHeight;
+    if (p.x < m) view.ox += m - p.x;
+    else if (p.x + w > cw - m) view.ox -= (p.x + w) - (cw - m);
+    if (p.y < m) view.oy += m - p.y;
+    else if (p.y + h > ch - m) view.oy -= (p.y + h) - (ch - m);
+  }
+
+  function select(id) {
+    sel = id; tab = 'what';
+    $('#hint').style.display = 'none';
+    ensureVisible(id);
+    syncRail(); renderReader(); draw();
+  }
+
+  function enter(n) {
+    if (!n.children || !n.children.length) return;
+    level = { nodes: n.children.map(c => ({ kind: 'logic', ...c })), parent: n };
+    sel = null; stop(); renderCrumb(); renderReader(); fit();
+  }
+  function exit() {
+    if (!level.parent) return;
+    const p = level.parent;
+    level = { nodes: nodesInView(), parent: null };
+    sel = p.id; renderCrumb(); syncRail(); renderReader(); fit();
+  }
+
+  const ticker = $('#ticker');
+  function showStep() {
+    const s = FLOW()[flowIdx]; if (!s) return;
+    ticker.classList.add('on');
+    $('#tick-n').textContent = `${String(flowIdx + 1).padStart(2, '0')} / ${FLOW().length}`;
+    $('#tick-t').innerHTML = fmt(s.note);
+    sel = s.node; tab = 'what';
+    $('#hint').style.display = 'none';
+    ensureVisible(s.node);
+    syncRail(); renderReader(); draw();
+  }
+  function step() { if (level.parent) exit(); flowIdx = (flowIdx + 1) % FLOW().length; anim = 0; showStep(); }
+  const runLabel = () => `▶ ${VIEW().run}`;
+  function stop() { playing = false; $('#play').setAttribute('aria-pressed', 'false'); $('#play').textContent = runLabel(); }
+  function play() {
+    if (playing) { stop(); return; }
+    if (level.parent) exit();
+    playing = true;
+    $('#play').setAttribute('aria-pressed', 'true'); $('#play').textContent = '❚❚ Pause';
+    if (flowIdx < 0) { flowIdx = 0; showStep(); }
+    lastT = performance.now(); requestAnimationFrame(tickAnim);
+  }
+  function tickAnim(t) {
+    if (!playing) return;
+    const dt = Math.min(t - lastT, 60); lastT = t;
+    anim += dt / 1900;
+    if (anim >= 1) { anim = 0; flowIdx = (flowIdx + 1) % FLOW().length; showStep(); } else draw();
+    requestAnimationFrame(tickAnim);
+  }
+
+  let drag = null;
+  cv.addEventListener('pointerdown', e => {
+    drag = { x: e.clientX, y: e.clientY, ox: view.ox, oy: view.oy, moved: false };
+    cv.setPointerCapture(e.pointerId); cv.classList.add('dragging');
+  });
+  cv.addEventListener('pointermove', e => {
+    const r = cv.getBoundingClientRect();
+    if (drag) {
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+      view.ox = drag.ox + dx; view.oy = drag.oy + dy; draw(); return;
+    }
+    const h = pick(e.clientX - r.left, e.clientY - r.top);
+    if (h !== hover) { hover = h; cv.style.cursor = h ? 'pointer' : 'grab'; draw(); }
+  });
+  cv.addEventListener('pointerup', e => {
+    cv.classList.remove('dragging');
+    const wasDrag = drag && drag.moved; drag = null;
+    if (wasDrag) return;
+    const r = cv.getBoundingClientRect();
+    const id = pick(e.clientX - r.left, e.clientY - r.top);
+    if (!id) { stop(); flowIdx = -1; ticker.classList.remove('on'); sel = null; syncRail(); renderReader(); draw(); return; }
+    stop(); flowIdx = -1; ticker.classList.remove('on');
+    if (!level.parent && sel === id) { const n = nodeById(id); if (n.children) { enter(n); return; } }
+    select(id);
+  });
+  cv.addEventListener('wheel', e => {
+    e.preventDefault();
+    const r = cv.getBoundingClientRect();
+    const mx = e.clientX - r.left, my = e.clientY - r.top;
+    const k2 = Math.max(0.3, Math.min(2.4, view.k * Math.exp(-e.deltaY * 0.0016)));
+    view.ox = mx - (mx - view.ox) * (k2 / view.k);
+    view.oy = my - (my - view.oy) * (k2 / view.k);
+    view.k = k2; draw();
+  }, { passive: false });
+
+  const zoomBy = f => {
+    const k2 = Math.max(0.3, Math.min(2.4, view.k * f));
+    const cx = cv.clientWidth / 2, cy = cv.clientHeight / 2;
+    view.ox = cx - (cx - view.ox) * (k2 / view.k);
+    view.oy = cy - (cy - view.oy) * (k2 / view.k);
+    view.k = k2; draw();
+  };
+  $('#zin').onclick = () => zoomBy(1.25);
+  $('#zout').onclick = () => zoomBy(0.8);
+  $('#zall').onclick = () => fit(true);
+  $('#reset').onclick = () => {
+    stop(); flowIdx = -1; ticker.classList.remove('on'); sel = null;
+    if (level.parent) exit();
+    $('#hint').style.display = ''; syncRail(); renderReader(); fit();
+  };
+  $('#play').onclick = play;
+  $('#step').onclick = () => { stop(); step(); };
+  ['what', 'how', 'cond'].forEach(t => { $('#tab-' + t).onclick = () => { tab = t; syncTabs(); renderReader(); }; });
+
+  addEventListener('keydown', e => {
+    if (e.target.tagName === 'BUTTON' && e.key === ' ') return;
+    const flat = VIEW().groups.flatMap(g => g.nodes);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (level.parent) exit();
+      const i = flat.indexOf(sel);
+      const next = e.key === 'ArrowDown' ? (i + 1) % flat.length : (i <= 0 ? flat.length - 1 : i - 1);
+      stop(); flowIdx = -1; ticker.classList.remove('on'); select(flat[next]);
+    } else if (e.key === 'Enter') {
+      const n = sel && nodeById(sel);
+      if (n && n.children) { e.preventDefault(); enter(n); }
+    } else if (e.key === 'Escape' || e.key === 'ArrowLeft') {
+      if (level.parent) { e.preventDefault(); exit(); }
+    } else if (e.key === ' ') { e.preventDefault(); play(); }
+  });
+
+  // Wrapped: rAF and resize both pass an argument, which would read as showAll.
+  addEventListener('resize', () => fit());
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+
+  $('#s-repo').textContent = MAP.repo;
+  $('#stats').innerHTML = MAP.stats.map(s => `<div class="stat"><span class="lbl">${esc(s.label)}</span><b>${esc(s.value)}</b></div>`).join('');
+  $('#play').textContent = runLabel();
+  renderViews(); renderRail(); renderCrumb(); renderReader();
+  requestAnimationFrame(() => fit());
+})();
+</script>

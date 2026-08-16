@@ -1,0 +1,860 @@
+<title>How PokeDB Works</title>
+
+<script type="application/json" id="map-data">__MAP_JSON__</script>
+
+<style>
+  :root {
+    --paper:      #e4e7df;
+    --paper-2:    #dbdfd4;
+    --panel:      #eaede5;
+    --card:       #f2f4ee;
+    --ink:        #1b1f1a;
+    --ink-2:      #59604f;
+    --ink-3:      #858c7c;
+    --rule:       #b1b8a6;
+    --rule-2:     #c9cec0;
+    --grid:       #d5d9cc;
+    --accent:     #a8411c;
+    --accent-bg:  #f4e3dc;
+    --mark:       #e8c547;
+    --mark-ink:   #1b1f1a;
+
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+
+    --rail: 236px;
+    --read: 404px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #15180f;
+      --paper-2:    #1b1f16;
+      --panel:      #191d13;
+      --card:       #212619;
+      --ink:        #e0e5d5;
+      --ink-2:      #99a28c;
+      --ink-3:      #6b7462;
+      --rule:       #3a4230;
+      --rule-2:     #272d20;
+      --grid:       #212619;
+      --accent:     #e07440;
+      --accent-bg:  #33200f;
+      --mark:       #6a5712;
+      --mark-ink:   #f5ecca;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:      #15180f;
+    --paper-2:    #1b1f16;
+    --panel:      #191d13;
+    --card:       #212619;
+    --ink:        #e0e5d5;
+    --ink-2:      #99a28c;
+    --ink-3:      #6b7462;
+    --rule:       #3a4230;
+    --rule-2:     #272d20;
+    --grid:       #212619;
+    --accent:     #e07440;
+    --accent-bg:  #33200f;
+    --mark:       #6a5712;
+    --mark-ink:   #f5ecca;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+    height: 100vh;
+    height: 100dvh;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  mark { background: var(--mark); color: var(--mark-ink); padding: 0 .18em; }
+
+  code {
+    font-family: var(--mono); font-size: .88em;
+    background: var(--paper-2); border: 1px solid var(--rule-2);
+    padding: 0 .28em; white-space: nowrap;
+  }
+
+  .lbl {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--ink-3);
+  }
+
+  header {
+    border-bottom: 1px solid var(--rule);
+    background: var(--panel);
+    display: flex; align-items: stretch;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  header::-webkit-scrollbar { display: none; }
+
+  .stat {
+    padding: 6px 14px; border-right: 1px solid var(--rule-2);
+    display: flex; flex-direction: column; gap: 1px;
+    white-space: nowrap; flex: 0 0 auto;
+  }
+  .stat b { font-weight: 500; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .stat.id b { color: var(--accent); }
+
+  .controls { margin-left: auto; display: flex; gap: 6px; align-items: center; padding: 0 12px; flex: 0 0 auto; }
+
+  button {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .11em;
+    text-transform: uppercase; color: var(--ink);
+    background: var(--paper); border: 1px solid var(--rule);
+    padding: 5px 9px; cursor: pointer;
+  }
+  button:hover { background: var(--paper-2); border-color: var(--ink-3); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+  main { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr) var(--read); min-height: 0; }
+
+  .rail { border-right: 1px solid var(--rule); overflow-y: auto; background: var(--panel); padding-bottom: 24px; }
+  .rail-group { padding-top: 10px; }
+  .rail-group > .lbl { padding: 0 12px 4px; display: block; }
+
+  .rail button {
+    display: flex; gap: 8px; align-items: baseline; width: 100%;
+    text-align: left; border: 0; border-top: 1px solid var(--rule-2);
+    background: transparent; padding: 6px 12px; font-size: 11px;
+    letter-spacing: 0; text-transform: none; color: var(--ink-2);
+  }
+  .rail button:hover { background: var(--paper-2); color: var(--ink); }
+  .rail button[aria-current="true"] { background: var(--ink); color: var(--paper); }
+  .rail button[aria-current="true"] .n { color: var(--paper); opacity: .6; }
+  .rail .n { font-size: 9px; color: var(--ink-3); font-variant-numeric: tabular-nums; flex: 0 0 auto; width: 14px; }
+  .rail .dot { margin-left: auto; width: 5px; height: 5px; background: var(--accent); flex: 0 0 auto; align-self: center; }
+
+  .stage { position: relative; min-width: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; background: var(--paper); }
+
+  .views { display: flex; border-bottom: 1px solid var(--rule); background: var(--panel); overflow-x: auto; scrollbar-width: none; }
+  .views::-webkit-scrollbar { display: none; }
+  .views button {
+    flex: 1 0 auto; border: 0; border-right: 1px solid var(--rule-2);
+    padding: 7px 14px; background: transparent; text-align: left;
+    text-transform: none; letter-spacing: 0; display: flex; flex-direction: column; gap: 1px;
+  }
+  .views button:last-child { border-right: 0; }
+  .views button b { font-weight: 500; font-size: 12px; }
+  .views button i { font-style: normal; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+  .views button[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+  .views button[aria-selected="true"] i { color: var(--paper); opacity: .55; }
+  .canvas-wrap { position: relative; min-height: 0; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  canvas.dragging { cursor: grabbing; }
+
+  .crumb { position: absolute; top: 10px; left: 12px; display: flex; gap: 6px; align-items: center; pointer-events: none; }
+  .crumb span {
+    background: var(--panel); border: 1px solid var(--rule); padding: 3px 7px;
+    font-size: 9px; letter-spacing: .11em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .crumb span.here { color: var(--accent); border-color: var(--accent); }
+
+  .zoomers { position: absolute; top: 10px; right: 12px; display: flex; flex-direction: column; gap: 4px; }
+  .zoomers button { width: 24px; height: 24px; padding: 0; font-size: 12px; line-height: 1; }
+
+  .hint {
+    position: absolute; bottom: 10px; left: 12px; right: 12px;
+    text-align: center; pointer-events: none;
+  }
+  .hint span { background: var(--panel); border: 1px solid var(--rule-2); padding: 3px 9px; }
+
+  .legend {
+    border-top: 1px solid var(--rule); padding: 5px 12px;
+    display: flex; flex-wrap: wrap; gap: 4px 16px; background: var(--panel); align-items: center;
+  }
+  .legend .k { display: inline-flex; gap: 5px; align-items: center; }
+  .legend i { width: 16px; height: 0; border-top: 1.5px solid var(--ink-2); display: inline-block; }
+  .legend i.dash { border-top-style: dotted; }
+  .legend i.acc { border-top-color: var(--accent); }
+  .legend i.sw { width: 9px; height: 9px; border: 1.5px solid var(--accent); background: var(--accent-bg); }
+  .legend .sep { color: var(--rule); }
+
+  .ticker {
+    border-top: 1px solid var(--rule); background: var(--ink); color: var(--paper);
+    padding: 8px 12px; display: none; gap: 10px; align-items: baseline;
+  }
+  .ticker.on { display: flex; }
+  .ticker .step { font-size: 9px; letter-spacing: .13em; opacity: .55; flex: 0 0 auto; }
+  .ticker p { margin: 0; font-family: var(--serif); font-size: 14px; line-height: 1.4; }
+
+  .reader { border-left: 1px solid var(--rule); background: var(--panel); overflow-y: auto; display: flex; flex-direction: column; }
+  .tabs { display: flex; position: sticky; top: 0; background: var(--panel); border-bottom: 1px solid var(--rule); z-index: 2; }
+  .tabs button { flex: 1; border: 0; border-right: 1px solid var(--rule-2); padding: 7px 4px; background: var(--paper-2); }
+  .tabs button:last-child { border-right: 0; }
+  .tabs button[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+  .tabs button[hidden] { display: none; }
+
+  .read-body { padding: 16px 18px 40px; }
+  .eyebrow { display: block; margin-bottom: 6px; }
+  .read-body h1 {
+    font-family: var(--serif); font-weight: 500; font-size: 25px; line-height: 1.15;
+    margin: 0 0 5px; text-wrap: balance; letter-spacing: -.01em;
+  }
+  .sub { font-family: var(--serif); font-style: italic; font-size: 14px; color: var(--ink-2); margin: 0 0 4px; }
+  .prose p { font-family: var(--serif); font-size: 14.5px; line-height: 1.62; margin: 0 0 11px; max-width: 62ch; }
+  .prose p:last-child { margin-bottom: 0; }
+
+  .file {
+    font-size: 10.5px; color: var(--ink-2); border: 1px solid var(--rule-2);
+    background: var(--paper-2); padding: 4px 7px; margin-top: 8px;
+    display: block; overflow-x: auto; white-space: nowrap;
+  }
+  /* The audience note is a sentence, not a path — let it wrap. */
+  .file.note { white-space: normal; overflow-x: visible; line-height: 1.5; border-left: 2px solid var(--accent); }
+
+  .links { margin-top: 16px; }
+  .links h3 {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 400; margin: 0 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--rule-2);
+  }
+  .links button {
+    display: flex; width: 100%; gap: 7px; align-items: baseline; text-align: left;
+    border: 0; border-bottom: 1px solid var(--rule-2); background: transparent;
+    padding: 5px 0; text-transform: none; letter-spacing: 0; font-size: 11px; color: var(--ink-2);
+  }
+  .links button:hover { color: var(--accent); }
+  .links .dir { color: var(--ink-3); flex: 0 0 auto; font-size: 9px; letter-spacing: .1em; width: 34px; }
+  .links .via { color: var(--ink-3); margin-left: auto; font-size: 10px; text-align: right; }
+
+  .inside { margin-top: 14px; width: 100%; border-color: var(--accent); color: var(--accent); }
+  .inside:hover { background: var(--accent); color: var(--paper); }
+
+  .cond { padding-left: 17px; margin: 0; }
+  .cond li { font-family: var(--serif); font-size: 14px; line-height: 1.55; margin-bottom: 9px; max-width: 62ch; }
+  .cond li::marker { color: var(--accent); }
+
+  .keys { margin-top: 26px; padding-top: 10px; border-top: 1px solid var(--rule-2); display: grid; gap: 3px; }
+  .keys div { display: flex; gap: 8px; font-size: 10px; color: var(--ink-3); }
+  .keys b { font-weight: 500; color: var(--ink-2); flex: 0 0 62px; }
+
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  @media (max-width: 1180px) { :root { --read: 340px; --rail: 200px; } }
+  @media (max-width: 900px) {
+    body { overflow: auto; height: auto; }
+    main { grid-template-columns: 1fr; }
+    .rail { border-right: 0; border-bottom: 1px solid var(--rule); display: flex; overflow-x: auto; padding-bottom: 0; max-height: 96px; }
+    .rail-group { flex: 0 0 auto; border-right: 1px solid var(--rule-2); padding-top: 6px; min-width: 150px; }
+    .rail button { border-top: 0; padding: 3px 12px; }
+    .canvas-wrap { height: 58vh; }
+    .reader { border-left: 0; border-top: 1px solid var(--rule); }
+  }
+</style>
+
+<header>
+  <div class="stat id"><span class="lbl">repository</span><b id="s-repo">—</b></div>
+  <div id="stats" style="display:contents"></div>
+  <div class="controls">
+    <button id="play" aria-pressed="false">▶ Run it</button>
+    <button id="step">Step</button>
+    <button id="reset">Reset view</button>
+  </div>
+</header>
+
+<main>
+  <nav class="rail" id="rail" aria-label="Parts of the system"></nav>
+
+  <div class="stage">
+    <div class="views" id="views" role="tablist" aria-label="Areas of the system"></div>
+    <div class="canvas-wrap">
+      <canvas id="cv"></canvas>
+      <div class="crumb" id="crumb"></div>
+      <div class="zoomers">
+        <button id="zin" aria-label="Zoom in">+</button>
+        <button id="zout" aria-label="Zoom out">−</button>
+        <button id="zall" aria-label="See the whole map" title="See the whole map">▣</button>
+      </div>
+      <div class="hint" id="hint"><span class="lbl">Drag sideways to follow the path · click a box to see what it connects to</span></div>
+    </div>
+    <div class="ticker" id="ticker"><span class="step" id="tick-n"></span><p id="tick-t"></p></div>
+    <div class="legend">
+      <span class="k"><i></i><span class="lbl">the sale's path</span></span>
+      <span class="k"><i class="dash"></i><span class="lbl">looks something up</span></span>
+      <span class="k"><i class="acc"></i><span class="lbl">changes money or stock</span></span>
+      <span class="sep">·</span>
+      <span class="k"><i class="sw"></i><span class="lbl">red box = survives a race or a rounding penny</span></span>
+    </div>
+  </div>
+
+  <aside class="reader" id="reader">
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-what" aria-selected="true">What it does</button>
+      <button role="tab" id="tab-how" aria-selected="false">How it's built</button>
+      <button role="tab" id="tab-cond" aria-selected="false" hidden>Condition</button>
+    </div>
+    <div class="read-body" id="read"></div>
+  </aside>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const MAP = JSON.parse(document.getElementById('map-data').textContent);
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const $ = s => document.querySelector(s);
+
+  const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const fmt = s => esc(s).replace(/==([^=]+)==/g, '<mark>$1</mark>').replace(/`([^`]+)`/g, '<code>$1</code>');
+  const paras = a => (a || []).map(p => `<p>${fmt(p)}</p>`).join('');
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  // ── layout ──────────────────────────────────────────────
+  // Flat, column-based. Cards never overlap and lines only ever run through
+  // the gaps between them, so nothing can hide a connection.
+  const CW = 176, CH = 62, COL = 258, ROW = 104;
+
+  // Each area of the system is its own diagram. A node carries one set of prose
+  // and a position per area it appears in, so shared parts (stock, the ledger)
+  // show up in several stories without being described twice.
+  let viewId = MAP.views[0].id;
+  const VIEW = () => MAP.views.find(v => v.id === viewId);
+  const nodesInView = () => MAP.nodes.filter(n => n.pos && n.pos[viewId]);
+  const FLOW = () => VIEW().flow;
+
+  let level = { nodes: nodesInView(), parent: null };
+  let EDGES = [];
+  let sel = null, hover = null, tab = 'what';
+  let view = { ox: 0, oy: 0, k: 1 };
+  let flowIdx = -1, playing = false, anim = 0, lastT = 0;
+
+  let numbers = new Map();
+  function reindex() {
+    const here = new Set(nodesInView().map(n => n.id));
+    // An edge belongs to an area when both its ends are drawn there.
+    EDGES = MAP.edges.filter(e => here.has(e.from) && here.has(e.to));
+    numbers = new Map();
+    VIEW().groups.forEach((g, gi) => g.nodes.forEach((id, i) => numbers.set(id, `${gi + 1}.${i + 1}`)));
+  }
+  reindex();
+
+  const posOf = n => (level.parent ? [n.col, n.row] : n.pos[viewId]);
+  const rectOf = n => { const [c, r] = posOf(n); return { x: c * COL, y: r * ROW, w: CW, h: CH }; };
+  const S = p => ({ x: p.x * view.k + view.ox, y: p.y * view.k + view.oy });
+  const nodeById = id => level.nodes.find(n => n.id === id);
+
+  const edgesOf = id => EDGES.filter(e => e.from === id || e.to === id);
+
+  // ── edge routing ────────────────────────────────────────
+  // Short hops bend once in the gap beside the target. Long hops drop to a
+  // channel below everything and travel there, so they cross no cards at all.
+  function route(e) {
+    const a = nodeById(e.from), b = nodeById(e.to);
+    if (!a || !b) return null;
+    const ra = rectOf(a), rb = rectOf(b);
+    const far = Math.abs(b.col - a.col) > 1 && Math.abs(b.row - a.row) > 1;
+
+    if (far) {
+      // Out into the gutter, down to a channel below everything, along, then
+      // up the gutter beside the target. Verticals only ever run between
+      // columns, so a long line can never pass under a card.
+      const maxRow = Math.max(...level.nodes.map(n => n.row));
+      const ring = maxRow * ROW + CH + 40 + (Math.abs(hashCode(e.from + e.to)) % 3) * 13;
+      const gutterAfter = ra.x + ra.w + (COL - CW) / 2;
+      const gutterBefore = rb.x - (COL - CW) / 2;
+      return [
+        { x: ra.x + ra.w, y: ra.y + ra.h / 2 },
+        { x: gutterAfter, y: ra.y + ra.h / 2 },
+        { x: gutterAfter, y: ring },
+        { x: gutterBefore, y: ring },
+        { x: gutterBefore, y: rb.y + rb.h / 2 },
+        { x: rb.x, y: rb.y + rb.h / 2 },
+      ];
+    }
+
+    if (a.col === b.col) {                       // straight up or down
+      const down = b.row > a.row;
+      return [
+        { x: ra.x + ra.w / 2, y: down ? ra.y + ra.h : ra.y },
+        { x: rb.x + rb.w / 2, y: down ? rb.y : rb.y + rb.h },
+      ];
+    }
+
+    const right = b.col > a.col;
+    const sx = right ? ra.x + ra.w : ra.x;
+    const ex = right ? rb.x : rb.x + rb.w;
+    const gap = (sx + ex) / 2;                   // the empty gutter between columns
+    return [
+      { x: sx, y: ra.y + ra.h / 2 },
+      { x: gap, y: ra.y + ra.h / 2 },
+      { x: gap, y: rb.y + rb.h / 2 },
+      { x: ex, y: rb.y + rb.h / 2 },
+    ];
+  }
+
+  function hashCode(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
+  function segLen(p) { let L = 0; for (let i = 1; i < p.length; i++) L += Math.hypot(p[i].x - p[i - 1].x, p[i].y - p[i - 1].y); return L; }
+  function pointAt(p, t) {
+    let d = t * segLen(p);
+    for (let i = 1; i < p.length; i++) {
+      const s = Math.hypot(p[i].x - p[i - 1].x, p[i].y - p[i - 1].y);
+      if (d <= s || i === p.length - 1) { const u = s ? d / s : 0; return { x: p[i - 1].x + (p[i].x - p[i - 1].x) * u, y: p[i - 1].y + (p[i].y - p[i - 1].y) * u }; }
+      d -= s;
+    }
+    return p[p.length - 1];
+  }
+
+  function flowPair() {
+    if (flowIdx <= 0 || level.parent) return null;
+    const from = FLOW()[flowIdx - 1].node, to = FLOW()[flowIdx].node;
+    return EDGES.some(e => e.from === from && e.to === to) ? { from, to } : null;
+  }
+
+  // How loudly to draw each edge. Showing all of them at once is what made the
+  // first version unreadable, so most stay nearly invisible until asked for.
+  function edgeWeight(e) {
+    const fp = flowPair();
+    if (fp && fp.from === e.from && fp.to === e.to) return 'live';
+    if (sel) return (e.from === sel || e.to === sel) ? 'on' : 'off';
+    if (flowIdx >= 0) return 'off';
+    return e.kind === 'flow' ? 'on' : 'faint';
+  }
+
+  function drawEdges(C) {
+    if (level.parent) return;
+    const order = { off: 0, faint: 1, on: 2, live: 3 };
+    [...EDGES].sort((a, b) => order[edgeWeight(a)] - order[edgeWeight(b)]).forEach(e => {
+      const w = edgeWeight(e);
+      if (w === 'off') return;
+      const pts = route(e); if (!pts) return;
+      const p = pts.map(S);
+      const strong = w === 'on' || w === 'live';
+
+      ctx.save();
+      ctx.globalAlpha = w === 'faint' ? 0.2 : 1;
+      ctx.lineWidth = w === 'live' ? 2.4 : strong ? 1.6 : 1;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = e.kind === 'write' ? C.accent : strong ? C.ink2 : C.rule;
+      ctx.setLineDash(e.kind === 'read' || e.kind === 'guard' ? [3, 4] : []);
+      ctx.beginPath(); p.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke();
+
+      const tip = p[p.length - 1], prev = p[p.length - 2];
+      const ang = Math.atan2(tip.y - prev.y, tip.x - prev.x);
+      ctx.setLineDash([]); ctx.beginPath();
+      ctx.moveTo(tip.x, tip.y);
+      ctx.lineTo(tip.x - Math.cos(ang - 0.42) * 8, tip.y - Math.sin(ang - 0.42) * 8);
+      ctx.lineTo(tip.x - Math.cos(ang + 0.42) * 8, tip.y - Math.sin(ang + 0.42) * 8);
+      ctx.closePath(); ctx.fillStyle = ctx.strokeStyle; ctx.fill();
+
+      if (w === 'live') {
+        const q = pointAt(p, anim);
+        ctx.beginPath(); ctx.arc(q.x, q.y, 4.5, 0, 7); ctx.fillStyle = C.accent; ctx.fill();
+      }
+      ctx.restore();
+    });
+  }
+
+  // Labels are a pass of their own, run AFTER the cards — drawn with the lines
+  // they were painted over by every card that came later.
+  function drawEdgeLabels(C) {
+    if (level.parent) return;
+    EDGES.forEach(e => {
+      if (!e.label) return;
+      const w = edgeWeight(e);
+      if (!(w === 'live' || (sel && w === 'on'))) return;
+      const pts = route(e); if (!pts) return;
+      const p = pts.map(S);
+
+      // Sit on the longest straight run, which is always clear of the cards.
+      let a = p[0], b = p[1], best = -1;
+      for (let i = 1; i < p.length; i++) {
+        const len = Math.hypot(p[i].x - p[i - 1].x, p[i].y - p[i - 1].y);
+        if (len > best) { best = len; a = p[i - 1]; b = p[i]; }
+      }
+      const q = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+
+      ctx.save();
+      ctx.font = `${Math.max(10, Math.min(12.5, 11 * view.k))}px ${css('--mono')}`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const tw = ctx.measureText(e.label).width, bw = tw + 12, bh = 18;
+      ctx.fillStyle = C.paper;
+      ctx.fillRect(q.x - bw / 2, q.y - bh / 2, bw, bh);
+      ctx.strokeStyle = e.kind === 'write' ? C.accent : C.ink2;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(q.x - bw / 2, q.y - bh / 2, bw, bh);
+      ctx.fillStyle = C.ink;
+      ctx.fillText(e.label, q.x, q.y);
+      ctx.restore();
+    });
+  }
+
+  const KIND = { route: 'endpoint', gate: 'check', logic: 'logic', table: 'stored', pure: 'maths', screen: 'in the browser' };
+
+  function drawNode(n, C) {
+    const r = rectOf(n), p = S({ x: r.x, y: r.y });
+    const w = r.w * view.k, h = r.h * view.k;
+    const isSel = sel === n.id, isHov = hover === n.id;
+    const isFlow = flowIdx >= 0 && FLOW()[flowIdx] && FLOW()[flowIdx].node === n.id;
+    const near = sel ? (sel === n.id || edgesOf(sel).some(e => e.from === n.id || e.to === n.id)) : true;
+    const accent = n.accent || isFlow;
+
+    ctx.save();
+    ctx.globalAlpha = near ? 1 : 0.26;
+
+    ctx.fillStyle = accent || isSel ? C.accentBg : C.card;
+    ctx.fillRect(p.x, p.y, w, h);
+    ctx.strokeStyle = accent || isSel ? C.accent : C.rule;
+    ctx.lineWidth = isSel || isHov ? 2 : 1;
+    ctx.setLineDash(n.kind === 'screen' ? [5, 3] : []);
+    ctx.strokeRect(p.x, p.y, w, h);
+    ctx.setLineDash([]);
+    if (n.kind === 'table') {                    // a stored thing gets its plates back
+      ctx.beginPath();
+      ctx.moveTo(p.x + 1, p.y + 4 * view.k); ctx.lineTo(p.x + w - 1, p.y + 4 * view.k);
+      ctx.strokeStyle = accent || isSel ? C.accent : C.rule2; ctx.lineWidth = 1; ctx.stroke();
+    }
+
+    const px = p.x + 10 * view.k;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+
+    ctx.font = `9px ${css('--mono')}`;
+    ctx.fillStyle = C.ink3;
+    ctx.fillText((KIND[n.kind] || '').toUpperCase(), px, p.y + 16 * view.k);
+
+    ctx.font = `500 ${13 * view.k}px ${css('--mono')}`;
+    ctx.fillStyle = accent || isSel ? C.accent : C.ink;
+    let label = n.label;
+    while (ctx.measureText(label).width > w - 20 * view.k && label.length > 4) label = label.slice(0, -2);
+    if (label !== n.label) label += '…';
+    ctx.fillText(label, px, p.y + 34 * view.k);
+
+    // The bottom line is either the one-liner or the way in — never both, so
+    // they can't collide.
+    const openable = n.children && n.children.length;
+    if (openable) {
+      ctx.font = `9px ${css('--mono')}`;
+      ctx.fillStyle = C.accent;
+      ctx.fillText(`▸ GO INSIDE — ${n.children.length} PARTS`, px, p.y + 48 * view.k);
+    } else if (n.sub) {
+      ctx.font = `9px ${css('--mono')}`;
+      ctx.fillStyle = C.ink3;
+      let sub = n.sub;
+      while (ctx.measureText(sub).width > w - 20 * view.k && sub.length > 4) sub = sub.slice(0, -2);
+      ctx.fillText(sub === n.sub ? sub : sub + '…', px, p.y + 48 * view.k);
+    }
+
+    // ticks in the corner = how many separate jobs it does
+    const layers = n.layers || 1;
+    for (let i = 0; i < layers; i++) {
+      ctx.fillStyle = accent || isSel ? C.accent : C.rule;
+      ctx.fillRect(p.x + w - (8 + i * 4) * view.k, p.y + 9 * view.k, 2 * view.k, 7 * view.k);
+    }
+
+    ctx.restore();
+  }
+
+  function draw() {
+    const C = {
+      ink: css('--ink'), ink2: css('--ink-2'), ink3: css('--ink-3'), rule: css('--rule'),
+      rule2: css('--rule-2'), accent: css('--accent'), accentBg: css('--accent-bg'),
+      paper: css('--paper'), card: css('--card'), grid: css('--grid'),
+    };
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== w * dpr || cv.height !== h * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = C.paper; ctx.fillRect(0, 0, w, h);
+
+    drawEdges(C);
+    level.nodes.forEach(n => drawNode(n, C));
+    drawEdgeLabels(C);
+  }
+
+  // Shrinking to fit everything makes the labels unreadable, which is worse
+  // than not seeing it all at once. Below MIN_K the view stops shrinking and
+  // opens at the start of the sale instead, and you pan from there.
+  const MIN_K = 0.78;
+
+  function fit(showAll = false) {
+    if (!level.nodes.length) return;
+    const rs = level.nodes.map(rectOf);
+    const minX = Math.min(...rs.map(r => r.x)), maxX = Math.max(...rs.map(r => r.x + r.w));
+    const minY = Math.min(...rs.map(r => r.y)), maxY = Math.max(...rs.map(r => r.y + r.h));
+    const pad = 52, w = cv.clientWidth, h = cv.clientHeight;
+    const ideal = Math.min((w - pad * 2) / (maxX - minX || 1), (h - pad * 2) / (maxY - minY || 1), 1.15);
+    view.k = showAll ? ideal : Math.max(ideal, MIN_K);
+
+    if (showAll || ideal >= MIN_K) {
+      view.ox = w / 2 - ((minX + maxX) / 2) * view.k;
+      view.oy = h / 2 - ((minY + maxY) / 2) * view.k;
+    } else {
+      view.ox = pad - minX * view.k;                       // start at the left
+      view.oy = h / 2 - (CH / 2) * view.k;                 // row 0 centred
+    }
+    draw();
+  }
+
+  function pick(mx, my) {
+    for (const n of level.nodes) {
+      const r = rectOf(n), p = S({ x: r.x, y: r.y });
+      if (mx >= p.x && mx <= p.x + r.w * view.k && my >= p.y && my <= p.y + r.h * view.k) return n.id;
+    }
+    return null;
+  }
+
+  // ── reader ──────────────────────────────────────────────
+  function linksPanel(n) {
+    const rows = edgesOf(n.id).map(e => {
+      const out = e.from === n.id;
+      const other = MAP.nodes.find(x => x.id === (out ? e.to : e.from));
+      if (!other) return '';
+      return `<button data-go="${other.id}">
+        <span class="dir">${out ? 'TO' : 'FROM'}</span>
+        <span>${esc(other.label)}</span>
+        <span class="via">${esc(e.label || e.kind)}</span></button>`;
+    }).join('');
+    return rows ? `<div class="links"><h3>Connects to</h3>${rows}</div>` : '';
+  }
+
+  function renderReader() {
+    const el = $('#read'), tW = $('#tab-what'), tH = $('#tab-how'), tC = $('#tab-cond');
+    const n = sel ? nodeById(sel) : null;
+
+    if (!n) {
+      tH.hidden = false; tC.hidden = true;
+      tW.textContent = 'What this is'; tH.textContent = 'How to read it';
+      const v = VIEW();
+      el.innerHTML = `
+        <span class="lbl eyebrow">${esc(MAP.repo)} · ${esc(MAP.coverage)}</span>
+        <h1>${esc(v.label)}</h1>
+        <p class="sub">${esc(v.blurb)}</p>
+        <span class="file note">${esc(MAP.audienceNote)}</span>
+        <div class="prose" style="margin-top:16px">${
+          tab === 'how' ? paras(MAP.howToRead) : paras([v.intro, ...MAP.thesis])
+        }</div>
+        <div class="keys">
+          <div><b>click</b><span>read a part, and see what it connects to</span></div>
+          <div><b>↑ ↓</b><span>move through the list</span></div>
+          <div><b>enter</b><span>go inside a part</span></div>
+          <div><b>esc</b><span>come back out</span></div>
+          <div><b>space</b><span>run the sale</span></div>
+          <div><b>drag / scroll</b><span>pan and zoom</span></div>
+        </div>`;
+      return;
+    }
+
+    tW.textContent = 'What it does';
+    tH.textContent = "How it's built";
+    tH.hidden = !n.how;
+    tC.hidden = !(n.condition && n.condition.length);
+    if (tab === 'how' && !n.how) tab = 'what';
+    if (tab === 'cond' && tC.hidden) tab = 'what';
+    syncTabs();
+
+    let body = '';
+    if (tab === 'what') body = `<div class="prose">${paras(n.what)}</div>${level.parent ? '' : linksPanel(n)}`;
+    if (tab === 'how') body = `<div class="prose">${paras(n.how)}</div>${n.file ? `<span class="file">${esc(n.file)}</span>` : ''}`;
+    if (tab === 'cond') body = `<ul class="cond">${n.condition.map(c => `<li>${fmt(c)}</li>`).join('')}</ul>`;
+
+    el.innerHTML = `
+      <span class="lbl eyebrow">${numbers.get(n.id) ? numbers.get(n.id) + ' · ' : ''}${esc(n.sub || '')}</span>
+      <h1>${esc(n.label)}</h1>
+      ${body}
+      ${n.children && n.children.length ? `<button class="inside" id="go-in">▸ Go inside — ${n.children.length} parts</button>` : ''}`;
+
+    const go = $('#go-in');
+    if (go) go.onclick = () => enter(n);
+    el.querySelectorAll('[data-go]').forEach(b => { b.onclick = () => select(b.dataset.go); });
+  }
+
+  function syncTabs() {
+    ['what', 'how', 'cond'].forEach(t => $('#tab-' + t).setAttribute('aria-selected', String(tab === t)));
+  }
+
+  function renderRail() {
+    $('#rail').innerHTML = VIEW().groups.map(g => `
+      <div class="rail-group">
+        <span class="lbl">${esc(g.label)}</span>
+        ${g.nodes.map(id => {
+          const n = MAP.nodes.find(x => x.id === id);
+          return n ? `<button data-id="${id}" aria-current="false"><span class="n">${numbers.get(id)}</span><span>${esc(n.label)}</span>${n.children ? '<span class="dot"></span>' : ''}</button>` : '';
+        }).join('')}
+      </div>`).join('');
+    $('#rail').querySelectorAll('button').forEach(b => { b.onclick = () => { if (level.parent) exit(); select(b.dataset.id); }; });
+  }
+
+  const syncRail = () => document.querySelectorAll('#rail button').forEach(b => b.setAttribute('aria-current', String(b.dataset.id === sel)));
+
+  function renderCrumb() {
+    $('#crumb').innerHTML = level.parent
+      ? `<span>${esc(VIEW().label)}</span><span>inside</span><span class="here">${esc(level.parent.label)}</span>`
+      : `<span class="here">${esc(VIEW().label)}</span>`;
+  }
+
+  function renderViews() {
+    $('#views').innerHTML = MAP.views.map(v =>
+      `<button role="tab" data-view="${v.id}" aria-selected="${v.id === viewId}"><b>${esc(v.label)}</b><i>${esc(v.blurb)}</i></button>`).join('');
+    $('#views').querySelectorAll('button').forEach(b => { b.onclick = () => switchView(b.dataset.view); });
+  }
+
+  function switchView(id) {
+    if (id === viewId) return;
+    viewId = id;
+    stop(); flowIdx = -1; ticker.classList.remove('on');
+    sel = null; tab = 'what';
+    reindex();
+    level = { nodes: nodesInView(), parent: null };
+    $('#hint').style.display = '';
+    $('#play').textContent = runLabel();
+    renderViews(); renderRail(); renderCrumb(); syncTabs(); renderReader(); fit();
+  }
+
+  // Picking something from the list has to bring it on screen, or choosing a
+  // part that happens to be off to the right looks like nothing happened.
+  function ensureVisible(id) {
+    const n = nodeById(id); if (!n) return;
+    const r = rectOf(n), p = S({ x: r.x, y: r.y });
+    const w = r.w * view.k, h = r.h * view.k, m = 96;
+    const cw = cv.clientWidth, ch = cv.clientHeight;
+    if (p.x < m) view.ox += m - p.x;
+    else if (p.x + w > cw - m) view.ox -= (p.x + w) - (cw - m);
+    if (p.y < m) view.oy += m - p.y;
+    else if (p.y + h > ch - m) view.oy -= (p.y + h) - (ch - m);
+  }
+
+  function select(id) {
+    sel = id; tab = 'what';
+    $('#hint').style.display = 'none';
+    ensureVisible(id);
+    syncRail(); renderReader(); draw();
+  }
+
+  function enter(n) {
+    if (!n.children || !n.children.length) return;
+    level = { nodes: n.children.map(c => ({ kind: 'logic', ...c })), parent: n };
+    sel = null; stop(); renderCrumb(); renderReader(); fit();
+  }
+  function exit() {
+    if (!level.parent) return;
+    const p = level.parent;
+    level = { nodes: nodesInView(), parent: null };
+    sel = p.id; renderCrumb(); syncRail(); renderReader(); fit();
+  }
+
+  const ticker = $('#ticker');
+  function showStep() {
+    const s = FLOW()[flowIdx]; if (!s) return;
+    ticker.classList.add('on');
+    $('#tick-n').textContent = `${String(flowIdx + 1).padStart(2, '0')} / ${FLOW().length}`;
+    $('#tick-t').innerHTML = fmt(s.note);
+    sel = s.node; tab = 'what';
+    $('#hint').style.display = 'none';
+    ensureVisible(s.node);
+    syncRail(); renderReader(); draw();
+  }
+  function step() { if (level.parent) exit(); flowIdx = (flowIdx + 1) % FLOW().length; anim = 0; showStep(); }
+  const runLabel = () => `▶ ${VIEW().run}`;
+  function stop() { playing = false; $('#play').setAttribute('aria-pressed', 'false'); $('#play').textContent = runLabel(); }
+  function play() {
+    if (playing) { stop(); return; }
+    if (level.parent) exit();
+    playing = true;
+    $('#play').setAttribute('aria-pressed', 'true'); $('#play').textContent = '❚❚ Pause';
+    if (flowIdx < 0) { flowIdx = 0; showStep(); }
+    lastT = performance.now(); requestAnimationFrame(tickAnim);
+  }
+  function tickAnim(t) {
+    if (!playing) return;
+    const dt = Math.min(t - lastT, 60); lastT = t;
+    anim += dt / 1900;
+    if (anim >= 1) { anim = 0; flowIdx = (flowIdx + 1) % FLOW().length; showStep(); } else draw();
+    requestAnimationFrame(tickAnim);
+  }
+
+  let drag = null;
+  cv.addEventListener('pointerdown', e => {
+    drag = { x: e.clientX, y: e.clientY, ox: view.ox, oy: view.oy, moved: false };
+    cv.setPointerCapture(e.pointerId); cv.classList.add('dragging');
+  });
+  cv.addEventListener('pointermove', e => {
+    const r = cv.getBoundingClientRect();
+    if (drag) {
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+      view.ox = drag.ox + dx; view.oy = drag.oy + dy; draw(); return;
+    }
+    const h = pick(e.clientX - r.left, e.clientY - r.top);
+    if (h !== hover) { hover = h; cv.style.cursor = h ? 'pointer' : 'grab'; draw(); }
+  });
+  cv.addEventListener('pointerup', e => {
+    cv.classList.remove('dragging');
+    const wasDrag = drag && drag.moved; drag = null;
+    if (wasDrag) return;
+    const r = cv.getBoundingClientRect();
+    const id = pick(e.clientX - r.left, e.clientY - r.top);
+    if (!id) { stop(); flowIdx = -1; ticker.classList.remove('on'); sel = null; syncRail(); renderReader(); draw(); return; }
+    stop(); flowIdx = -1; ticker.classList.remove('on');
+    if (!level.parent && sel === id) { const n = nodeById(id); if (n.children) { enter(n); return; } }
+    select(id);
+  });
+  cv.addEventListener('wheel', e => {
+    e.preventDefault();
+    const r = cv.getBoundingClientRect();
+    const mx = e.clientX - r.left, my = e.clientY - r.top;
+    const k2 = Math.max(0.3, Math.min(2.4, view.k * Math.exp(-e.deltaY * 0.0016)));
+    view.ox = mx - (mx - view.ox) * (k2 / view.k);
+    view.oy = my - (my - view.oy) * (k2 / view.k);
+    view.k = k2; draw();
+  }, { passive: false });
+
+  const zoomBy = f => {
+    const k2 = Math.max(0.3, Math.min(2.4, view.k * f));
+    const cx = cv.clientWidth / 2, cy = cv.clientHeight / 2;
+    view.ox = cx - (cx - view.ox) * (k2 / view.k);
+    view.oy = cy - (cy - view.oy) * (k2 / view.k);
+    view.k = k2; draw();
+  };
+  $('#zin').onclick = () => zoomBy(1.25);
+  $('#zout').onclick = () => zoomBy(0.8);
+  $('#zall').onclick = () => fit(true);
+  $('#reset').onclick = () => {
+    stop(); flowIdx = -1; ticker.classList.remove('on'); sel = null;
+    if (level.parent) exit();
+    $('#hint').style.display = ''; syncRail(); renderReader(); fit();
+  };
+  $('#play').onclick = play;
+  $('#step').onclick = () => { stop(); step(); };
+  ['what', 'how', 'cond'].forEach(t => { $('#tab-' + t).onclick = () => { tab = t; syncTabs(); renderReader(); }; });
+
+  addEventListener('keydown', e => {
+    if (e.target.tagName === 'BUTTON' && e.key === ' ') return;
+    const flat = VIEW().groups.flatMap(g => g.nodes);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (level.parent) exit();
+      const i = flat.indexOf(sel);
+      const next = e.key === 'ArrowDown' ? (i + 1) % flat.length : (i <= 0 ? flat.length - 1 : i - 1);
+      stop(); flowIdx = -1; ticker.classList.remove('on'); select(flat[next]);
+    } else if (e.key === 'Enter') {
+      const n = sel && nodeById(sel);
+      if (n && n.children) { e.preventDefault(); enter(n); }
+    } else if (e.key === 'Escape' || e.key === 'ArrowLeft') {
+      if (level.parent) { e.preventDefault(); exit(); }
+    } else if (e.key === ' ') { e.preventDefault(); play(); }
+  });
+
+  // Wrapped: rAF and resize both pass an argument, which would read as showAll.
+  addEventListener('resize', () => fit());
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+
+  $('#s-repo').textContent = MAP.repo;
+  $('#stats').innerHTML = MAP.stats.map(s => `<div class="stat"><span class="lbl">${esc(s.label)}</span><b>${esc(s.value)}</b></div>`).join('');
+  $('#play').textContent = runLabel();
+  renderViews(); renderRail(); renderCrumb(); renderReader();
+  requestAnimationFrame(() => fit());
+})();
+</script>

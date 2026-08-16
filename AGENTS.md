@@ -30,6 +30,7 @@ PokeDB is a point-of-sale and inventory system for a UK Pokémon card shop: sell
 - API routes wrap handlers in `guarded()` (`lib/api.ts`) and validate JSON bodies with a zod schema via `parseBody()` (`lib/validation.ts`) — new/changed endpoints must do both.
 - `lib/pricing.ts` + `lib/prices/sync.ts` + `lib/apis/` — market prices from Pokémon TCG API / TCGdex, cached in `price_cache`, refreshed by the cron route `app/api/cron/sync-prices` (guarded by `CRON_SECRET`).
 - `components/` is organised by feature (pos, inventory, buylist, customers, reports, …) mirroring the pages in `app/(app)/`.
+- `docs/architecture/` — explorable map of the back end in six areas (till, money out, buylist, catalogue, platform, offline), and why each guard exists. The `architecture-map` skill maintains it; `npm test` fails when it drifts.
 - Key tables: `cards`, `inventory_items`, `products`, `price_cache`, `sales`/`sale_items`, `refunds`/`refund_items`, `buy_transactions`/`buy_items`, `customers`, `credit_ledger`, `want_list`, `staff`, `settings`.
 
 ## Multi-tenancy (platform layer)
