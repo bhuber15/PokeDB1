@@ -61,12 +61,20 @@ export async function searchSales(filters: SaleSearchFilters, dbc: Db = db): Pro
           .innerJoin(cards, eq(inventoryItems.cardId, cards.id))
           .where(and(eq(saleItems.saleId, sales.id), like(cards.name, pattern))),
       )
+      // Product-name match: returning a drink shouldn't require the receipt number.
+      const productMatch = exists(
+        dbc.select({ one: sql`1` })
+          .from(saleItems)
+          .innerJoin(inventoryItems, eq(saleItems.inventoryItemId, inventoryItems.id))
+          .innerJoin(products, eq(inventoryItems.productId, products.id))
+          .where(and(eq(saleItems.saleId, sales.id), like(products.name, pattern))),
+      )
       const customerMatch = exists(
         dbc.select({ one: sql`1` })
           .from(customers)
           .where(and(eq(customers.id, sales.customerId), like(customers.name, pattern))),
       )
-      conditions.push(or(cardMatch, customerMatch)!)
+      conditions.push(or(cardMatch, productMatch, customerMatch)!)
     }
   }
 
