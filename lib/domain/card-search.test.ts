@@ -268,6 +268,27 @@ test('short queries still fuzzy-match short names exactly (below the one-trigram
   assert.deepEqual(res.cards.map(c => c.name), ['N'])
 })
 
+// FTS5 has its own query grammar, and trigramMatchExpr feeds it the raw search
+// box: an unescaped quote makes MATCH a syntax error, `*`/`^`/`OR`/`NEAR` turn
+// trigrams into operators. None of that is SQL injection (the expression is
+// bound, never concatenated), but the try/catch in fuzzyCandidates would
+// swallow the failure and scan every name instead — correct results, and at
+// catalogue scale a search the counter waits on. Silence on the console is the
+// evidence the index served the query itself.
+test('hostile FTS5 syntax in the search box is escaped, not swallowed by the fallback', async (t) => {
+  const error = t.mock.method(console, 'error', () => {})
+  const warn = t.mock.method(console, 'warn', () => {})
+
+  for (const q of ['Snorl"ax', 'Snorlax*', 'Snorlax OR Pikachu', 'Snorlax NEAR Pikachu', '^Snorlax', 'Snorl(ax)']) {
+    const res = await searchCards(q, dbc, noLiveDeps)
+    assert.ok(res.cards.some(c => c.name === 'Snorlax'), `expected Snorlax for ${JSON.stringify(q)}`)
+    assert.equal(res.unavailable, false, `unavailable for ${JSON.stringify(q)}`)
+  }
+
+  assert.equal(error.mock.calls.length + warn.mock.calls.length, 0,
+    'fuzzy search fell back to the name scan — check the escaping in trigramMatchExpr')
+})
+
 // --- Fallback: cached name scan (per-Db handle, 10-minute TTL) ---
 // Fleet migrations run after deploys, so a tenant DB without migration 0025
 // (no cards_fts) is a real state; fuzzy search must degrade to the cached
