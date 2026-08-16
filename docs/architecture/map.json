@@ -12,7 +12,8 @@
   "howToRead": [
     "==Every part has two descriptions.== \"What it does\" is plain English — that is the version you'd give a shop owner, an investor, or a friend. \"How it's built\" names the actual file and mechanism — that is the version you'd give a developer. Some parts also have a \"Condition\" tab, which is an honest note about what is unfinished or deliberately odd.",
     "In the picture: ==height of the tick marks== in a box's corner is how many separate jobs it does. A ==broken outline== means it runs in the customer-facing browser, which is the one place the server assumes could be lying. A ==red box== is one that exists to survive a race or a rounding penny.",
-    "Lines only appear for the box you click, because showing all of them at once is unreadable. The side panel also lists every connection in words. ==Run it== walks the whole story one step at a time with a plain-English caption."
+    "Lines only appear for the box you click, because showing all of them at once is unreadable. The side panel also lists every connection in words. ==Run it== walks the whole story one step at a time with a plain-English caption.",
+    "One honest warning about this page. A test in the codebase catches the ==structural== ways it can go out of date — a file that moved, a part that vanished, a page built from older data. ==It cannot tell whether these sentences are still true.== If the code behind a part changes and the file stays where it is, the tests stay green and the words quietly become wrong. Treat what you read here as a reliable guide to the reasoning, and the code as the final word on the behaviour."
   ],
   "stats": [
     {

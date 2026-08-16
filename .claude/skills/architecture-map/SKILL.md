@@ -34,6 +34,20 @@ A number a human types is a number that rots. Deriving the counts already correc
 hand-written ones. `docs/architecture/explorer.html` is **generated** — rebuild it, never
 hand-edit it.
 
+### What the guard cannot catch
+
+`architecture-map.test.ts` checks **structure, not truth**. It knows a file still exists,
+an id still resolves, a part is still indexed, the page still matches its data.
+
+It has no idea whether the sentences are still correct. Change what `createSale` does
+while `lib/domain/sales.ts` stays where it is and **the tests stay green while the
+description silently becomes a lie** — the exact failure this map exists to prevent,
+relocated one level up.
+
+Nothing automatic closes that gap. Step 2 below — reading the changed code before writing
+about it — is the only thing that does, which is why it is a step and not advice. A green
+test run is never evidence that a part's prose survived a change to that part.
+
 ## Files
 
 | File | Role |
