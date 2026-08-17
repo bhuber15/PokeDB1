@@ -15,7 +15,7 @@ import { useStickyGameFilter } from '@/components/shared/useStickyGameFilter'
 import { toast } from 'sonner'
 import { formatGBP, computeSaleTotals } from '@/lib/pricing'
 import {
-  readQueue, enqueueSale, removeSale, setConflict, clearConflict, type QueuedSale,
+  readQueue, enqueueSale, removeSale, setConflict, clearConflict, hasUnsentSales, type QueuedSale,
 } from '@/lib/sale-queue'
 import { applySaleToCardResults, applySaleToProductResults, type SoldLine } from '@/lib/pos-stock'
 import type { Card, Customer, PriceCache, Product } from '@/lib/db/schema'
@@ -150,6 +150,17 @@ export default function POSPage() {
       clearInterval(interval)
       window.removeEventListener('online', replay)
     }
+  }, [])
+
+  // localStorage keeps queued sales across a refresh, but a closed tab can't
+  // replay them — warn before the tab goes away while anything is unsent.
+  useEffect(() => {
+    function warn(e: BeforeUnloadEvent) {
+      if (!hasUnsentSales(readQueue())) return
+      e.preventDefault()
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
   }, [])
 
   async function handleSearch(query: string) {
