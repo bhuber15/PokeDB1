@@ -8,17 +8,6 @@ import { requireOwner, requireStaff, requireAdmin, type SessionData } from '../a
 const domainCode = (code: string) => (e: unknown) =>
   e instanceof DomainError && e.code === code
 
-test('toHttpError maps codes to statuses', () => {
-  assert.equal(toHttpError(new DomainError('INVALID_INPUT', 'bad'))!.status, 400)
-  assert.equal(toHttpError(new DomainError('UNAUTHORIZED', 'no'))!.status, 401)
-  assert.equal(toHttpError(new DomainError('FORBIDDEN', 'no'))!.status, 403)
-  assert.equal(toHttpError(new DomainError('NOT_FOUND', 'gone'))!.status, 404)
-  assert.equal(toHttpError(new DomainError('RATE_LIMITED', 'locked'))!.status, 429)
-  for (const code of ['INSUFFICIENT_STOCK', 'PRICE_CHANGED', 'INSUFFICIENT_CREDIT', 'NO_PRICE', 'BAD_LINE'] as const) {
-    assert.equal(toHttpError(new DomainError(code, 'conflict'))!.status, 409)
-  }
-})
-
 test('toHttpError passes message, code and meta through; null for non-domain errors', () => {
   const mapped = toHttpError(new DomainError('INSUFFICIENT_STOCK', 'no stock', { inventoryItemId: 7 }))!
   assert.deepEqual(mapped.body, { error: 'no stock', code: 'INSUFFICIENT_STOCK', meta: { inventoryItemId: 7 } })

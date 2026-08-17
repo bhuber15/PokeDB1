@@ -30,14 +30,6 @@ test('stripe event ids are unique (webhook idempotency)', async () => {
   )
 })
 
-test('tenants.email round-trips', async () => {
-  const pdb = await createTestPlatformDb()
-  const [row] = await pdb.insert(tenants)
-    .values({ slug: 'email-shop', name: 'Email Shop', dbUrl: 'file:x.db', email: 'owner@example.com' })
-    .returning()
-  assert.equal(row.email, 'owner@example.com')
-})
-
 test('impersonation grants: token hashes are unique, used_at starts null', async () => {
   const pdb = await createTestPlatformDb()
   const [t] = await pdb.insert(tenants).values({ slug: 'imp', name: 'Imp', dbUrl: 'file:x.db' }).returning()

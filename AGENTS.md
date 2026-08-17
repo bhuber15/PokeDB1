@@ -93,6 +93,13 @@ PokeDB is a point-of-sale and inventory system for a UK Pokémon card shop: sell
 ## How to work in this repo
 
 - **Match the effort to the task.** Small fixes and tweaks: just make the change with a test. Only use the full plan → implement → review workflow (superpowers skills) for large multi-file features, or when asked.
-- **Changed behavior needs a test.** Domain logic changes should come with a colocated `*.test.ts` update; run `npm test` before declaring done.
+- **Test contracts, not features.** Changed domain behavior — money arithmetic, stock
+  movements, credit, authz, idempotency/replay, tenancy — needs a colocated `*.test.ts`;
+  run `npm test` before declaring done. Do NOT write: React component/render tests, tests
+  that a route/constant/column merely exists, tests a typecheck already guarantees, or
+  tests of a provider SDK / wire format. External-source tests pin **our** normalization
+  of recorded provider quirks (zero price → null, EN-only, finish splits) — never the
+  provider's shape itself. UI coverage is the existing Playwright smokes in `tests/e2e/`:
+  extend one only when a till workflow changes; never add per-feature specs.
 - **Bugs: find the root cause before patching** (use `systematic-debugging` for anything non-obvious).
 - Ongoing plans and specs live in `docs/superpowers/`; check there before starting a large feature in case one exists.
