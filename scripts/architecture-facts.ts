@@ -8,7 +8,9 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
-const SKIP = new Set(['node_modules', '.git', '.next', 'dist', 'test-results', 'playwright-report'])
+// .claude holds nested agent worktrees — full checkouts of this repo whose
+// files would otherwise be counted several times over (88 became 444).
+const SKIP = new Set(['node_modules', '.git', '.next', 'dist', 'test-results', 'playwright-report', '.claude'])
 
 function walk(dir: string, hit: (path: string) => void): void {
   let entries: string[]
