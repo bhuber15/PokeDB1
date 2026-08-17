@@ -382,7 +382,7 @@ export interface BuyExportRow {
   customerName: string | null
   method: string
   txnTotal: number
-  cardName: string | null
+  itemName: string | null
   condition: string
   quantity: number
   payPrice: number
@@ -399,7 +399,7 @@ export async function getBuyExportRows(dbc: Db = db): Promise<BuyExportRow[]> {
       customerName: customers.name,
       method: buyTransactions.method,
       txnTotal: buyTransactions.total,
-      cardName: cards.name,
+      itemName: sql<string | null>`COALESCE(${cards.name}, ${products.name})`,
       condition: buyItems.condition,
       quantity: buyItems.quantity,
       payPrice: buyItems.payPrice,
@@ -410,6 +410,7 @@ export async function getBuyExportRows(dbc: Db = db): Promise<BuyExportRow[]> {
     .leftJoin(staff, eq(buyTransactions.staffId, staff.id))
     .leftJoin(customers, eq(buyTransactions.customerId, customers.id))
     .leftJoin(cards, eq(buyItems.cardId, cards.id))
+    .leftJoin(products, eq(buyItems.productId, products.id))
     .orderBy(desc(buyTransactions.createdAt), asc(buyItems.id))
 }
 
