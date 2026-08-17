@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { CustomerPicker } from '@/components/shared/CustomerPicker'
+import { useOnlineStatus } from '@/components/shared/useOnlineStatus'
 import { formatGBP } from '@/lib/pricing'
 import { toast } from 'sonner'
 import type { Customer } from '@/lib/db/schema'
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export function RefundDialog({ saleId, open, onClose, onDone }: Props) {
+  const online = useOnlineStatus()
   const [items, setItems] = useState<LineItem[]>([])
   const [selected, setSelected] = useState<Record<number, number>>({})
   const [method, setMethod] = useState<'cash' | 'store_credit'>('cash')
@@ -131,9 +133,12 @@ export function RefundDialog({ saleId, open, onClose, onDone }: Props) {
             </div>
           )}
         </div>
+        {!online && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">Offline — refunds need a connection.</p>
+        )}
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
-          <Button onClick={submit} disabled={loading || linesToRefund.length === 0 || missingCreditCustomer} className="flex-1">
+          <Button onClick={submit} disabled={loading || linesToRefund.length === 0 || missingCreditCustomer || !online} className="flex-1">
             {loading ? 'Processing…' : 'Refund'}
           </Button>
         </DialogFooter>

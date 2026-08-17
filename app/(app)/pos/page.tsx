@@ -173,7 +173,9 @@ export default function POSPage() {
       setResults(grouped)
       setProductResults(productHits)
     } catch {
-      toast.error('Network error — search failed')
+      toast.error(navigator.onLine
+        ? 'Network error — search failed'
+        : 'Offline — search needs a connection. The basket and checkout still work.')
     } finally {
       setLoading(false)
     }

@@ -9,6 +9,7 @@ import { XIcon } from 'lucide-react'
 import { formatGBP, parsePounds, computeSaleTotals } from '@/lib/pricing'
 import { CustomerPicker } from '@/components/shared/CustomerPicker'
 import { useSettings } from '@/components/shared/SettingsProvider'
+import { useOnlineStatus } from '@/components/shared/useOnlineStatus'
 import type { CartItem } from './Cart'
 import type { Customer } from '@/lib/db/schema'
 
@@ -49,6 +50,7 @@ interface SplitRow {
 
 export function CheckoutDialog({ open, items, onClose, onConfirm, initialCustomer }: CheckoutDialogProps) {
   const { vatScheme } = useSettings()
+  const online = useOnlineStatus()
   const [method, setMethod] = useState('cash')
   const [splitMode, setSplitMode] = useState(false)
   const [splitRows, setSplitRows] = useState<SplitRow[]>([
@@ -101,6 +103,7 @@ export function CheckoutDialog({ open, items, onClose, onConfirm, initialCustome
     || insufficientBalance
     || tenderShort
     || splitBlocked
+    || (!online && usesStoreCredit)
 
   // Fetch the balance whichever way a customer arrives (picker or trade-in
   // handoff). CustomerPicker shows the balance in its own UI; we also need it
@@ -229,6 +232,7 @@ export function CheckoutDialog({ open, items, onClose, onConfirm, initialCustome
                     key={m.value}
                     variant={method === m.value ? 'default' : 'outline'}
                     size="sm"
+                    disabled={!online && m.value === 'store_credit'}
                     onClick={() => setMethod(m.value)}
                   >
                     {m.label}
@@ -249,7 +253,9 @@ export function CheckoutDialog({ open, items, onClose, onConfirm, initialCustome
                         // One store-credit line max: hide the option elsewhere once used
                         (m.value !== 'store_credit' || row.method === 'store_credit'
                           || !splitRows.some(r => r.method === 'store_credit')) && (
-                          <option key={m.value} value={m.value}>{m.label}</option>
+                          <option key={m.value} value={m.value} disabled={!online && m.value === 'store_credit'}>
+                            {m.label}
+                          </option>
                         )
                       ))}
                     </select>
@@ -373,10 +379,16 @@ export function CheckoutDialog({ open, items, onClose, onConfirm, initialCustome
             </div>
           )}
         </div>
+        {!online && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            Offline — this sale will queue and send automatically when the connection returns.
+            {usesStoreCredit && ' Store credit needs a connection to check the balance.'}
+          </p>
+        )}
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={handleClose} disabled={loading}>Cancel</Button>
           <Button onClick={confirm} disabled={confirmDisabled} className="flex-1">
-            {loading ? 'Processing…' : `Confirm ${formatGBP(total)}`}
+            {loading ? 'Processing…' : online ? `Confirm ${formatGBP(total)}` : `Queue sale ${formatGBP(total)}`}
           </Button>
         </DialogFooter>
       </DialogContent>

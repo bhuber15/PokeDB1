@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CustomerPicker } from '@/components/shared/CustomerPicker'
+import { useOnlineStatus } from '@/components/shared/useOnlineStatus'
 import { BuySlipDialog, type BuySlipData } from './BuySlipDialog'
 import { formatGBP } from '@/lib/pricing'
 import { toast } from 'sonner'
@@ -22,6 +23,7 @@ interface BuyCartProps {
 }
 
 export function BuyCart({ lines, onRemove, onClear }: BuyCartProps) {
+  const online = useOnlineStatus()
   const [method, setMethod] = useState<PayMethod>('cash')
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [confirming, setConfirming] = useState(false)
@@ -33,7 +35,7 @@ export function BuyCart({ lines, onRemove, onClear }: BuyCartProps) {
   }, 0)
 
   const creditRequiresCustomer = method === 'store_credit' && !customer
-  const canConfirm = lines.length > 0 && !creditRequiresCustomer
+  const canConfirm = lines.length > 0 && !creditRequiresCustomer && online
 
   async function handleConfirm() {
     setConfirming(true)
@@ -165,6 +167,9 @@ export function BuyCart({ lines, onRemove, onClear }: BuyCartProps) {
 
         {creditRequiresCustomer && (
           <p className="text-xs text-destructive">Select a customer to pay with store credit</p>
+        )}
+        {!online && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">Offline — buys need a connection and are not queued.</p>
         )}
 
         <Button
