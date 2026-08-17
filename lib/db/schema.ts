@@ -214,6 +214,9 @@ export const buyItems = sqliteTable('buy_items', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   buyId: integer('buy_id').notNull().references(() => buyTransactions.id),
   cardId: integer('card_id').references(() => cards.id),
+  // Exactly one of cardId/productId — enforced in createBuy (the domain choke
+  // point), not by CHECK, same as inventory_items.
+  productId: integer('product_id').references(() => products.id),
   inventoryItemId: integer('inventory_item_id').references(() => inventoryItems.id),
   condition: text('condition').notNull(),
   quantity: integer('quantity').notNull(),

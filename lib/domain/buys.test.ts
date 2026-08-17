@@ -224,3 +224,84 @@ test('admin bypasses the conditioned cap too', async () => {
   }, dbc)
   assert.ok(buyId)
 })
+
+// --- Product buy path ---
+
+test('product buy increments the product stock row with weighted cost', async () => {
+  await dbc.insert(schema.products).values({ id: 1, name: 'Booster Box SV', category: 'sealed' })
+  await dbc.insert(schema.inventoryItems).values({
+    id: 50, productId: 1, condition: 'NA', quantity: 2, costPrice: 6000,
+    sellPriceOverride: 9999, qrCode: 'qr-p1',
+  })
+  const { total } = await createBuy({
+    staffId: 1, items: [{ productId: 1, quantity: 1, payPrice: 9000 }], method: 'cash',
+  }, dbc)
+  assert.equal(total, 9000)
+  const [row] = await dbc.select().from(schema.inventoryItems).where(eq(schema.inventoryItems.id, 50))
+  assert.equal(row.quantity, 3)
+  assert.equal(row.costPrice, 7000) // (6000×2 + 9000×1) / 3
+  const [line] = await dbc.select().from(schema.buyItems)
+  assert.equal(line.productId, 1)
+  assert.equal(line.cardId, null)
+  assert.equal(line.condition, 'NA')
+  assert.equal(line.marketAtBuy, null) // no market price exists for products
+})
+
+test('mixed card + product buy in one transaction', async () => {
+  await dbc.insert(schema.products).values({ id: 1, name: 'Sleeves 100ct', category: 'accessories' })
+  await dbc.insert(schema.inventoryItems).values({
+    id: 50, productId: 1, condition: 'NA', quantity: 0, costPrice: null,
+    sellPriceOverride: 500, qrCode: 'qr-p1',
+  })
+  const { total } = await createBuy({
+    staffId: 1,
+    items: [
+      { cardId: 1, condition: 'NM', quantity: 1, payPrice: 400 },
+      { productId: 1, quantity: 2, payPrice: 100 },
+    ],
+    method: 'cash',
+  }, dbc)
+  assert.equal(total, 600)
+  const lines = await dbc.select().from(schema.buyItems)
+  assert.equal(lines.length, 2)
+})
+
+test('store-credit product buy writes the ledger', async () => {
+  await dbc.insert(schema.customers).values({ id: 1, name: 'Dave' })
+  await dbc.insert(schema.products).values({ id: 1, name: 'ETB Paldea', category: 'sealed' })
+  await dbc.insert(schema.inventoryItems).values({
+    id: 50, productId: 1, condition: 'NA', quantity: 0, costPrice: null,
+    sellPriceOverride: 4500, qrCode: 'qr-p1',
+  })
+  await createBuy({
+    staffId: 1, items: [{ productId: 1, quantity: 1, payPrice: 3000 }],
+    method: 'store_credit', customerId: 1,
+  }, dbc)
+  const [entry] = await dbc.select().from(schema.creditLedger)
+  assert.equal(entry.delta, 3000)
+  assert.equal(entry.reason, 'buylist')
+})
+
+test('rejects a line with both ids, neither id, or an unknown/inactive product', async () => {
+  await assert.rejects(
+    createBuy({ staffId: 1, items: [{ cardId: 1, productId: 1, condition: 'NM', quantity: 1, payPrice: 100 }], method: 'cash' }, dbc),
+    domainCode('INVALID_INPUT'),
+  )
+  await assert.rejects(
+    createBuy({ staffId: 1, items: [{ quantity: 1, payPrice: 100 }], method: 'cash' }, dbc),
+    domainCode('INVALID_INPUT'),
+  )
+  await assert.rejects(
+    createBuy({ staffId: 1, items: [{ productId: 99, quantity: 1, payPrice: 100 }], method: 'cash' }, dbc),
+    domainCode('NOT_FOUND'),
+  )
+  await dbc.insert(schema.products).values({ id: 1, name: 'Old Line', category: 'other' })
+  await dbc.insert(schema.inventoryItems).values({
+    id: 50, productId: 1, condition: 'NA', quantity: 0, costPrice: null,
+    sellPriceOverride: 100, qrCode: 'qr-p1', isActive: false,
+  })
+  await assert.rejects(
+    createBuy({ staffId: 1, items: [{ productId: 1, quantity: 1, payPrice: 100 }], method: 'cash' }, dbc),
+    domainCode('PRODUCT_INACTIVE'),
+  )
+})
