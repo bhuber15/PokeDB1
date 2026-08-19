@@ -4,8 +4,9 @@ import { useOnlineStatus } from '@/components/shared/useOnlineStatus'
 
 // Shown in the POS header while the browser is offline. Purely informative:
 // checkout still works offline via the sale queue (lib/sale-queue.ts); this
-// chip just makes that state visible to staff. POS-only on purpose — other
-// pages have no offline queue, so a global chip would overpromise.
+// chip makes that state visible right next to the basket. The app-wide
+// OfflineBanner (components/shared/OfflineBanner.tsx) carries the full
+// what-still-works summary.
 export function OfflineChip() {
   const online = useOnlineStatus()
   if (online) return null

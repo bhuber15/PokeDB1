@@ -5,6 +5,7 @@ import { getSettings } from '@/lib/settings'
 import { countInStockWants } from '@/lib/domain/wants'
 import { getOnboarding } from '@/lib/domain/onboarding'
 import { Nav } from '@/components/layout/Nav'
+import { OfflineBanner } from '@/components/shared/OfflineBanner'
 import { SettingsProvider } from '@/components/shared/SettingsProvider'
 import { SessionProvider } from '@/components/shared/SessionProvider'
 import { OnboardingChecklist } from '@/components/onboarding/OnboardingChecklist'
@@ -30,6 +31,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           staffRole={session.staffRole}
           inStockWantsCount={inStockWantsCount}
         />
+        <OfflineBanner />
         {tenantStatus === 'past_due' && <BillingBanner />}
         {onboarding.enabled && <OnboardingChecklist initial={onboarding} />}
         <main className="container mx-auto px-4 py-6">{children}</main>

@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogTitle, DialogFooter } from '@/components/u
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useOnlineStatus } from '@/components/shared/useOnlineStatus'
 import { toast } from 'sonner'
 
 interface Props {
@@ -18,6 +19,7 @@ interface Props {
 // drops out of every report. The server enforces the same-day window and
 // rejects sales that already have refunds.
 export function VoidSaleDialog({ saleId, open, onClose, onDone }: Props) {
+  const online = useOnlineStatus()
   const [reason, setReason] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -64,9 +66,12 @@ export function VoidSaleDialog({ saleId, open, onClose, onDone }: Props) {
             maxLength={500}
           />
         </div>
+        {!online && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">Offline — voids need a connection.</p>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
-          <Button variant="destructive" onClick={submit} disabled={loading}>
+          <Button variant="destructive" onClick={submit} disabled={loading || !online}>
             {loading ? 'Voiding…' : 'Void sale'}
           </Button>
         </DialogFooter>

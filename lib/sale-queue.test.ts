@@ -1,6 +1,6 @@
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { readQueue, enqueueSale, removeSale, setConflict, clearConflict, type QueuedSaleBody } from './sale-queue'
+import { readQueue, enqueueSale, removeSale, setConflict, clearConflict, hasUnsentSales, type QueuedSaleBody } from './sale-queue'
 
 // Minimal in-memory Storage stand-in
 function fakeStorage(): Storage {
@@ -52,4 +52,12 @@ test('conflicts can be set and cleared', () => {
 test('corrupt storage reads as an empty queue', () => {
   storage.setItem('pokedb.saleQueue', 'not json{')
   assert.deepEqual(readQueue(storage), [])
+})
+
+test('hasUnsentSales: true only when a non-conflict entry exists', () => {
+  assert.equal(hasUnsentSales([]), false)
+  const sent = enqueueSale(body('a'), storage)
+  assert.equal(hasUnsentSales(readQueue(storage)), true)
+  setConflict(sent.clientUuid, { code: 'INSUFFICIENT_STOCK', error: 'gone' }, storage)
+  assert.equal(hasUnsentSales(readQueue(storage)), false) // conflicts wait for a human, not a connection
 })
