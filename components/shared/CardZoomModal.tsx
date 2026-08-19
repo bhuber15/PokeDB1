@@ -24,6 +24,7 @@ interface CardZoomModalProps {
 }
 
 const CONDITION_COLOURS: Record<string, string> = {
+  M: 'bg-violet-500/20 text-violet-300 border-violet-500/30',
   NM: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
   LP: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
   MP: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',

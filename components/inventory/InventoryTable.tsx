@@ -33,6 +33,7 @@ const REASON_LABEL: Record<AdjustmentReason, string> = {
 }
 
 const CONDITION_BADGE: Record<string, string> = {
+  M: 'border-violet-500/40 text-violet-400',
   NM: 'border-emerald-500/40 text-emerald-400',
   LP: 'border-blue-500/40 text-blue-400',
   MP: 'border-yellow-500/40 text-yellow-400',

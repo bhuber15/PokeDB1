@@ -9,10 +9,11 @@ import { parseBody, parseIdParam } from '@/lib/validation'
 import { cardHasMarketPrice, intakeInventory, redactInventoryCosts, searchSellables } from '@/lib/domain/inventory'
 import { DomainError } from '@/lib/domain/errors'
 import { isGame } from '@/lib/games'
+import { CONDITIONS } from '@/lib/pricing'
 
 const createInventoryBody = z.object({
   cardId: z.number().int(),
-  condition: z.enum(['NM', 'LP', 'MP', 'HP', 'DMG']),
+  condition: z.enum(CONDITIONS),
   quantity: z.number().int().positive(),
   costPrice: z.number().int().nonnegative(), // pence
   sellPriceOverride: z.number().int().nonnegative().nullable().optional(), // pence

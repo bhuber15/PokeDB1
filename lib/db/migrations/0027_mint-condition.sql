@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `cond_sell_pct_m` integer DEFAULT 100 NOT NULL;

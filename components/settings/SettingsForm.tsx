@@ -26,9 +26,9 @@ export function SettingsForm({ multiGame }: { multiGame: boolean }) {
   const [enabledLanguages, setEnabledLanguages] = useState<Language[]>(current.enabledLanguages)
   const [enabledGames, setEnabledGames] = useState<Game[]>(current.enabledGames)
   const [condPct, setCondPct] = useState<Record<Condition, string>>({
-    NM: String(current.conditionSellPct.NM), LP: String(current.conditionSellPct.LP),
-    MP: String(current.conditionSellPct.MP), HP: String(current.conditionSellPct.HP),
-    DMG: String(current.conditionSellPct.DMG),
+    M: String(current.conditionSellPct.M), NM: String(current.conditionSellPct.NM),
+    LP: String(current.conditionSellPct.LP), MP: String(current.conditionSellPct.MP),
+    HP: String(current.conditionSellPct.HP), DMG: String(current.conditionSellPct.DMG),
   })
   const [saving, setSaving] = useState(false)
 
@@ -71,8 +71,8 @@ export function SettingsForm({ multiGame }: { multiGame: boolean }) {
           enabledLanguages,
           enabledGames,
           conditionSellPct: {
-            NM: parseInt(condPct.NM), LP: parseInt(condPct.LP), MP: parseInt(condPct.MP),
-            HP: parseInt(condPct.HP), DMG: parseInt(condPct.DMG),
+            M: parseInt(condPct.M), NM: parseInt(condPct.NM), LP: parseInt(condPct.LP),
+            MP: parseInt(condPct.MP), HP: parseInt(condPct.HP), DMG: parseInt(condPct.DMG),
           },
         }),
       })
@@ -345,12 +345,12 @@ export function SettingsForm({ multiGame }: { multiGame: boolean }) {
         <Button
           type="button" variant="outline" className="w-full"
           onClick={() => setCondPct({
-            NM: String(RECOMMENDED_CONDITION_LADDER.NM), LP: String(RECOMMENDED_CONDITION_LADDER.LP),
-            MP: String(RECOMMENDED_CONDITION_LADDER.MP), HP: String(RECOMMENDED_CONDITION_LADDER.HP),
-            DMG: String(RECOMMENDED_CONDITION_LADDER.DMG),
+            M: String(RECOMMENDED_CONDITION_LADDER.M), NM: String(RECOMMENDED_CONDITION_LADDER.NM),
+            LP: String(RECOMMENDED_CONDITION_LADDER.LP), MP: String(RECOMMENDED_CONDITION_LADDER.MP),
+            HP: String(RECOMMENDED_CONDITION_LADDER.HP), DMG: String(RECOMMENDED_CONDITION_LADDER.DMG),
           })}
         >
-          Use recommended ladder (100 / 85 / 70 / 50 / 35)
+          Use recommended ladder (100 / 100 / 85 / 70 / 50 / 35)
         </Button>
 
         {/* Live worked example */}

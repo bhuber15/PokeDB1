@@ -284,13 +284,14 @@ test('computeMarginVat: mixed margin + standardRated lines share the discount al
 // --- Condition ladder ---
 
 test('conditionPct: looks up a known condition', () => {
-  const ladder = { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 }
+  const ladder = { M: 100, NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 }
+  assert.equal(conditionPct({ ...ladder, M: 90 }, 'M'), 90)
   assert.equal(conditionPct(ladder, 'NM'), 100)
   assert.equal(conditionPct(ladder, 'DMG'), 35)
 })
 
 test('conditionPct: unknown condition, missing ladder, or invalid value → 100 (full market, today’s behavior)', () => {
-  assert.equal(conditionPct({ NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 }, 'SEALED'), 100)
+  assert.equal(conditionPct({ M: 100, NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 }, 'SEALED'), 100)
   assert.equal(conditionPct(null, 'LP'), 100)
   assert.equal(conditionPct(undefined, 'LP'), 100)
   assert.equal(conditionPct({ NM: 100, LP: 0, MP: 70, HP: 50, DMG: 35 }, 'LP'), 100)   // below range
