@@ -1,7 +1,7 @@
 // app/api/sales/search/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantDb } from '@/lib/db'
-import { getSession, requireAdmin, currentTenantId } from '@/lib/auth'
+import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 import { searchSales } from '@/lib/domain/sales-search'
 
@@ -9,7 +9,7 @@ import { searchSales } from '@/lib/domain/sales-search'
 // ?from= / ?to= YYYY-MM-DD. Same admin gate as the history endpoint.
 export const GET = guarded(async (req: NextRequest) => {
   const db = await getTenantDb()
-  requireAdmin(await getSession(await currentTenantId()))
+  requireStaff(await getSession(await currentTenantId()))
   const params = req.nextUrl.searchParams
   const results = await searchSales({
     q: params.get('q') ?? undefined,

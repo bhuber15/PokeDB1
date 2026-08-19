@@ -134,7 +134,7 @@ export const refunds = sqliteTable('refunds', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   saleId: integer('sale_id').notNull().references(() => sales.id),
   staffId: integer('staff_id').references(() => staff.id),
-  method: text('method').notNull(), // 'cash' | 'store_credit'
+  method: text('method').notNull(), // 'cash' | 'card' | 'store_credit'
   amount: integer('amount').notNull(), // total refunded, GBP, includes reversed VAT
   reason: text('reason'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),

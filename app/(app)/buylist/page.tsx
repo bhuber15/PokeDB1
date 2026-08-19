@@ -66,9 +66,13 @@ export default function BuylistPage() {
       if (data.fuzzy) toast(`No exact match for "${q}" — showing close matches`)
       setResults(cards.map(card => ({ card, prices: prices[card.id] ?? null })))
     } catch (e) {
-      toast.error(e instanceof Error && e.name === 'TimeoutError'
-        ? 'Search timed out — please try again'
-        : 'Search failed — please try again')
+      if (!navigator.onLine) {
+        toast.error('Offline — buys need a connection and are not queued.')
+      } else {
+        toast.error(e instanceof Error && e.name === 'TimeoutError'
+          ? 'Search timed out — please try again'
+          : 'Search failed — please try again')
+      }
     } finally {
       setLoading(false)
     }
