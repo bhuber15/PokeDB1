@@ -77,7 +77,7 @@ function toRow(patch: Partial<Omit<AppSettings, 'conditionSellPct'>>) {
 }
 
 const pctInt = z.number().int().min(1).max(100)
-const conditionLadderSchema = z.object({ NM: pctInt, LP: pctInt, MP: pctInt, HP: pctInt, DMG: pctInt })
+const conditionLadderSchema = z.object({ M: pctInt, NM: pctInt, LP: pctInt, MP: pctInt, HP: pctInt, DMG: pctInt })
 
 // Body contract for PATCH /api/settings. Mirrors the old hand-rolled checks:
 // positive finite rates, (0,1] buy fractions, enum fields, 60-char shop name;
@@ -117,8 +117,8 @@ function toAppSettings(row: Settings): AppSettings {
     enabledLanguages: parseLanguages(row.enabledLanguages),
     enabledGames: parseGames(row.enabledGames),
     conditionSellPct: {
-      NM: row.condSellPctNm, LP: row.condSellPctLp, MP: row.condSellPctMp,
-      HP: row.condSellPctHp, DMG: row.condSellPctDmg,
+      M: row.condSellPctM, NM: row.condSellPctNm, LP: row.condSellPctLp,
+      MP: row.condSellPctMp, HP: row.condSellPctHp, DMG: row.condSellPctDmg,
     },
   }
 }
@@ -179,12 +179,12 @@ function logFallback(e: unknown): void {
 
 export async function updateSettings(patch: Partial<AppSettings>, dbc: Db = db): Promise<AppSettings> {
   await getSettings(dbc) // ensure the row exists
-  // The ladder record is not a column — map it onto the five cond_sell_pct_* columns.
+  // The ladder record is not a column — map it onto the six cond_sell_pct_* columns.
   const { conditionSellPct, ...columns } = patch
   const ladderCols = conditionSellPct ? {
-    condSellPctNm: conditionSellPct.NM, condSellPctLp: conditionSellPct.LP,
-    condSellPctMp: conditionSellPct.MP, condSellPctHp: conditionSellPct.HP,
-    condSellPctDmg: conditionSellPct.DMG,
+    condSellPctM: conditionSellPct.M, condSellPctNm: conditionSellPct.NM,
+    condSellPctLp: conditionSellPct.LP, condSellPctMp: conditionSellPct.MP,
+    condSellPctHp: conditionSellPct.HP, condSellPctDmg: conditionSellPct.DMG,
   } : {}
   const [updated] = await dbc.update(settings)
     .set({ ...toRow(columns), ...ladderCols, updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19) })

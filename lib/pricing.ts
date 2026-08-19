@@ -1,15 +1,17 @@
 // Single source of truth for card conditions. buys.ts, BuyCard, and the CSV
 // import route all key off this list; the DB stores the raw string.
-export const CONDITIONS = ['NM', 'LP', 'MP', 'HP', 'DMG'] as const
+export const CONDITIONS = ['M', 'NM', 'LP', 'MP', 'HP', 'DMG'] as const
 export type Condition = (typeof CONDITIONS)[number]
 
 // Integer percent of market price per condition (1–100). 100 across the
-// board = condition pricing off (today's behavior).
+// board = condition pricing off (today's behavior). Market prices are
+// NM-referenced, so M is capped at 100 like everything else — a Mint
+// premium above market is a deliberate non-feature until a shop asks.
 export type ConditionLadder = Record<Condition, number>
 
-export const DEFAULT_CONDITION_LADDER: ConditionLadder = { NM: 100, LP: 100, MP: 100, HP: 100, DMG: 100 }
+export const DEFAULT_CONDITION_LADDER: ConditionLadder = { M: 100, NM: 100, LP: 100, MP: 100, HP: 100, DMG: 100 }
 // The Settings preset ("Use recommended ladder") — never a DB default.
-export const RECOMMENDED_CONDITION_LADDER: ConditionLadder = { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 }
+export const RECOMMENDED_CONDITION_LADDER: ConditionLadder = { M: 100, NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 }
 
 // Tolerant lookup: an unknown condition string or an out-of-range/non-integer
 // value prices at full market (100) — bad data must never silently discount.

@@ -16,7 +16,7 @@ const SETTINGS: AppSettings = {
   primaryPriceSource: 'cardmarket', vatScheme: 'none', marginNoCostHandling: 'exclude',
   enabledLanguages: ['EN'],
   enabledGames: ['pokemon'],
-  conditionSellPct: { NM: 100, LP: 100, MP: 100, HP: 100, DMG: 100 },
+  conditionSellPct: { M: 100, NM: 100, LP: 100, MP: 100, HP: 100, DMG: 100 },
 }
 
 const realFetch = globalThis.fetch

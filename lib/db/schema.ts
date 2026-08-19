@@ -45,7 +45,7 @@ export const inventoryItems = sqliteTable('inventory_items', {
   // points (inventory POST is card-only; createProduct is the only productId
   // writer), not by a CHECK (adding one would rebuild the table on SQLite).
   productId: integer('product_id').references(() => products.id),
-  condition: text('condition').notNull(), // NM | LP | MP | HP | DMG
+  condition: text('condition').notNull(), // M | NM | LP | MP | HP | DMG
   quantity: integer('quantity').notNull().default(0),
   costPrice: integer('cost_price'),
   sellPriceOverride: integer('sell_price_override'),
@@ -163,6 +163,7 @@ export const settings = sqliteTable('settings', {
   // Condition ladder: integer % of market price per condition (1–100).
   // 100 across the board = condition pricing off. Shared by sell prices,
   // buylist offers, and the buylist overpayment cap.
+  condSellPctM: integer('cond_sell_pct_m').notNull().default(100),
   condSellPctNm: integer('cond_sell_pct_nm').notNull().default(100),
   condSellPctLp: integer('cond_sell_pct_lp').notNull().default(100),
   condSellPctMp: integer('cond_sell_pct_mp').notNull().default(100),

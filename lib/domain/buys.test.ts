@@ -181,7 +181,7 @@ test('cap falls back to the other price source when the primary is missing', asy
 
 test('staff cap tightens to 110% of the conditioned market (DMG 35%)', async () => {
   await seedMarket(1000)
-  await updateSettings({ conditionSellPct: { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
+  await updateSettings({ conditionSellPct: { M: 100, NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
   // market 1000p; DMG conditioned = 350p; cap = floor(350×11/10) = 385p.
   // 400p would have passed the old raw-market cap (≤1100) — must now be rejected.
   await assert.rejects(
@@ -206,6 +206,29 @@ test('staff cap tightens to 110% of the conditioned market (DMG 35%)', async () 
   assert.equal(items[0].marketAtBuy, 1000)
 })
 
+test('M is a first-class condition: accepted, and the cap conditions by its pct', async () => {
+  await seedMarket(1000)
+  await updateSettings({ conditionSellPct: { M: 90, NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
+  // market 1000p; M conditioned = 900p; cap = floor(900×11/10) = 990p.
+  await assert.rejects(
+    () => createBuy({
+      staffId: 1, staffRole: 'staff', method: 'cash',
+      items: [{ cardId: 1, condition: 'M', quantity: 1, payPrice: 991 }],
+    }, dbc),
+    (e: unknown) => {
+      assert.ok(e instanceof DomainError)
+      assert.equal(e.code, 'BUY_CAP_EXCEEDED')
+      assert.equal(e.meta?.maxPay, 990)
+      return true
+    },
+  )
+  const { buyId } = await createBuy({
+    staffId: 1, staffRole: 'staff', method: 'cash',
+    items: [{ cardId: 1, condition: 'M', quantity: 1, payPrice: 990 }],
+  }, dbc)
+  assert.ok(buyId)
+})
+
 test('default all-100 ladder leaves the cap at 110% of raw market (no-op)', async () => {
   await seedMarket(1000)
   const { buyId } = await createBuy({
@@ -217,7 +240,7 @@ test('default all-100 ladder leaves the cap at 110% of raw market (no-op)', asyn
 
 test('admin bypasses the conditioned cap too', async () => {
   await seedMarket(1000)
-  await updateSettings({ conditionSellPct: { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
+  await updateSettings({ conditionSellPct: { M: 100, NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
   const { buyId } = await createBuy({
     staffId: 1, staffRole: 'admin', method: 'cash',
     items: [{ cardId: 1, condition: 'DMG', quantity: 1, payPrice: 900 }],
