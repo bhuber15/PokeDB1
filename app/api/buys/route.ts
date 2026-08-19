@@ -8,13 +8,18 @@ import { guarded } from '@/lib/api'
 import { parseBody } from '@/lib/validation'
 import { createBuy } from '@/lib/domain/buys'
 
+const buyLine = z.object({
+  cardId: z.number().int().positive().optional(),
+  productId: z.number().int().positive().optional(),
+  condition: z.string().optional(),
+  quantity: z.number().int(),
+  payPrice: z.number().int().nonnegative(), // pence
+}).refine(l => (l.cardId == null) !== (l.productId == null), {
+  message: 'Each line needs exactly one of cardId or productId',
+})
+
 const createBuyBody = z.object({
-  items: z.array(z.object({
-    cardId: z.number().int(),
-    condition: z.string(),
-    quantity: z.number().int(),
-    payPrice: z.number().int().nonnegative(), // pence
-  })).default([]),
+  items: z.array(buyLine).default([]),
   method: z.enum(['cash', 'store_credit']),
   customerId: z.number().int().optional(),
 })

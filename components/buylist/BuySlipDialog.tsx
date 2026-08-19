@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator'
 import { formatGBP } from '@/lib/pricing'
 import { printLabelSheet, type LabelData } from '@/components/shared/printLabelSheet'
 import { useSettings } from '@/components/shared/SettingsProvider'
+import { PRODUCT_CONDITION } from '@/lib/product-categories'
 
 export interface BuySlipData {
   buyId: number
@@ -16,10 +17,15 @@ export interface BuySlipData {
   total: number
   customerId: number | null
   customerName: string | null
-  lines: { cardName: string; condition: string; quantity: number; payPrice: number }[]
+  lines: { cardName: string; condition: string; quantity: number; payPrice: number; productId?: number }[]
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+// PRODUCT_CONDITION is the sentinel stored for product lines (no condition
+// ladder) — printed and displayed plain, without a trailing "(NA)".
+const lineLabel = (l: BuySlipData['lines'][number]) =>
+  l.condition !== PRODUCT_CONDITION ? `${l.quantity}× ${l.cardName} (${l.condition})` : `${l.quantity}× ${l.cardName}`
 
 // Same 260px monospace print pattern as the POS ReceiptDialog.
 function slipHtml(s: BuySlipData, shopName: string): string {
@@ -40,7 +46,7 @@ function slipHtml(s: BuySlipData, shopName: string): string {
 <h1>${esc(shopName)} — WE BOUGHT</h1>
 <p>Buy #${s.buyId} · ${esc(when)}${s.customerName ? `<br/>From: ${esc(s.customerName)}` : ''}</p>
 <table>
-${s.lines.map(l => row(`${l.quantity}× ${l.cardName} (${l.condition})`, formatGBP(l.payPrice * l.quantity))).join('\n')}
+${s.lines.map(l => row(lineLabel(l), formatGBP(l.payPrice * l.quantity))).join('\n')}
 </table>
 <hr/>
 <table>
@@ -73,9 +79,14 @@ export function BuySlipDialog({ slip, onClose }: { slip: BuySlipData | null; onC
     setLabelsLoading(true)
     try {
       const detail = await fetch(`/api/buys/${slip.buyId}`).then(r => (r.ok ? r.json() : null))
+      const items = (detail?.items ?? []) as { inventoryItemId: number | null; quantity: number }[]
+      // /api/labels/batch is card-shaped (QR + card name, no product join) —
+      // buy items come back in the same order the slip's lines were
+      // submitted, so use the slip's productId to skip product lines rather
+      // than guessing off the 'NA' condition sentinel.
+      const cardItems = items.filter((_, i) => slip.lines[i]?.productId == null)
       const ids: number[] = [...new Set(
-        ((detail?.items ?? []) as { inventoryItemId: number | null }[])
-          .map(i => i.inventoryItemId).filter((id): id is number => id != null),
+        cardItems.map(i => i.inventoryItemId).filter((id): id is number => id != null),
       )]
       if (ids.length === 0) {
         toast.error('No inventory items found for this buy')
@@ -93,7 +104,7 @@ export function BuySlipDialog({ slip, onClose }: { slip: BuySlipData | null; onC
       const { labels } = await res.json() as { labels: (LabelData & { inventoryItemId: number })[] }
       // Print one label per copy bought in THIS buy, not per total stock
       const boughtQty = new Map<number, number>()
-      for (const it of (detail.items as { inventoryItemId: number | null; quantity: number }[])) {
+      for (const it of cardItems) {
         if (it.inventoryItemId != null) {
           boughtQty.set(it.inventoryItemId, (boughtQty.get(it.inventoryItemId) ?? 0) + it.quantity)
         }
@@ -114,7 +125,7 @@ export function BuySlipDialog({ slip, onClose }: { slip: BuySlipData | null; onC
             <div className="border rounded-lg divide-y max-h-56 overflow-y-auto">
               {slip.lines.map((l, i) => (
                 <div key={i} className="flex justify-between p-2">
-                  <span className="text-muted-foreground">{l.quantity}× {l.cardName} ({l.condition})</span>
+                  <span className="text-muted-foreground">{lineLabel(l)}</span>
                   <span className="font-medium">{formatGBP(l.payPrice * l.quantity)}</span>
                 </div>
               ))}

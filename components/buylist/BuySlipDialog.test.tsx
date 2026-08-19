@@ -35,3 +35,12 @@ test('no handoff link on a cash buy or a walk-in credit buy', async () => {
   await screen.findByText(/Paid \(store credit\)/)
   assert.equal(screen.queryByRole('link', { name: /sell to/i }), null)
 })
+
+test('product lines print without a condition', async () => {
+  render(<BuySlipDialog
+    slip={slip({ lines: [{ cardName: 'Booster Box SV', condition: 'NA', quantity: 1, payPrice: 9000, productId: 1 } as never] })}
+    onClose={() => {}}
+  />)
+  await screen.findByText(/Booster Box SV/)
+  assert.equal(screen.queryByText(/\bNA\b/), null)
+})

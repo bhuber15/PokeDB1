@@ -9,6 +9,7 @@ import {
   getSalesByPaymentMethod, getSalesByCategory,
 } from './reports'
 import { createSale } from './sales'
+import { createBuy } from './buys'
 import type { Db } from '../db'
 
 let dbc: Db
@@ -487,12 +488,31 @@ test('getBuyExportRows flattens buys to one row per item with parent txn columns
   assert.equal(rows[0].customerName, 'Sam Seller')
   assert.equal(rows[0].method, 'cash')
   assert.equal(rows[0].txnTotal, 700)
-  assert.equal(rows[0].cardName, 'Lapras')
+  assert.equal(rows[0].itemName, 'Lapras')
   assert.equal(rows[0].condition, 'NM')
   assert.equal(rows[0].quantity, 2)
   assert.equal(rows[0].payPrice, 250)
   assert.equal(rows[0].marketAtBuy, 500)
-  assert.equal(rows[1].cardName, null)
+  assert.equal(rows[1].itemName, null)
+})
+
+test('buy export rows name products as well as cards', async () => {
+  await dbc.insert(schema.products).values({ id: 1, name: 'Booster Box SV', category: 'sealed' })
+  await dbc.insert(schema.inventoryItems).values({
+    id: 50, productId: 1, condition: 'NA', quantity: 0, costPrice: null,
+    sellPriceOverride: 9999, qrCode: 'qr-p1',
+  })
+  await createBuy({
+    staffId: 1,
+    items: [
+      { cardId: 1, condition: 'NM', quantity: 1, payPrice: 400 },
+      { productId: 1, quantity: 1, payPrice: 9000 },
+    ],
+    method: 'cash',
+  }, dbc)
+  const rows = await getBuyExportRows(dbc)
+  const names = rows.map(r => r.itemName).sort()
+  assert.ok(names.includes('Booster Box SV'))
 })
 
 // ---------------------------------------------------------------------------
