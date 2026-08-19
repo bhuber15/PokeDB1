@@ -3,22 +3,27 @@ import { NextResponse } from 'next/server'
 import { getTenantDb } from '@/lib/db'
 import { sales, saleItems, inventoryItems, cards, products, staff } from '@/lib/db/schema'
 import { and, eq, sql, gte, inArray, isNull } from 'drizzle-orm'
-import { getSession, requireAdmin, currentTenantId } from '@/lib/auth'
+import { getSession, requireStaff, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
 
 export const GET = guarded(async () => {
   const db = await getTenantDb()
-  requireAdmin(await getSession(await currentTenantId()))
+  const session = requireStaff(await getSession(await currentTenantId()))
 
   // createdAt is stored via SQLite datetime('now') → "YYYY-MM-DD HH:MM:SS" (UTC, space separator).
   // Compare against the same format — a JS toISOString() ("...T...Z") sorts differently and would
   // silently exclude every sale.
-  const [todayStats] = await db.select({
-    totalRevenue: sql<number>`COALESCE(SUM(total), 0)`,
-    saleCount: sql<number>`COUNT(*)`,
-    cashTotal: sql<number>`COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END), 0)`,
-    cardTotal: sql<number>`COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0)`,
-  }).from(sales).where(and(isNull(sales.voidedAt), gte(sales.createdAt, sql`datetime('now','start of day')`)))
+  //
+  // todayStats is revenue aggregation — admin-only, so it is withheld from the
+  // payload for staff (redaction at the API edge, same as inventory costs).
+  const todayStats = session.staffRole === 'admin'
+    ? (await db.select({
+        totalRevenue: sql<number>`COALESCE(SUM(total), 0)`,
+        saleCount: sql<number>`COUNT(*)`,
+        cashTotal: sql<number>`COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END), 0)`,
+        cardTotal: sql<number>`COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0)`,
+      }).from(sales).where(and(isNull(sales.voidedAt), gte(sales.createdAt, sql`datetime('now','start of day')`))))[0]
+    : null
 
   const recent = await db
     .select({ sale: sales, staffName: staff.name })

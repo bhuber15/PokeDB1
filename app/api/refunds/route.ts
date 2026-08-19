@@ -9,7 +9,7 @@ import { createRefund } from '@/lib/domain/refunds'
 
 const createRefundBody = z.object({
   saleId: z.number().int(),
-  method: z.enum(['cash', 'store_credit']),
+  method: z.enum(['cash', 'card', 'store_credit']),
   reason: z.string().optional(),
   items: z.array(z.object({
     saleItemId: z.number().int(),

@@ -29,8 +29,8 @@ export function Nav({ shopName = BRAND.name, staffName, staffRole, inStockWantsC
     { href: '/prices', label: 'Price Check', icon: SearchIcon },
     { href: '/inventory', label: 'Inventory', icon: PackageIcon },
     { href: '/customers', label: 'Customers', icon: UserIcon, badge: inStockWantsCount },
+    { href: '/reports', label: 'Reports', icon: BarChart3Icon },
     ...(staffRole === 'admin' ? [
-      { href: '/reports', label: 'Reports', icon: BarChart3Icon },
       { href: '/settings', label: 'Settings', icon: SettingsIcon },
     ] : []),
   ]

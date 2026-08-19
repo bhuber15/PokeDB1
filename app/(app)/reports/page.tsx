@@ -14,6 +14,7 @@ import { toast } from 'sonner'
 import { ReceiptDialog, type ReceiptData } from '@/components/pos/ReceiptDialog'
 import { PRODUCT_CATEGORY_LABELS, type ProductCategory } from '@/lib/product-categories'
 import { isSameLondonDay } from '@/lib/trading-day'
+import { useStaffRole } from '@/components/shared/SessionProvider'
 
 interface TodayStats {
   totalRevenue: number
@@ -44,7 +45,8 @@ interface RangeSummary {
 }
 
 export default function ReportsPage() {
-  const [data, setData] = useState<{ todayStats: TodayStats; recentSales: RecentSale[] } | null>(null)
+  const role = useStaffRole()
+  const [data, setData] = useState<{ todayStats: TodayStats | null; recentSales: RecentSale[] } | null>(null)
 
   useEffect(() => {
     fetch('/api/sales/history').then(async res => {
@@ -95,10 +97,11 @@ export default function ReportsPage() {
   }
 
   useEffect(() => {
+    if (role !== 'admin') return
     fetch(`/api/reports/sales?from=${range.from}&to=${range.to}`)
       .then(async res => (res.ok ? res.json() : null))
       .then(setSummary)
-  }, [range.from, range.to])
+  }, [range.from, range.to, role])
 
   if (!data) return <p className="text-muted-foreground">Loading…</p>
 
@@ -108,117 +111,123 @@ export default function ReportsPage() {
     <div className="space-y-6 max-w-3xl">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Reports</h1>
-        <div className="flex gap-2">
-          <a href="/api/reports/sales/export"><Button variant="outline">Export Sales CSV</Button></a>
-          {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- API-route file download, not a page navigation */}
-          <a href="/api/buys/export"><Button variant="outline">Export Buys CSV</Button></a>
+        {role === 'admin' && (
+          <div className="flex gap-2">
+            <a href="/api/reports/sales/export"><Button variant="outline">Export Sales CSV</Button></a>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- API-route file download, not a page navigation */}
+            <a href="/api/buys/export"><Button variant="outline">Export Buys CSV</Button></a>
+          </div>
+        )}
+      </div>
+      {role === 'admin' && todayStats && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { label: "Today's Revenue", value: formatGBP(todayStats.totalRevenue) },
+            { label: 'Sales Today', value: String(todayStats.saleCount) },
+            { label: 'Cash Total', value: formatGBP(todayStats.cashTotal) },
+            { label: 'Card Total', value: formatGBP(todayStats.cardTotal) },
+          ].map(stat => (
+            <Card key={stat.label}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">{stat.label}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold tabular-nums">{stat.value}</div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: "Today's Revenue", value: formatGBP(todayStats.totalRevenue) },
-          { label: 'Sales Today', value: String(todayStats.saleCount) },
-          { label: 'Cash Total', value: formatGBP(todayStats.cashTotal) },
-          { label: 'Card Total', value: formatGBP(todayStats.cardTotal) },
-        ].map(stat => (
-          <Card key={stat.label}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{stat.label}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold tabular-nums">{stat.value}</div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      )}
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Range Summary</h2>
-          <DateRangePicker from={range.from} to={range.to} onChange={setRange} />
+      {role === 'admin' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Range Summary</h2>
+            <DateRangePicker from={range.from} to={range.to} onChange={setRange} />
+          </div>
+          {summary && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { label: 'Revenue', value: formatGBP(summary.revenue) },
+                { label: 'Gross Margin', value: formatGBP(summary.grossMargin) },
+                { label: 'VAT', value: formatGBP(summary.vatTotal) },
+                { label: 'Sales', value: String(summary.saleCount) },
+              ].map(stat => (
+                <Card key={stat.label}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">{stat.label}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold tabular-nums">{stat.value}</div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+          {summary && summary.byStaff.length > 0 && (
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="border-b bg-muted/30">
+                  <tr>
+                    {['Staff', 'Sales', 'Revenue', 'Margin'].map(h => (
+                      <th key={h} className="text-left px-3 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide last:text-right">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {summary.byStaff.map((s, i) => (
+                    <tr key={s.staffId ?? `null-${i}`}>
+                      <td className="px-3 py-2">{s.staffName ?? 'Unassigned'}</td>
+                      <td className="px-3 py-2 tabular-nums">{s.saleCount}</td>
+                      <td className="px-3 py-2 tabular-nums">{formatGBP(s.revenue)}</td>
+                      <td className="px-3 py-2 tabular-nums text-right" title={s.noCostLines > 0 ? `${s.noCostLines} line(s) had no cost basis and are excluded` : undefined}>
+                        {formatGBP(s.margin)}{s.noCostLines > 0 && <span className="text-muted-foreground">*</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {summary && summary.topCards.length > 0 && (
+            <div className="border rounded-lg divide-y">
+              {summary.topCards.map(c => (
+                <div key={c.cardId} className="flex items-center justify-between p-3 text-sm">
+                  <span>{c.name}</span>
+                  <span className="text-muted-foreground">{c.quantitySold} sold · {formatGBP(c.revenue)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {summary && summary.byCategory.length > 1 && (
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="border-b bg-muted/30">
+                  <tr>
+                    {['Category', 'Items sold', 'Revenue'].map(h => (
+                      <th key={h} className="text-left px-3 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide last:text-right">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {summary.byCategory.map(c => (
+                    <tr key={c.category}>
+                      <td className="px-3 py-2">{c.category === 'singles' ? 'Singles'
+                        : PRODUCT_CATEGORY_LABELS[c.category as ProductCategory] ?? c.category}</td>
+                      <td className="px-3 py-2 tabular-nums">{c.quantitySold}</td>
+                      <td className="px-3 py-2 tabular-nums text-right">{formatGBP(c.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-        {summary && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { label: 'Revenue', value: formatGBP(summary.revenue) },
-              { label: 'Gross Margin', value: formatGBP(summary.grossMargin) },
-              { label: 'VAT', value: formatGBP(summary.vatTotal) },
-              { label: 'Sales', value: String(summary.saleCount) },
-            ].map(stat => (
-              <Card key={stat.label}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">{stat.label}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold tabular-nums">{stat.value}</div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-        {summary && summary.byStaff.length > 0 && (
-          <div className="border rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="border-b bg-muted/30">
-                <tr>
-                  {['Staff', 'Sales', 'Revenue', 'Margin'].map(h => (
-                    <th key={h} className="text-left px-3 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide last:text-right">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {summary.byStaff.map((s, i) => (
-                  <tr key={s.staffId ?? `null-${i}`}>
-                    <td className="px-3 py-2">{s.staffName ?? 'Unassigned'}</td>
-                    <td className="px-3 py-2 tabular-nums">{s.saleCount}</td>
-                    <td className="px-3 py-2 tabular-nums">{formatGBP(s.revenue)}</td>
-                    <td className="px-3 py-2 tabular-nums text-right" title={s.noCostLines > 0 ? `${s.noCostLines} line(s) had no cost basis and are excluded` : undefined}>
-                      {formatGBP(s.margin)}{s.noCostLines > 0 && <span className="text-muted-foreground">*</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {summary && summary.topCards.length > 0 && (
-          <div className="border rounded-lg divide-y">
-            {summary.topCards.map(c => (
-              <div key={c.cardId} className="flex items-center justify-between p-3 text-sm">
-                <span>{c.name}</span>
-                <span className="text-muted-foreground">{c.quantitySold} sold · {formatGBP(c.revenue)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        {summary && summary.byCategory.length > 1 && (
-          <div className="border rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="border-b bg-muted/30">
-                <tr>
-                  {['Category', 'Items sold', 'Revenue'].map(h => (
-                    <th key={h} className="text-left px-3 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide last:text-right">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {summary.byCategory.map(c => (
-                  <tr key={c.category}>
-                    <td className="px-3 py-2">{c.category === 'singles' ? 'Singles'
-                      : PRODUCT_CATEGORY_LABELS[c.category as ProductCategory] ?? c.category}</td>
-                    <td className="px-3 py-2 tabular-nums">{c.quantitySold}</td>
-                    <td className="px-3 py-2 tabular-nums text-right">{formatGBP(c.revenue)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      )}
 
-      <CashUpSection />
+      {role === 'admin' && <CashUpSection />}
 
-      <StockSection />
+      {role === 'admin' && <StockSection />}
 
       <div>
         <div className="flex items-center justify-between gap-3 mb-3">

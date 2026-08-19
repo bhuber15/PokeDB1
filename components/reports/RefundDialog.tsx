@@ -28,7 +28,7 @@ export function RefundDialog({ saleId, open, onClose, onDone }: Props) {
   const online = useOnlineStatus()
   const [items, setItems] = useState<LineItem[]>([])
   const [selected, setSelected] = useState<Record<number, number>>({})
-  const [method, setMethod] = useState<'cash' | 'store_credit'>('cash')
+  const [method, setMethod] = useState<'cash' | 'card' | 'store_credit'>('cash')
   // Who receives a store-credit refund: preselected from the sale's customer,
   // pickable for walk-in sales.
   const [creditCustomer, setCreditCustomer] = useState<Customer | null>(null)
@@ -124,8 +124,12 @@ export function RefundDialog({ saleId, open, onClose, onDone }: Props) {
           </div>
           <div className="flex gap-2">
             <Button size="sm" variant={method === 'cash' ? 'default' : 'outline'} onClick={() => setMethod('cash')}>Cash</Button>
+            <Button size="sm" variant={method === 'card' ? 'default' : 'outline'} onClick={() => setMethod('card')}>Card</Button>
             <Button size="sm" variant={method === 'store_credit' ? 'default' : 'outline'} onClick={() => setMethod('store_credit')}>Store Credit</Button>
           </div>
+          {method === 'card' && (
+            <p className="text-xs text-muted-foreground">Refund the card on the terminal as usual — this records it.</p>
+          )}
           {method === 'store_credit' && (
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">Credit goes to</p>

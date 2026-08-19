@@ -7,13 +7,16 @@ import { DomainError } from './errors'
 export interface CreateRefundInput {
   staffId: number
   saleId: number
-  method: 'cash' | 'store_credit'
+  method: 'cash' | 'card' | 'store_credit'
   reason?: string
   items: { saleItemId: number; quantity: number }[]
   customerId?: number
 }
 
-const METHODS = new Set(['cash', 'store_credit'])
+// 'card' records that the terminal refunded the customer — PokeDB moves no
+// money for it, exactly like card sales. Only 'cash' touches the drawer and
+// only 'store_credit' touches the ledger.
+const METHODS = new Set(['cash', 'card', 'store_credit'])
 
 export async function createRefund(
   input: CreateRefundInput,
