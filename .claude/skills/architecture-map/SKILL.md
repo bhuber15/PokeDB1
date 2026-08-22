@@ -37,7 +37,7 @@ hand-edit it.
 ### What the guard cannot catch
 
 `architecture-map.test.ts` checks **structure, not truth**. It knows a file still exists,
-an id still resolves, a part is still indexed, the page still matches its data.
+an id still resolves, a part is still indexed.
 
 It has no idea whether the sentences are still correct. Change what `createSale` does
 while `lib/domain/sales.ts` stays where it is and **the tests stay green while the
@@ -54,7 +54,7 @@ test run is never evidence that a part's prose survived a change to that part.
 |---|---|
 | `docs/architecture/map.json` | source of truth for everything authored |
 | `docs/architecture/template.html` | the renderer — canvas, panes, view switching |
-| `docs/architecture/explorer.html` | generated output, published as the artifact |
+| `docs/architecture/explorer.html` | built on demand, gitignored — exists only to publish, never committed |
 | `scripts/build-architecture-page.ts` | inlines map + derived facts into the template |
 | `scripts/architecture-facts.ts` | counts routes, modules, tables, migrations, tests |
 | `scripts/architecture-map.test.ts` | the drift guard, runs inside `npm test` |
@@ -86,11 +86,13 @@ A part whose prose could be replaced by reading the file is a part to delete.
    the change was made, not only its shape.
 3. **Edit `map.json`.** Schema below. Done when every touched part reads true in both
    registers, and no part names a file that moved.
-4. **Rebuild.** `npx tsx scripts/build-architecture-page.ts`
-5. **Re-run the guard.** Done when all eight checks pass.
-6. **Republish to the same URL** — pass `url` (the link above) to the Artifact tool with
-   `file_path` `docs/architecture/explorer.html`. Publishing without `url` creates a
-   second artifact and strands the first.
+4. **Re-run the guard.** Done when all seven checks pass.
+5. **Publish, only when someone will read it.** The page is gitignored and built on
+   demand — no rebuild is owed per change, and there is nothing to commit. When the owner
+   wants to read or share the current map: `npx tsx scripts/build-architecture-page.ts`,
+   then pass `url` (the link above) to the Artifact tool with `file_path`
+   `docs/architecture/explorer.html`. Publishing without `url` creates a second artifact
+   and strands the first.
 
 ## Schema
 

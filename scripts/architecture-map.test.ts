@@ -3,17 +3,17 @@
 // A stale architecture map is worse than no map, because it gets believed. The
 // map cannot be verified by a machine — the prose is the point — but its
 // scaffolding can: every file it names must exist, every id it references must
-// resolve, every part must be reachable from an index, and the published page
-// must match the data it was built from.
+// resolve, and every part must be reachable from an index. (The page itself is
+// generated on demand and never committed, so there is no copy to drift.)
 //
 // When one of these fails, the fix is to run the /architecture-map skill, not
 // to edit the numbers.
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { ARCH_DIR, buildPage, readMap } from './build-architecture-page'
+import { readMap } from './build-architecture-page'
 
 const map = readMap()
 const nodeIds = new Set(map.nodes.map(n => n.id))
@@ -91,13 +91,4 @@ test('no id is used twice, including inside drill-downs', () => {
     }
   }
   assert.deepEqual(dupes, [])
-})
-
-test('the published page matches the map it was built from', () => {
-  const onDisk = readFileSync(join(ARCH_DIR, 'explorer.html'), 'utf8')
-  assert.equal(
-    onDisk,
-    buildPage(),
-    'docs/architecture/explorer.html is stale — run: npx tsx scripts/build-architecture-page.ts',
-  )
 })

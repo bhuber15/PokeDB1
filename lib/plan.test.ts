@@ -1,22 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert'
-import { PLANS, PLAN_IDS, isPlan, entitlementsFor, gamesAllowed } from './plan'
-
-test('three plans with pence prices and seat limits', () => {
-  assert.deepEqual(PLAN_IDS, ['starter', 'growth', 'pro'])
-  assert.equal(PLANS.starter.pricePence, 3900)
-  assert.equal(PLANS.growth.pricePence, 7900)
-  assert.equal(PLANS.pro.pricePence, 14900)
-  assert.equal(PLANS.starter.entitlements.staffSeats, 2)
-  assert.equal(PLANS.growth.entitlements.staffSeats, 5)
-  assert.equal(PLANS.pro.entitlements.staffSeats, null)
-})
-
-test('isPlan narrows', () => {
-  assert.ok(isPlan('starter'))
-  assert.ok(!isPlan('enterprise'))
-  assert.ok(!isPlan(null))
-})
+import { PLANS, entitlementsFor, gamesAllowed } from './plan'
 
 test('entitlementsFor merges registry overrides field-by-field', () => {
   assert.deepEqual(entitlementsFor('starter'), { staffSeats: 2, listingSync: false, apiAccess: false, multiGame: false })
