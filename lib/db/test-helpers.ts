@@ -1,10 +1,10 @@
-import { unlinkSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { after } from 'node:test'
 import { createClient, type Client } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import * as schema from './schema'
 import type { Db } from './index'
 import { applyMigrations } from './migrate'
@@ -40,20 +40,59 @@ process.on('exit', () => {
   }
 })
 
-// Fresh database with every migration applied in journal order.
-// Note: libsql :memory: databases cannot be used here because each connection
-// (including transactions) gets its own empty database. Since drizzle transactions
-// run on a separate connection, a transaction cannot see tables created by the
-// migration statements. File-backed temp databases (cleaned up on process exit)
-// are required to ensure transaction isolation works correctly.
+// Replaying every migration per createTestDb call cost ~1.8s of setup in each
+// test process; copying a pre-migrated template file is milliseconds. The
+// template is keyed by a hash of the migration journal + SQL, so any migration
+// change rebuilds it from a real replay — the schema still only ever comes
+// from migrations, just once per schema state instead of once per database.
+// Templates live in node_modules/.cache (never committed, wiped by reinstalls).
+const TEMPLATE_DIR = join(process.cwd(), 'node_modules', '.cache', 'pokedb-test-db')
+const MIGRATIONS_DIR = join(process.cwd(), 'lib', 'db', 'migrations')
+
+function migrationsHash(): string {
+  const journal = readFileSync(join(MIGRATIONS_DIR, 'meta', '_journal.json'), 'utf8')
+  const hash = createHash('sha256').update(journal)
+  for (const { tag } of (JSON.parse(journal) as { entries: { tag: string }[] }).entries) {
+    hash.update(readFileSync(join(MIGRATIONS_DIR, `${tag}.sql`)))
+  }
+  return hash.digest('hex').slice(0, 16)
+}
+
+let templatePromise: Promise<string> | null = null
+function ensureTemplate(): Promise<string> {
+  templatePromise ??= (async () => {
+    const target = join(TEMPLATE_DIR, `tenant-${migrationsHash()}.db`)
+    if (existsSync(target)) return target
+    mkdirSync(TEMPLATE_DIR, { recursive: true })
+    const build = `${target}.build-${randomBytes(4).toString('hex')}`
+    const client = createClient({ url: `file:${build}` })
+    await applyMigrations(client)
+    await client.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+    client.close()
+    if (existsSync(`${build}-wal`)) {
+      throw new Error('test-db template has an unflushed WAL — refusing to cache a partial database')
+    }
+    // Atomic: concurrent test processes may race to build, but every builder
+    // produces identical bytes, so whichever rename lands last is still right.
+    renameSync(build, target)
+    return target
+  })()
+  return templatePromise
+}
+
+// Fresh database with every migration applied in journal order (via the
+// template above). Note: libsql :memory: databases cannot be used here because
+// each connection (including transactions) gets its own empty database. Since
+// drizzle transactions run on a separate connection, a transaction cannot see
+// tables created by the migration statements. File-backed temp databases
+// (cleaned up on process exit) are required for transaction isolation.
 export async function createTestDb(): Promise<Db> {
   const dbId = randomBytes(8).toString('hex')
   const dbPath = join(tmpdir(), `test-${dbId}.db`)
-  const dbUrl = `file:${dbPath}`
   tempFiles.push(dbPath)
-  const client = createClient({ url: dbUrl })
+  copyFileSync(await ensureTemplate(), dbPath)
+  const client = createClient({ url: `file:${dbPath}` })
   openClients.push(client)
-  await applyMigrations(client)
   return drizzle(client, { schema })
 }
 
