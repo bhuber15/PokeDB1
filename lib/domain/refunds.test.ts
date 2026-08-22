@@ -6,6 +6,7 @@ import * as schema from '../db/schema'
 import { createSale } from './sales'
 import { createRefund } from './refunds'
 import { voidSale } from './voids'
+import { getCashUpSummary } from './reports'
 import { DomainError } from './errors'
 import type { Db } from '../db'
 
@@ -188,4 +189,32 @@ test('a void landing between the pre-check and the transaction cannot double-rev
   assert.equal(await stockOf(1), 5)
   assert.equal((await dbc.select().from(schema.refunds)).length, 0)
   assert.equal((await dbc.select().from(schema.creditLedger)).length, 0)
+})
+
+test('card refund restocks and writes no credit-ledger row', async () => {
+  const { amount } = await createRefund({
+    staffId: 1, saleId, method: 'card', items: [{ saleItemId, quantity: 1 }],
+  }, dbc)
+  assert.equal(amount, 667) // same proportional maths as cash
+  assert.equal(await stockOf(1), 3)
+  const ledger = await dbc.select().from(schema.creditLedger)
+  assert.equal(ledger.length, 0)
+})
+
+test('card refunds do not reduce the expected cash drawer', async () => {
+  await createRefund({ staffId: 1, saleId, method: 'card', items: [{ saleItemId, quantity: 1 }] }, dbc)
+  const day = new Date().toISOString().slice(0, 10) // UTC day, matches createdAt bucketing
+  const summary = await getCashUpSummary(day, dbc)
+  assert.equal(summary.cashRefunds, 0)       // the card refund is invisible to the drawer
+  assert.equal(summary.cashSales, 2000)      // the cash sale from beforeEach still counts
+})
+
+test('residual cap holds across mixed-method refunds', async () => {
+  await createRefund({ staffId: 1, saleId, method: 'cash', items: [{ saleItemId, quantity: 1 }] }, dbc)
+  await createRefund({ staffId: 1, saleId, method: 'card', items: [{ saleItemId, quantity: 1 }] }, dbc)
+  const { amount } = await createRefund({ staffId: 1, saleId, method: 'card', items: [{ saleItemId, quantity: 1 }] }, dbc)
+  // 667 + 667 already refunded; cap = 2000 − 1334 = 666 (1p rounding absorbed by the cap)
+  assert.equal(amount, 666)
+  const rows = await dbc.select().from(schema.refunds)
+  assert.equal(rows.reduce((s, r) => s + r.amount, 0), 2000) // never exceeds sale.total
 })

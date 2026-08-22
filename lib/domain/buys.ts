@@ -4,12 +4,16 @@ import { buyTransactions, buyItems, inventoryItems, creditLedger, customers, pri
 import { generateQRId } from '@/lib/qr'
 import { applyConditionPct, conditionPct, pickMarketPrice, CONDITIONS } from '@/lib/pricing'
 import { getSettings } from '@/lib/settings'
+import { PRODUCT_CONDITION } from '@/lib/product-categories'
 import { DomainError } from './errors'
 
 export interface CreateBuyInput {
   staffId: number
   staffRole?: 'admin' | 'staff'
-  items: { cardId: number; condition: string; quantity: number; payPrice: number }[]
+  // Exactly one of cardId/productId per line. condition is required for card
+  // lines; product lines have none (stored as PRODUCT_CONDITION) — a battered
+  // box is priced lower, not graded.
+  items: { cardId?: number; productId?: number; condition?: string; quantity: number; payPrice: number }[]
   method: 'cash' | 'store_credit'
   customerId?: number
 }
@@ -32,27 +36,38 @@ export async function createBuy(
     throw new DomainError('INVALID_INPUT', 'Store credit requires a customer')
   }
   for (const it of input.items) {
-    if (!CONDITION_SET.has(it.condition)) throw new DomainError('INVALID_INPUT', 'Invalid condition')
+    if ((it.cardId == null) === (it.productId == null)) {
+      throw new DomainError('INVALID_INPUT', 'Each line needs exactly one of cardId or productId')
+    }
+    if (it.cardId != null) {
+      if (!Number.isInteger(it.cardId) || it.cardId < 1) throw new DomainError('INVALID_INPUT', 'Invalid cardId')
+      if (!it.condition || !CONDITION_SET.has(it.condition)) throw new DomainError('INVALID_INPUT', 'Invalid condition')
+    } else if (!Number.isInteger(it.productId) || it.productId! < 1) {
+      throw new DomainError('INVALID_INPUT', 'Invalid productId')
+    }
     if (!Number.isInteger(it.quantity) || it.quantity < 1) throw new DomainError('INVALID_INPUT', 'Invalid quantity')
     if (!Number.isInteger(it.payPrice) || it.payPrice < 0) throw new DomainError('INVALID_INPUT', 'Invalid pay price')
-    if (!Number.isInteger(it.cardId) || it.cardId < 1) throw new DomainError('INVALID_INPUT', 'Invalid cardId')
   }
   const total = input.items.reduce((s, i) => s + i.payPrice * i.quantity, 0)
 
-  // Snapshot market prices for every line; enforce the overpayment cap for
-  // non-admin staff. Integer comparison (pay×10 > market×11) avoids floats.
-  const cardIds = [...new Set(input.items.map(i => i.cardId))]
-  const cacheRows = await dbc.select().from(priceCache).where(inArray(priceCache.cardId, cardIds))
+  // Snapshot market prices for every card line; enforce the overpayment cap
+  // for non-admin staff. Integer comparison (pay×10 > market×11) avoids
+  // floats. Products have no market cache — no cap for product lines.
+  const cardLines = input.items.filter(i => i.cardId != null)
+  const cardIds = [...new Set(cardLines.map(i => i.cardId!))]
+  const cacheRows = cardIds.length
+    ? await dbc.select().from(priceCache).where(inArray(priceCache.cardId, cardIds))
+    : []
   const settings = await getSettings(dbc)
   const marketByCard = new Map<number, number | null>(
     cardIds.map(id => [id, pickMarketPrice(cacheRows.find(r => r.cardId === id), settings.primaryPriceSource)]),
   )
-  for (const it of input.items) {
-    const market = marketByCard.get(it.cardId) ?? null
+  for (const it of cardLines) {
+    const market = marketByCard.get(it.cardId!) ?? null
     // The cap protects against overpaying for the card AS GRADED — reference
     // is the condition-adjusted market, not raw NM market.
     const conditioned = market !== null
-      ? applyConditionPct(market, conditionPct(settings.conditionSellPct, it.condition))
+      ? applyConditionPct(market, conditionPct(settings.conditionSellPct, it.condition!))
       : null
     if (
       input.staffRole !== 'admin' && conditioned !== null
@@ -81,46 +96,64 @@ export async function createBuy(
     }).returning()
 
     for (const it of input.items) {
-      // Merge on intake: increment an existing active row for this card+condition,
-      // blending the cost basis; otherwise create a new stock row.
-      const [existing] = await tx.select().from(inventoryItems).where(and(
-        eq(inventoryItems.cardId, it.cardId),
-        eq(inventoryItems.condition, it.condition),
-        eq(inventoryItems.isActive, true),
-      )).limit(1)
-
       let inventoryItemId: number
-      if (existing) {
-        const newQty = existing.quantity + it.quantity
-        // Division can produce a fraction of a pence even with integer inputs — round to nearest pence.
-        // A null existing cost means "no recorded cost basis"; treating it as 0 understates
-        // blended cost → conservatively over-states future margin VAT (never under-charges HMRC).
-        // This is intentionally different from the sale path, where a null cost is preserved so
-        // the line is excluded from the margin scheme rather than treated as zero-cost.
-        const newCost = Math.round(((existing.costPrice ?? 0) * existing.quantity + it.payPrice * it.quantity) / newQty)
+      if (it.cardId != null) {
+        // Merge on intake: increment an existing active row for this card+condition,
+        // blending the cost basis; otherwise create a new stock row.
+        const [existing] = await tx.select().from(inventoryItems).where(and(
+          eq(inventoryItems.cardId, it.cardId),
+          eq(inventoryItems.condition, it.condition!),
+          eq(inventoryItems.isActive, true),
+        )).limit(1)
+
+        if (existing) {
+          const newQty = existing.quantity + it.quantity
+          // Division can produce a fraction of a pence even with integer inputs — round to nearest pence.
+          // A null existing cost means "no recorded cost basis"; treating it as 0 understates
+          // blended cost → conservatively over-states future margin VAT (never under-charges HMRC).
+          // This is intentionally different from the sale path, where a null cost is preserved so
+          // the line is excluded from the margin scheme rather than treated as zero-cost.
+          const newCost = Math.round(((existing.costPrice ?? 0) * existing.quantity + it.payPrice * it.quantity) / newQty)
+          await tx.update(inventoryItems)
+            .set({ quantity: newQty, costPrice: newCost })
+            .where(eq(inventoryItems.id, existing.id))
+          inventoryItemId = existing.id
+        } else {
+          const [inv] = await tx.insert(inventoryItems).values({
+            cardId: it.cardId,
+            condition: it.condition!,
+            quantity: it.quantity,
+            costPrice: it.payPrice,
+            qrCode: generateQRId(),
+          }).returning()
+          inventoryItemId = inv.id
+        }
+      } else {
+        // Products own exactly one stock row (partial unique index), created by
+        // createProduct — a missing row means the id is bogus, not "make one".
+        const [row] = await tx.select().from(inventoryItems)
+          .where(eq(inventoryItems.productId, it.productId!)).limit(1)
+        if (!row) throw new DomainError('NOT_FOUND', 'Product not found')
+        if (!row.isActive) {
+          throw new DomainError('PRODUCT_INACTIVE', 'This product is deactivated — reactivate it in Inventory before buying it in')
+        }
+        const newQty = row.quantity + it.quantity
+        const newCost = Math.round(((row.costPrice ?? 0) * row.quantity + it.payPrice * it.quantity) / newQty)
         await tx.update(inventoryItems)
           .set({ quantity: newQty, costPrice: newCost })
-          .where(eq(inventoryItems.id, existing.id))
-        inventoryItemId = existing.id
-      } else {
-        const [inv] = await tx.insert(inventoryItems).values({
-          cardId: it.cardId,
-          condition: it.condition,
-          quantity: it.quantity,
-          costPrice: it.payPrice,
-          qrCode: generateQRId(),
-        }).returning()
-        inventoryItemId = inv.id
+          .where(eq(inventoryItems.id, row.id))
+        inventoryItemId = row.id
       }
 
       await tx.insert(buyItems).values({
         buyId: buy.id,
-        cardId: it.cardId,
+        cardId: it.cardId ?? null,
+        productId: it.productId ?? null,
         inventoryItemId,
-        condition: it.condition,
+        condition: it.cardId != null ? it.condition! : PRODUCT_CONDITION,
         quantity: it.quantity,
         payPrice: it.payPrice,
-        marketAtBuy: marketByCard.get(it.cardId) ?? null,
+        marketAtBuy: it.cardId != null ? marketByCard.get(it.cardId) ?? null : null,
       })
     }
 

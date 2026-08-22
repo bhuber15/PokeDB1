@@ -7,15 +7,13 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { formatGBP, parsePounds, pickMarketPrice } from '@/lib/pricing'
+import { formatGBP, parsePounds, pickMarketPrice, CONDITIONS } from '@/lib/pricing'
 import { useSettings } from '@/components/shared/SettingsProvider'
 import { GameFilter } from '@/components/shared/GameFilter'
 import { useStickyGameFilter } from '@/components/shared/useStickyGameFilter'
 import { GameBadge } from '@/components/shared/GameBadge'
 import { LANGUAGE_LABELS, type Language } from '@/lib/games'
 import type { Card, PriceCache } from '@/lib/db/schema'
-
-const CONDITIONS = ['NM', 'LP', 'MP', 'HP', 'DMG'] as const
 
 interface AddPayload {
   cardId: number

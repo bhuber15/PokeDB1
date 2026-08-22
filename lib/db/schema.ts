@@ -45,7 +45,7 @@ export const inventoryItems = sqliteTable('inventory_items', {
   // points (inventory POST is card-only; createProduct is the only productId
   // writer), not by a CHECK (adding one would rebuild the table on SQLite).
   productId: integer('product_id').references(() => products.id),
-  condition: text('condition').notNull(), // NM | LP | MP | HP | DMG
+  condition: text('condition').notNull(), // M | NM | LP | MP | HP | DMG
   quantity: integer('quantity').notNull().default(0),
   costPrice: integer('cost_price'),
   sellPriceOverride: integer('sell_price_override'),
@@ -134,7 +134,7 @@ export const refunds = sqliteTable('refunds', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   saleId: integer('sale_id').notNull().references(() => sales.id),
   staffId: integer('staff_id').references(() => staff.id),
-  method: text('method').notNull(), // 'cash' | 'store_credit'
+  method: text('method').notNull(), // 'cash' | 'card' | 'store_credit'
   amount: integer('amount').notNull(), // total refunded, GBP, includes reversed VAT
   reason: text('reason'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
@@ -163,6 +163,7 @@ export const settings = sqliteTable('settings', {
   // Condition ladder: integer % of market price per condition (1–100).
   // 100 across the board = condition pricing off. Shared by sell prices,
   // buylist offers, and the buylist overpayment cap.
+  condSellPctM: integer('cond_sell_pct_m').notNull().default(100),
   condSellPctNm: integer('cond_sell_pct_nm').notNull().default(100),
   condSellPctLp: integer('cond_sell_pct_lp').notNull().default(100),
   condSellPctMp: integer('cond_sell_pct_mp').notNull().default(100),
@@ -214,6 +215,9 @@ export const buyItems = sqliteTable('buy_items', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   buyId: integer('buy_id').notNull().references(() => buyTransactions.id),
   cardId: integer('card_id').references(() => cards.id),
+  // Exactly one of cardId/productId — enforced in createBuy (the domain choke
+  // point), not by CHECK, same as inventory_items.
+  productId: integer('product_id').references(() => products.id),
   inventoryItemId: integer('inventory_item_id').references(() => inventoryItems.id),
   condition: text('condition').notNull(),
   quantity: integer('quantity').notNull(),

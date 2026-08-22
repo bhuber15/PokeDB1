@@ -3,7 +3,7 @@ export type DomainErrorCode =
   | 'NO_PRICE' | 'BAD_LINE' | 'NOT_FOUND' | 'INVALID_INPUT'
   | 'UNAUTHORIZED' | 'FORBIDDEN' | 'RATE_LIMITED' | 'BUY_CAP_EXCEEDED'
   | 'MARGIN_NO_COST' | 'PLAN_LIMIT' | 'CASH_UP_EXISTS'
-  | 'SALE_VOIDED' | 'VOID_NOT_ALLOWED' | 'DUPLICATE_EAN'
+  | 'SALE_VOIDED' | 'VOID_NOT_ALLOWED' | 'DUPLICATE_EAN' | 'PRODUCT_INACTIVE'
 
 export class DomainError extends Error {
   constructor(
@@ -34,6 +34,7 @@ const STATUS: Record<DomainErrorCode, number> = {
   SALE_VOIDED: 409,
   VOID_NOT_ALLOWED: 409,
   DUPLICATE_EAN: 409,
+  PRODUCT_INACTIVE: 409,
 }
 
 // Framework-free mapping so domain tests never import next/server.

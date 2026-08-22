@@ -91,28 +91,30 @@ test('condition ladder: defaults to all-100 and round-trips through updateSettin
   const dbc = await createTestDb()
   await seedBase(dbc)
   const before = await getSettings(dbc)
-  assert.deepEqual(before.conditionSellPct, { NM: 100, LP: 100, MP: 100, HP: 100, DMG: 100 })
+  assert.deepEqual(before.conditionSellPct, { M: 100, NM: 100, LP: 100, MP: 100, HP: 100, DMG: 100 })
 
   const after = await updateSettings(
-    { conditionSellPct: { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
-  assert.deepEqual(after.conditionSellPct, { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 })
+    { conditionSellPct: { M: 95, NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
+  assert.deepEqual(after.conditionSellPct, { M: 95, NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 })
 
   // Persisted, not just echoed
   const reread = await getSettings(dbc)
-  assert.deepEqual(reread.conditionSellPct, { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 })
+  assert.deepEqual(reread.conditionSellPct, { M: 95, NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 })
 
   // A ladder-less patch leaves the ladder untouched
   const patched = await updateSettings({ shopName: 'Cardtill' }, dbc)
-  assert.deepEqual(patched.conditionSellPct, { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 })
+  assert.deepEqual(patched.conditionSellPct, { M: 95, NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 })
 })
 
 test('settingsPatchSchema: accepts a full 1–100 integer ladder', () => {
-  const r = settingsPatchSchema.safeParse({ conditionSellPct: { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } })
+  const r = settingsPatchSchema.safeParse({ conditionSellPct: { M: 100, NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } })
   assert.ok(r.success)
 })
 
 test('settingsPatchSchema: rejects partial ladders, out-of-range and non-integer values', () => {
   assert.ok(!settingsPatchSchema.safeParse({ conditionSellPct: { NM: 100, LP: 85 } }).success)
+  // The pre-M five-grade shape is now a partial ladder — must be rejected, not defaulted.
+  assert.ok(!settingsPatchSchema.safeParse({ conditionSellPct: { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }).success)
   assert.ok(!settingsPatchSchema.safeParse({ conditionSellPct: { NM: 100, LP: 0, MP: 70, HP: 50, DMG: 35 } }).success)
   assert.ok(!settingsPatchSchema.safeParse({ conditionSellPct: { NM: 101, LP: 85, MP: 70, HP: 50, DMG: 35 } }).success)
   assert.ok(!settingsPatchSchema.safeParse({ conditionSellPct: { NM: 99.5, LP: 85, MP: 70, HP: 50, DMG: 35 } }).success)

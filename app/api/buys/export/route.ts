@@ -10,11 +10,11 @@ export const GET = guarded(async () => {
   requireAdmin(await getSession(await currentTenantId()))
   const rows = await getBuyExportRows(db)
   const csv = toCSV(
-    ['buy_id', 'datetime', 'staff', 'customer', 'method', 'txn_total', 'card', 'condition', 'quantity', 'pay_price_each', 'market_at_buy'],
+    ['buy_id', 'datetime', 'staff', 'customer', 'method', 'txn_total', 'item', 'condition', 'quantity', 'pay_price_each', 'market_at_buy'],
     // CSV money columns are pounds (human-facing, opened in Excel)
     rows.map(r => [
       r.buyId, r.createdAt, r.staffName ?? '', r.customerName ?? '', r.method,
-      (r.txnTotal / 100).toFixed(2), r.cardName ?? '', r.condition, r.quantity,
+      (r.txnTotal / 100).toFixed(2), r.itemName ?? '', r.condition, r.quantity,
       (r.payPrice / 100).toFixed(2), r.marketAtBuy == null ? '' : (r.marketAtBuy / 100).toFixed(2),
     ]),
   )

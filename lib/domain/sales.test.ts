@@ -510,7 +510,7 @@ test('refunding a product line restocks it and refunds what was paid', async () 
 // --- Condition-based pricing ---
 
 test('condition ladder scales the sell price (LP 85%: conditioned market, then margin ceil)', async () => {
-  await updateSettings({ conditionSellPct: { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
+  await updateSettings({ conditionSellPct: { M: 100, NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
   // LP item for the same card: conditioned = round(1000×0.85) = 850; ceil(850×0.85) = 723
   await dbc.insert(schema.inventoryItems).values({
     id: 2, cardId: 1, condition: 'LP', quantity: 3, costPrice: 200, qrCode: 'qr-2',
@@ -522,13 +522,13 @@ test('condition ladder scales the sell price (LP 85%: conditioned market, then m
 })
 
 test('condition ladder: NM stays at full market; default all-100 ladder is a byte-exact no-op', async () => {
-  await updateSettings({ conditionSellPct: { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
+  await updateSettings({ conditionSellPct: { M: 100, NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
   const { total } = await createSale(base, dbc) // NM item, 2 × ceil(1000×0.85) = 1700
   assert.equal(total, 1700)
 })
 
 test('condition ladder: override still beats the ladder', async () => {
-  await updateSettings({ conditionSellPct: { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
+  await updateSettings({ conditionSellPct: { M: 100, NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
   await dbc.insert(schema.inventoryItems).values({
     id: 3, cardId: 1, condition: 'DMG', quantity: 1, costPrice: 100, sellPriceOverride: 1200, qrCode: 'qr-3',
   })
@@ -539,7 +539,7 @@ test('condition ladder: override still beats the ladder', async () => {
 })
 
 test('condition ladder: a stale client expectedTotal still throws PRICE_CHANGED', async () => {
-  await updateSettings({ conditionSellPct: { NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
+  await updateSettings({ conditionSellPct: { M: 100, NM: 100, LP: 85, MP: 70, HP: 50, DMG: 35 } }, dbc)
   await dbc.insert(schema.inventoryItems).values({
     id: 4, cardId: 1, condition: 'MP', quantity: 1, costPrice: 100, qrCode: 'qr-4',
   })

@@ -4,12 +4,13 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { BuyCard } from '@/components/buylist/BuyCard'
 import { BuyCart, BuyCartLine } from '@/components/buylist/BuyCart'
+import { ProductBuyRow } from '@/components/buylist/ProductBuyRow'
 import { CatalogueBrowser, type CatalogueSelection } from '@/components/catalogue/CatalogueBrowser'
 import { GameFilter } from '@/components/shared/GameFilter'
 import { useStickyGameFilter } from '@/components/shared/useStickyGameFilter'
 import { toast } from 'sonner'
 import { isCardmarketFresh } from '@/lib/pricing'
-import type { Card, PriceCache } from '@/lib/db/schema'
+import type { Card, PriceCache, Product } from '@/lib/db/schema'
 
 interface SearchResult {
   card: Card
@@ -24,6 +25,7 @@ export default function BuylistPage() {
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<SearchResult[]>([])
+  const [productResults, setProductResults] = useState<Product[]>([])
   const [cart, setCart] = useState<BuyCartLine[]>([])
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -42,13 +44,17 @@ export default function BuylistPage() {
       // Server bounds the live-API fallback at ~4s; this client timeout is a
       // backstop so the search UI can never get stuck waiting.
       const gameQ = gameFilter !== 'all' ? `&game=${gameFilter}` : ''
-      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}${gameQ}`, {
-        signal: AbortSignal.timeout(15_000),
-      })
+      const [res, invRes] = await Promise.all([
+        fetch(`/api/cards/search?q=${encodeURIComponent(q)}${gameQ}`, { signal: AbortSignal.timeout(15_000) }),
+        fetch(`/api/inventory?q=${encodeURIComponent(q)}`, { signal: AbortSignal.timeout(15_000) }),
+      ])
       const data = await res.json()
       const cards: Card[] = data.cards ?? []
       const prices: Record<number, PriceCache | undefined> = data.prices ?? {}
-      if (!cards.length) {
+      const invRows: { product: Product | null }[] = invRes.ok ? await invRes.json() : []
+      const productRows = invRows.filter(r => r.product != null).map(r => r.product!)
+      setProductResults(productRows)
+      if (!cards.length && !productRows.length) {
         if (data.unavailable) {
           toast.error('Card search is busy right now — try that search again in a moment')
         } else {
@@ -60,9 +66,13 @@ export default function BuylistPage() {
       if (data.fuzzy) toast(`No exact match for "${q}" — showing close matches`)
       setResults(cards.map(card => ({ card, prices: prices[card.id] ?? null })))
     } catch (e) {
-      toast.error(e instanceof Error && e.name === 'TimeoutError'
-        ? 'Search timed out — please try again'
-        : 'Search failed — please try again')
+      if (!navigator.onLine) {
+        toast.error('Offline — buys need a connection and are not queued.')
+      } else {
+        toast.error(e instanceof Error && e.name === 'TimeoutError'
+          ? 'Search timed out — please try again'
+          : 'Search failed — please try again')
+      }
     } finally {
       setLoading(false)
     }
@@ -129,6 +139,10 @@ export default function BuylistPage() {
             <CatalogueBrowser onSelectCard={handleBrowseSelect} />
           </div>
         )}
+
+        {productResults.map(p => (
+          <ProductBuyRow key={`p-${p.id}`} product={p} onAdd={handleAdd} />
+        ))}
 
         {results.map(({ card, prices }) => (
           <BuyCard

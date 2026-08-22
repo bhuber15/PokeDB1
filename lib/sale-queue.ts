@@ -60,3 +60,9 @@ export function clearConflict(clientUuid: string, storage: Storage = localStorag
     return rest
   }), storage)
 }
+
+// True while any queued sale still needs the network (conflicts don't — they
+// wait for a human decision). Drives the POS's leave-page warning.
+export function hasUnsentSales(queue: QueuedSale[]): boolean {
+  return queue.some(e => !e.conflict)
+}

@@ -3,14 +3,21 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CustomerPicker } from '@/components/shared/CustomerPicker'
+import { useOnlineStatus } from '@/components/shared/useOnlineStatus'
 import { BuySlipDialog, type BuySlipData } from './BuySlipDialog'
 import { formatGBP } from '@/lib/pricing'
+import { PRODUCT_CONDITION } from '@/lib/product-categories'
 import { toast } from 'sonner'
 import type { Customer } from '@/lib/db/schema'
-import type { BuyLineInput } from './BuyCard'
 
-export interface BuyCartLine extends BuyLineInput {
-  cardName: string
+export interface BuyCartLine {
+  cardId?: number
+  productId?: number
+  cardName: string // display name — card or product
+  condition?: string // card lines only
+  quantity: number
+  payPriceCash: number | null
+  payPriceCredit: number | null
 }
 
 type PayMethod = 'cash' | 'store_credit'
@@ -22,6 +29,7 @@ interface BuyCartProps {
 }
 
 export function BuyCart({ lines, onRemove, onClear }: BuyCartProps) {
+  const online = useOnlineStatus()
   const [method, setMethod] = useState<PayMethod>('cash')
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [confirming, setConfirming] = useState(false)
@@ -33,7 +41,7 @@ export function BuyCart({ lines, onRemove, onClear }: BuyCartProps) {
   }, 0)
 
   const creditRequiresCustomer = method === 'store_credit' && !customer
-  const canConfirm = lines.length > 0 && !creditRequiresCustomer
+  const canConfirm = lines.length > 0 && !creditRequiresCustomer && online
 
   async function handleConfirm() {
     setConfirming(true)
@@ -43,8 +51,9 @@ export function BuyCart({ lines, onRemove, onClear }: BuyCartProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           items: lines.map(l => ({
-            cardId: l.cardId,
-            condition: l.condition,
+            ...(l.cardId != null
+              ? { cardId: l.cardId, condition: l.condition }
+              : { productId: l.productId }),
             quantity: l.quantity,
             payPrice: method === 'cash' ? (l.payPriceCash ?? 0) : (l.payPriceCredit ?? 0),
           })),
@@ -59,7 +68,7 @@ export function BuyCart({ lines, onRemove, onClear }: BuyCartProps) {
       }
       const { buyId, total: confirmedTotal } = await res.json()
       const cardCount = lines.reduce((n, l) => n + l.quantity, 0)
-      toast.success(`Bought ${cardCount} card${cardCount !== 1 ? 's' : ''} for ${formatGBP(confirmedTotal)}`)
+      toast.success(`Bought ${cardCount} item${cardCount !== 1 ? 's' : ''} for ${formatGBP(confirmedTotal)}`)
       // Snapshot the slip before the cart resets
       setSlip({
         buyId,
@@ -70,9 +79,10 @@ export function BuyCart({ lines, onRemove, onClear }: BuyCartProps) {
         customerName: customer?.name ?? null,
         lines: lines.map(l => ({
           cardName: l.cardName,
-          condition: l.condition,
+          condition: l.condition ?? PRODUCT_CONDITION,
           quantity: l.quantity,
           payPrice: (method === 'cash' ? l.payPriceCash : l.payPriceCredit) ?? 0,
+          productId: l.productId,
         })),
       })
       onClear()
@@ -123,7 +133,7 @@ export function BuyCart({ lines, onRemove, onClear }: BuyCartProps) {
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{line.cardName}</div>
                 <div className="text-sm text-muted-foreground flex gap-2 flex-wrap">
-                  <Badge variant="outline" className="text-xs py-0">{line.condition}</Badge>
+                  {line.condition && <Badge variant="outline" className="text-xs py-0">{line.condition}</Badge>}
                   <span>× {line.quantity}</span>
                   <span>@ {formatGBP(price)} each</span>
                 </div>
@@ -165,6 +175,9 @@ export function BuyCart({ lines, onRemove, onClear }: BuyCartProps) {
 
         {creditRequiresCustomer && (
           <p className="text-xs text-destructive">Select a customer to pay with store credit</p>
+        )}
+        {!online && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">Offline — buys need a connection and are not queued.</p>
         )}
 
         <Button
