@@ -58,3 +58,6 @@ tenant-dbs/
 
 # local isolated test DB (MTG/YGO sandbox) — safe to delete
 local-sandbox.db*
+
+# architecture map page — built on demand: npx tsx scripts/build-architecture-page.ts
+/docs/architecture/explorer.html
