@@ -1,6 +1,9 @@
 // Where backup dumps live. Vercel Blob in production (spec §3.9), an
-// in-memory map in tests. Feature-gated: no BLOB_READ_WRITE_TOKEN → no store
-// → the backup cron no-ops green.
+// in-memory map in tests. Feature-gated: no Blob credentials → no store
+// → the backup cron no-ops green. Two auth shapes: classic
+// BLOB_READ_WRITE_TOKEN, or BLOB_STORE_ID + the runtime's OIDC token
+// (what the dashboard's store-connect flow injects since 2026) — the
+// @vercel/blob SDK resolves whichever is present.
 
 export interface BackupObject { key: string; url: string; uploadedAt: number }  // epoch seconds
 
@@ -11,7 +14,7 @@ export interface BackupStore {
 }
 
 export function getBackupStore(): BackupStore | null {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) return null
+  if (!process.env.BLOB_READ_WRITE_TOKEN && !process.env.BLOB_STORE_ID) return null
   return {
     async put(key, data) {
       const { put } = await import('@vercel/blob')
