@@ -302,7 +302,7 @@
       "id": "catalogue",
       "label": "The card catalogue",
       "blurb": "a quarter of a million cards",
-      "intro": "Every card the shop can sell has to exist in the system first, with a price attached. Four games, five outside data sources, and a nightly sweep that has to be safe to run twice. This is the part with the most moving pieces and the least danger — nothing here touches money directly.",
+      "intro": "Every card the shop can sell has to exist in the system first, with a price attached. Four games, six outside services — five card databases and one exchange-rate feed — and a nightly sweep that has to be safe to run twice. This is the part with the most moving pieces and the least danger — nothing here touches money directly.",
       "groups": [
         {
           "label": "which games",
@@ -879,7 +879,7 @@
         "A cached zero is ==not a price==. One of the sources emits 0 for cards it has no data on, so a zero is treated as missing and the other source gets to answer. Without that, a £0 quote would leak straight into the till."
       ],
       "how": [
-        "Refreshed by a nightly job, plus an on-demand refresh when the buylist prices a stale card. Foreign currency is converted at configured rates.",
+        "Refreshed by a nightly job, plus an on-demand refresh when the buylist prices a stale card. Foreign currency is converted at the ECB reference rate, fetched fresh each night before the sweeps run — and if that feed is down, the previous rate is kept so pricing never stalls on it.",
         "`pickMarketSource` and `marketPriceSyncedAt` must always agree about which source won — they share one implementation for exactly that reason."
       ],
       "condition": [
@@ -1464,7 +1464,7 @@
       "kind": "route",
       "layers": 3,
       "file": "lib/apis/",
-      "sub": "five services",
+      "sub": "six services",
       "pos": {
         "catalogue": [
           2,
@@ -1472,7 +1472,7 @@
         ]
       },
       "what": [
-        "Five services publish what cards exist and what they sell for. None of them agree on anything: shapes, currencies, or how to say a card has no price.",
+        "Six services feed the shop: five publish what cards exist and what they sell for, and the European Central Bank supplies the daily exchange rate that turns those dollars and euros into pounds. None of the five agree on anything: shapes, currencies, or how to say a card has no price.",
         "The rule learned the hard way: ==check the real service before writing any code against it==. Four separate data bugs came from trusting documentation — non-English rows inside supposedly English data, blank codes producing unusable ids, duplicate printings, and page ordering that changed between requests."
       ],
       "how": [

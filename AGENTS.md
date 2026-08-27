@@ -69,7 +69,9 @@ PokeDB is a point-of-sale and inventory system for a UK Pokémon card shop: sell
 - **VAT scheme** is a setting applied in `createSale` — check `lib/settings.ts` before touching tax logic.
 - **Refunds are capped** at the cumulative amount charged for a sale.
 - **Store credit** lives in `credit_ledger` (append-only); store-credit payments require a `customerId`.
-- Currency conversion for market prices uses the `PRICE_USD_TO_GBP` / `PRICE_EUR_TO_GBP` env rates.
+- Currency conversion for market prices uses the shop's `usdToGbp`/`eurToGbp` settings, refreshed
+  nightly from the ECB reference rate (`lib/prices/fx.ts`, fails soft to the stored value); the
+  `PRICE_USD_TO_GBP` / `PRICE_EUR_TO_GBP` env rates only seed a brand-new settings row.
 - **Day windows are split on purpose:** void eligibility runs on the Europe/London trading day (`lib/trading-day.ts`), while reports/cash-up bucketing stays on UTC days (matching `createdAt` text). During BST the two disagree 23:00–00:00 UTC. Don't "fix" one side to match the other piecemeal — moving reports to London days is a deliberate product decision that must cover cash-up, tiles, ranges and exports together.
 - **Client components never value-import from `lib/domain/` or anything that touches `lib/db`.** That drags the libsql client into the browser bundle, which breaks the dev server in misleading ways (CI smoke saw unrelated API routes 404). `import type` is fine (erased at compile). Constants shared between domain and UI go in dependency-free modules — pattern: `lib/adjustment-reasons.ts`.
 
