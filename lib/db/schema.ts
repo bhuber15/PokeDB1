@@ -235,7 +235,7 @@ export const stockAdjustments = sqliteTable('stock_adjustments', {
   inventoryItemId: integer('inventory_item_id').notNull().references(() => inventoryItems.id),
   staffId: integer('staff_id').notNull().references(() => staff.id),
   delta: integer('delta').notNull(),
-  reason: text('reason').notNull(), // 'recount' | 'damage' | 'lost' | 'other'
+  reason: text('reason').notNull(), // AdjustmentReason (lib/adjustment-reasons.ts): 'recount' | 'damage' | 'lost' | 'sold-elsewhere' | 'other'
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
