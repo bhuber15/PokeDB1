@@ -5,9 +5,16 @@ import { Dialog, DialogContent, DialogTitle, DialogFooter } from '@/components/u
 import { Button } from '@/components/ui/button'
 import { printLabelSheet, type LabelData } from '@/components/shared/printLabelSheet'
 
-const TEMPLATE_HEADER = 'external_id,name,set_name,set_number,condition,quantity,cost_price,sell_price_override,location,defect_notes'
-const TEMPLATE_EXAMPLE = 'base1-4,Charizard,Base Set,4/102,NM,1,150.00,,Binder A,'
-const TEMPLATE_CSV = `${TEMPLATE_HEADER}\n${TEMPLATE_EXAMPLE}\n`
+// game: pokemon (default if blank) | mtg | yugioh | lorcana. The server also
+// accepts an optional language column (defaults EN); not advertised here.
+// Both example rows are real catalogue cards, so importing them as-is matches
+// instead of creating junk.
+const TEMPLATE_HEADER = 'external_id,name,set_name,set_number,game,condition,quantity,cost_price,sell_price_override,location,defect_notes'
+const TEMPLATE_EXAMPLES = [
+  'base1-4,Charizard,Base,4,pokemon,NM,1,150.00,,Binder A,',
+  ',Elsa - Snow Queen,The First Chapter,41,lorcana,NM,1,4.50,,,',
+]
+const TEMPLATE_CSV = `${TEMPLATE_HEADER}\n${TEMPLATE_EXAMPLES.join('\n')}\n`
 const templateHref = `data:text/csv;charset=utf-8,${encodeURIComponent(TEMPLATE_CSV)}`
 
 interface ImportError {
