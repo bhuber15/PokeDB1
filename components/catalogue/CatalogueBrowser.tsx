@@ -111,7 +111,7 @@ export function CatalogueBrowser({ onSelectCard }: CatalogueBrowserProps) {
             className={`flex-1 px-2 py-1.5 rounded-lg text-sm font-medium ${mode === 'name' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}
             onClick={() => switchMode('name')}
           >
-            By Pokémon
+            {gameFilter === 'pokemon' ? 'By Pokémon' : 'By Name'}
           </button>
         </div>
 
@@ -136,7 +136,10 @@ export function CatalogueBrowser({ onSelectCard }: CatalogueBrowserProps) {
           </>
         ) : (
           <>
-            <Input placeholder="Type a Pokémon name…" value={nameQuery} onChange={e => setNameQuery(e.target.value)} autoFocus />
+            <Input
+              placeholder={gameFilter === 'pokemon' ? 'Type a Pokémon name…' : 'Type a card name…'}
+              value={nameQuery} onChange={e => setNameQuery(e.target.value)} autoFocus
+            />
             {names.map(n => (
               <button
                 type="button"
@@ -169,6 +172,8 @@ export function CatalogueBrowser({ onSelectCard }: CatalogueBrowserProps) {
               )}
               <p className="text-xs font-semibold mt-1 truncate">{card.name}</p>
               <p className="text-[11px] text-muted-foreground truncate">{card.setName} · #{card.setNumber}</p>
+              {/* MTG/Lorcana catalogue one row per finish — without this the twins look identical */}
+              {card.variant && <p className="text-[11px] text-accent font-medium truncate">{card.variant}</p>}
               <div className="flex items-center gap-1 flex-wrap">
                 {card.language !== 'EN' && (
                   <Badge variant="outline">{LANGUAGE_LABELS[card.language as Language] ?? card.language}</Badge>
