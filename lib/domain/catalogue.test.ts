@@ -27,6 +27,21 @@ test('getSets groups by set name + series, ordered by era then name, with counts
   assert.equal(sets.find(s => s.setName === 'Mystery Set')!.series, null)
 })
 
+test('getSets keeps same-named sets from different games apart', async () => {
+  // Both Yu-Gi-Oh! and MTG really have a set called "Legendary Collection" —
+  // without game in the grouping they collapse into one row (or duplicate keys).
+  await dbc.insert(schema.cards).values([
+    { name: 'Dark Magician', game: 'yugioh', setName: 'Legendary Collection', setNumber: 'LC01-EN001', externalId: 'ygo:1' },
+    { name: 'Kess, Dissident Mage', game: 'mtg', setName: 'Legendary Collection', setNumber: '1', externalId: 'scryfall:a' },
+  ])
+  const sets = await getSets(dbc)
+  const legendary = sets.filter(s => s.setName === 'Legendary Collection')
+  assert.deepEqual(
+    legendary.map(s => ({ game: s.game, count: s.count })),
+    [{ game: 'mtg', count: 1 }, { game: 'yugioh', count: 1 }], // one row per game, mtg first (game tiebreak)
+  )
+})
+
 test('getCardsInSet returns all cards in a set ordered by set number, joined to prices', async () => {
   await dbc.update(schema.cards).set({ setNumber: '10' }).where(eq(schema.cards.id, 1))
   const [raichu] = await dbc.insert(schema.cards)

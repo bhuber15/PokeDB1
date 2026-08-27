@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatGBP } from '@/lib/pricing'
 import { LANGUAGE_LABELS, type Language } from '@/lib/games'
 import { GameFilter } from '@/components/shared/GameFilter'
-import { useStickyGameFilter } from '@/components/shared/useStickyGameFilter'
+import { useStickyGameFilter, type GameFilterValue } from '@/components/shared/useStickyGameFilter'
 import { GameBadge } from '@/components/shared/GameBadge'
 import type { SetSummary, CatalogueRow } from '@/lib/domain/catalogue'
 
@@ -26,7 +26,10 @@ export function CatalogueBrowser({ onSelectCard }: CatalogueBrowserProps) {
 
   const [sets, setSets] = useState<SetSummary[]>([])
   const [setFilter, setSetFilter] = useState('')
-  const [activeSet, setActiveSet] = useState<string | null>(null)
+  // game + name, not name alone: different games reuse set names ("Legendary
+  // Collection" exists in both Yu-Gi-Oh! and MTG), so under 'all' the name
+  // doesn't identify a set.
+  const [activeSet, setActiveSet] = useState<{ game: string; setName: string } | null>(null)
 
   const [nameQuery, setNameQuery] = useState('')
   const [names, setNames] = useState<string[]>([])
@@ -54,18 +57,19 @@ export function CatalogueBrowser({ onSelectCard }: CatalogueBrowserProps) {
     return () => clearTimeout(t)
   }, [mode, nameQuery, gameFilter])
 
-  // Timer defers the fetch past the effect's sync phase (set-state-in-effect)
+  // Timer defers the fetch past the effect's sync phase (set-state-in-effect).
+  // Always scoped to the set's own game — never the filter's — so an 'all'
+  // filter can't mix two games' same-named sets into one grid.
   useEffect(() => {
     if (!activeSet) return
     const t = setTimeout(() => {
       setLoading(true)
-      const gameQ = gameFilter !== 'all' ? `&game=${gameFilter}` : ''
-      fetch(`/api/cards/browse?setName=${encodeURIComponent(activeSet)}${gameQ}`)
+      fetch(`/api/cards/browse?setName=${encodeURIComponent(activeSet.setName)}&game=${activeSet.game}`)
         .then(r => r.json()).then(d => setRows(d.cards ?? []))
         .finally(() => setLoading(false))
     }, 0)
     return () => clearTimeout(t)
-  }, [activeSet, gameFilter])
+  }, [activeSet])
 
   // Timer defers the fetch past the effect's sync phase (set-state-in-effect)
   useEffect(() => {
@@ -94,10 +98,20 @@ export function CatalogueBrowser({ onSelectCard }: CatalogueBrowserProps) {
     setRows([])
   }
 
+  // Narrowing the filter to a game the active set doesn't belong to would leave
+  // the grid showing a set the rail no longer lists — drop the selection.
+  function changeGameFilter(next: GameFilterValue) {
+    setGameFilter(next)
+    if (activeSet && next !== 'all' && activeSet.game !== next) {
+      setActiveSet(null)
+      setRows([])
+    }
+  }
+
   return (
     <div className="grid grid-cols-[240px_1fr] gap-4 h-full min-h-0">
       <div className="flex flex-col gap-3 overflow-y-auto border-r pr-3">
-        <GameFilter value={gameFilter} onChange={setGameFilter} />
+        <GameFilter value={gameFilter} onChange={changeGameFilter} />
         <div className="flex gap-1">
           <button
             type="button"
@@ -124,11 +138,13 @@ export function CatalogueBrowser({ onSelectCard }: CatalogueBrowserProps) {
                 {group.map(s => (
                   <button
                     type="button"
-                    key={s.setName}
-                    onClick={() => setActiveSet(s.setName)}
-                    className={`w-full text-left px-2 py-1.5 rounded text-sm ${activeSet === s.setName ? 'bg-primary/20 text-primary' : 'hover:bg-muted'}`}
+                    key={`${s.game}:${s.setName}`}
+                    onClick={() => setActiveSet({ game: s.game, setName: s.setName })}
+                    className={`w-full text-left px-2 py-1.5 rounded text-sm ${activeSet?.game === s.game && activeSet.setName === s.setName ? 'bg-primary/20 text-primary' : 'hover:bg-muted'}`}
                   >
                     {s.setName} <span className="text-muted-foreground">({s.count})</span>
+                    {/* under 'all', same-named sets from two games are otherwise identical rows */}
+                    {gameFilter === 'all' && <>{' '}<GameBadge game={s.game} /></>}
                   </button>
                 ))}
               </div>

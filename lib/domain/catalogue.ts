@@ -37,20 +37,25 @@ function naturalCompare(a: string, b: string): number {
 }
 
 export interface SetSummary {
+  game: string
   setName: string
   series: string | null
   count: number
 }
 
-/** Every distinct set in the catalogue, ordered by era then set name. */
+/** Every distinct set in the catalogue, ordered by era then set name. Grouped
+ * by game as well as name: different games reuse set names (Yu-Gi-Oh! and MTG
+ * both have a "Legendary Collection"), and those must stay separate rows. */
 export async function getSets(dbc: Db = db, game?: Game): Promise<SetSummary[]> {
   const rows = await dbc
-    .select({ setName: cards.setName, series: cards.series, count: sql<number>`COUNT(*)` })
+    .select({ game: cards.game, setName: cards.setName, series: cards.series, count: sql<number>`COUNT(*)` })
     .from(cards)
     .where(game ? eq(cards.game, game) : undefined)
-    .groupBy(cards.setName, cards.series)
+    .groupBy(cards.game, cards.setName, cards.series)
   return rows.sort((a, b) =>
-    seriesRank(a.series) - seriesRank(b.series) || a.setName.localeCompare(b.setName))
+    seriesRank(a.series) - seriesRank(b.series)
+    || a.setName.localeCompare(b.setName)
+    || a.game.localeCompare(b.game))
 }
 
 export interface CatalogueRow {
