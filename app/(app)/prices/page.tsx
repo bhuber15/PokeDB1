@@ -1,96 +1,77 @@
 'use client'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { CardZoomModal, type CardZoomData } from '@/components/shared/CardZoomModal'
-import { formatGBP, usdToGbp } from '@/lib/pricing'
+import { formatGBP, pickMarketPrice, pickMarketSource } from '@/lib/pricing'
 import { useSettings } from '@/components/shared/SettingsProvider'
-import type { PokemonTCGCard, AllPrices } from '@/lib/apis/pokemon-tcg'
+import { GAMES, type Game } from '@/lib/games'
+import type { Card, PriceCache } from '@/lib/db/schema'
 
-type CardmarketPrices = { trend: number | null; low: number | null; avg: number | null }
+// Catalogue-first price lookup: cards + cached market prices come from
+// /api/cards/search — the same cascade as the buylist — with the shop's
+// primary source (Cardmarket EUR→GBP) leading and TCGplayer USD→GBP as the
+// fallback. Search also refreshes stale Cardmarket entries for the top
+// results server-side, so quotes fill in live while TCGdex is reachable.
 
-type PriceRow = { market?: number; low?: number; mid?: number; high?: number }
-// TCG prices are USD — convert each field to GBP for display at the shop's rate
-function toGbpRow(p: PriceRow, rate: number): PriceRow {
-  return {
-    market: usdToGbp(p.market, rate) ?? undefined,
-    low: usdToGbp(p.low, rate) ?? undefined,
-    mid: usdToGbp(p.mid, rate) ?? undefined,
-    high: usdToGbp(p.high, rate) ?? undefined,
-  }
+// A cached 0 is TCGdex's "no data" artifact, never a real price — hide it.
+function shown(v: number | null | undefined): v is number {
+  return v != null && v !== 0
 }
 
-const VARIANT_LABELS: Record<string, string> = {
-  normal: 'TCGplayer Normal',
-  holofoil: 'TCGplayer Holofoil',
-  reverseHolofoil: 'TCGplayer Reverse Holo',
-  '1stEditionHolofoil': 'TCGplayer 1st Ed. Holo',
-  '1stEditionNormal': 'TCGplayer 1st Ed. Normal',
-}
-
-function PriceBlock({ label, p }: { label: string; p: { market?: number; low?: number; mid?: number; high?: number } }) {
+function PriceBlock({ label, rows }: { label: string; rows: [string, number | null | undefined][] }) {
+  if (!rows.some(([, v]) => shown(v))) return null
   return (
-    <div className="bg-muted/30 rounded-lg p-2.5 min-w-[100px]">
+    <div className="bg-muted/30 rounded-lg p-2.5 min-w-[110px]">
       <div className="text-xs text-muted-foreground mb-1.5 font-medium">{label}</div>
       <div className="space-y-0.5 text-xs">
-        {p.market != null && <div className="flex justify-between gap-3"><span className="text-muted-foreground">Market</span><span className="font-bold text-foreground">{formatGBP(p.market)}</span></div>}
-        {p.low != null && <div className="flex justify-between gap-3"><span className="text-muted-foreground">Low</span><span>{formatGBP(p.low)}</span></div>}
-        {p.mid != null && <div className="flex justify-between gap-3"><span className="text-muted-foreground">Mid</span><span>{formatGBP(p.mid)}</span></div>}
-        {p.high != null && <div className="flex justify-between gap-3"><span className="text-muted-foreground">High</span><span>{formatGBP(p.high)}</span></div>}
+        {rows.map(([k, v]) => shown(v) && (
+          <div key={k} className="flex justify-between gap-3">
+            <span className="text-muted-foreground">{k}</span>
+            <span className={k === 'Trend' || k === 'Market' ? 'font-bold text-foreground' : undefined}>{formatGBP(v)}</span>
+          </div>
+        ))}
       </div>
     </div>
   )
 }
 
-function CardPriceRow({ card, onZoom }: { card: PokemonTCGCard; onZoom: (c: CardZoomData) => void }) {
-  const { usdToGbp: rate } = useSettings()
-  const prices: AllPrices = card.tcgplayer?.prices ?? {}
-  // Convert each variant's USD prices to GBP up front
-  const variants = (Object.entries(prices) as [string, PriceRow][])
-    .map(([k, p]) => [k, toGbpRow(p, rate)] as [string, PriceRow])
-  const bestMarket = variants.map(([, p]) => p.market ?? 0).reduce((a, b) => Math.max(a, b), 0) || null
-
-  // Lazily fetch Cardmarket prices (best-effort)
-  const [cmPrices, setCmPrices] = useState<CardmarketPrices | null>(null)
-  useEffect(() => {
-    let cancelled = false
-    fetch(`/api/prices/cardmarket?id=${encodeURIComponent(card.id)}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (!cancelled && data) setCmPrices(data) })
-      .catch(() => {})
-    return () => { cancelled = true }
-  }, [card.id])
-
+function CardPriceRow({ card, prices, onZoom }: { card: Card; prices: PriceCache | null; onZoom: (c: CardZoomData) => void }) {
+  const { primaryPriceSource } = useSettings()
+  const headline = pickMarketPrice(prices, primaryPriceSource)
+  const source = pickMarketSource(prices, primaryPriceSource)
+  const zoomData: CardZoomData = {
+    name: card.name,
+    setName: card.setName,
+    setNumber: card.setNumber,
+    variant: card.variant,
+    imageUrlLarge: card.imageUrlLarge,
+    imageUrl: card.imageUrl,
+    tcgplayerMarket: prices?.tcgplayerMarket,
+    cardmarketTrend: prices?.cardmarketTrend,
+  }
   return (
     <div className="border border-border rounded-xl p-4 bg-card hover:border-border/80 transition-colors">
       <div className="flex gap-4">
-        {/* Card image */}
-        <button
-          type="button"
-          className="shrink-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={`Zoom ${card.name}`}
-          onClick={() => onZoom({
-            name: card.name,
-            setName: card.set.name,
-            setNumber: card.number,
-            variant: card.subtypes?.join(' / '),
-            imageUrlLarge: card.images.large,
-            imageUrl: card.images.small,
-            tcgplayerMarket: bestMarket,
-          })}
-        >
-          <Image
-            src={card.images.small}
-            alt=""
-            width={64}
-            height={89}
-            className="w-16 rounded-lg cursor-zoom-in hover:scale-110 transition-transform shadow-md"
-          />
-        </button>
+        {card.imageUrl && (
+          <button
+            type="button"
+            className="shrink-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={`Zoom ${card.name}`}
+            onClick={() => onZoom(zoomData)}
+          >
+            <Image
+              src={card.imageUrl}
+              alt=""
+              width={64}
+              height={89}
+              className="w-16 rounded-lg cursor-zoom-in hover:scale-110 transition-transform shadow-md"
+            />
+          </button>
+        )}
 
-        {/* Card info */}
         <div className="flex-1 min-w-0 space-y-2">
           <div className="flex items-start justify-between gap-2 flex-wrap">
             <div>
@@ -98,61 +79,38 @@ function CardPriceRow({ card, onZoom }: { card: PokemonTCGCard; onZoom: (c: Card
                 <button
                   type="button"
                   className="hover:text-primary transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-                  onClick={() => onZoom({
-                    name: card.name,
-                    setName: card.set.name,
-                    setNumber: card.number,
-                    variant: card.subtypes?.join(' / '),
-                    imageUrlLarge: card.images.large,
-                    imageUrl: card.images.small,
-                    tcgplayerMarket: bestMarket,
-                  })}
+                  onClick={() => onZoom(zoomData)}
                 >
                   {card.name}
                 </button>
               </h3>
-              <p className="text-sm text-muted-foreground">{card.set.name} · #{card.number}</p>
+              <p className="text-sm text-muted-foreground">{card.setName} · #{card.setNumber}</p>
             </div>
             <div className="flex items-center gap-2 flex-wrap shrink-0">
-              {card.rarity && <Badge variant="outline" className="text-xs">{card.rarity}</Badge>}
-              {card.types?.map(t => (
-                <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
-              ))}
-              {bestMarket && (
-                <span className="text-lg font-bold text-primary">{formatGBP(bestMarket)}</span>
+              <Badge variant="secondary" className="text-xs">{GAMES[card.game as Game]?.label ?? card.game}</Badge>
+              {card.variant && <Badge variant="outline" className="text-xs">{card.variant}</Badge>}
+              {headline != null && (
+                <span className="text-lg font-bold text-primary">{formatGBP(headline)}</span>
               )}
-              {!bestMarket && (
+              {headline != null && source === 'tcgplayer' && primaryPriceSource === 'cardmarket' && (
+                <Badge variant="outline" className="text-xs">USD fallback</Badge>
+              )}
+              {headline == null && (
                 <span className="text-sm text-muted-foreground italic">No price data</span>
               )}
             </div>
           </div>
 
-          {/* Price variants */}
-          {(variants.length > 0 || cmPrices) && (
-            <div className="flex gap-2 flex-wrap">
-              {/* Cardmarket first — it's the shop's primary price source */}
-              <div className="bg-muted/30 rounded-lg p-2.5 min-w-[100px]">
-                <div className="text-xs text-muted-foreground mb-1.5 font-medium">Cardmarket</div>
-                <div className="space-y-0.5 text-xs">
-                  <div className="flex justify-between gap-3"><span className="text-muted-foreground">Trend</span><span className="font-bold text-foreground">{cmPrices?.trend != null ? formatGBP(cmPrices.trend) : '—'}</span></div>
-                  <div className="flex justify-between gap-3"><span className="text-muted-foreground">Low</span><span>{cmPrices?.low != null ? formatGBP(cmPrices.low) : '—'}</span></div>
-                  <div className="flex justify-between gap-3"><span className="text-muted-foreground">Avg</span><span>{cmPrices?.avg != null ? formatGBP(cmPrices.avg) : '—'}</span></div>
-                </div>
-              </div>
-              {variants.map(([variant, p]) => (
-                <PriceBlock key={variant} label={VARIANT_LABELS[variant] ?? `TCGplayer ${variant}`} p={p} />
-              ))}
-            </div>
-          )}
-
-          {/* Subtypes */}
-          {card.subtypes && card.subtypes.length > 0 && (
-            <div className="flex gap-1 flex-wrap">
-              {card.subtypes.map(s => (
-                <span key={s} className="text-xs text-accent font-medium">{s}</span>
-              ))}
-            </div>
-          )}
+          <div className="flex gap-2 flex-wrap">
+            <PriceBlock
+              label="Cardmarket (EUR→GBP)"
+              rows={[['Trend', prices?.cardmarketTrend], ['Low', prices?.cardmarketLow], ['Avg', prices?.cardmarketAvg]]}
+            />
+            <PriceBlock
+              label="TCGplayer (USD→GBP)"
+              rows={[['Market', prices?.tcgplayerMarket], ['Low', prices?.tcgplayerLow], ['Mid', prices?.tcgplayerMid], ['High', prices?.tcgplayerHigh]]}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -161,7 +119,8 @@ function CardPriceRow({ card, onZoom }: { card: PokemonTCGCard; onZoom: (c: Card
 
 export default function PricesPage() {
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<PokemonTCGCard[]>([])
+  const [results, setResults] = useState<{ card: Card; prices: PriceCache | null }[]>([])
+  const [fuzzy, setFuzzy] = useState(false)
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
   const [zoomCard, setZoomCard] = useState<CardZoomData | null>(null)
@@ -174,23 +133,29 @@ export default function PricesPage() {
     setLoading(true)
     setSearched(true)
     setError('')
+    setFuzzy(false)
     try {
-      const res = await fetch(`/api/prices/search?q=${encodeURIComponent(q.trim())}`)
+      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q.trim())}`, { signal: AbortSignal.timeout(15_000) })
       if (!res.ok) {
         setError('Price lookup failed — please sign in again and retry.')
         setResults([])
         return
       }
       const data = await res.json()
-      if (data.unavailable) {
+      const cards: Card[] = data.cards ?? []
+      const prices: Record<number, PriceCache | undefined> = data.prices ?? {}
+      if (cards.length === 0 && data.unavailable) {
         setError('The card price service is busy right now — try that search again in a moment.')
         setResults([])
         return
       }
-      setResults(data.cards ?? [])
-    } catch {
-      setError('Could not reach the server. Check your connection and try again.')
+      setFuzzy(Boolean(data.fuzzy))
+      setResults(cards.map(card => ({ card, prices: prices[card.id] ?? null })))
+    } catch (e) {
       setResults([])
+      setError(e instanceof Error && e.name === 'TimeoutError'
+        ? 'Search timed out — please try again.'
+        : 'Could not reach the server. Check your connection and try again.')
     } finally {
       setLoading(false)
     }
@@ -202,7 +167,9 @@ export default function PricesPage() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold">Price Lookup</h1>
-          <p className="text-sm text-muted-foreground mt-1">Search the full Pokemon TCG catalogue · prices converted from USD to GBP</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Search the full catalogue · Cardmarket (EUR→GBP) first, TCGplayer (USD→GBP) fallback
+          </p>
         </div>
 
         {error && (
@@ -218,7 +185,7 @@ export default function PricesPage() {
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && search()}
-            placeholder="Search any card — e.g. Charizard, Pikachu, Mewtwo…"
+            placeholder="Search any card — e.g. Charizard, Black Lotus, Blue-Eyes…"
             className="h-10"
             autoFocus
           />
@@ -236,7 +203,7 @@ export default function PricesPage() {
           </div>
         )}
 
-        {!loading && searched && results.length === 0 && (
+        {!loading && searched && !error && results.length === 0 && (
           <div className="text-center py-16 text-muted-foreground">
             <p className="text-lg">No cards found for &ldquo;{query}&rdquo;</p>
             <p className="text-sm mt-1">Try a different name or check your spelling</p>
@@ -245,10 +212,14 @@ export default function PricesPage() {
 
         {!loading && results.length > 0 && (
           <>
-            <p className="text-sm text-muted-foreground">{results.length} result{results.length !== 1 ? 's' : ''} for &ldquo;{query}&rdquo;</p>
+            <p className="text-sm text-muted-foreground">
+              {fuzzy
+                ? <>No exact match for &ldquo;{query}&rdquo; — showing close matches</>
+                : <>{results.length} result{results.length !== 1 ? 's' : ''} for &ldquo;{query}&rdquo;</>}
+            </p>
             <div className="grid gap-3">
-              {results.map(card => (
-                <CardPriceRow key={card.id} card={card} onZoom={setZoomCard} />
+              {results.map(({ card, prices }) => (
+                <CardPriceRow key={card.id} card={card} prices={prices} onZoom={setZoomCard} />
               ))}
             </div>
           </>
@@ -257,8 +228,8 @@ export default function PricesPage() {
         {!searched && (
           <div className="text-center py-20 text-muted-foreground space-y-2">
             <div className="text-4xl">🔍</div>
-            <p className="text-base font-medium">Search any Pokémon card</p>
-            <p className="text-sm">See market, low, mid and high prices across all variants</p>
+            <p className="text-base font-medium">Search any card in the catalogue</p>
+            <p className="text-sm">Cardmarket and TCGplayer prices, shown in GBP</p>
           </div>
         )}
       </div>
