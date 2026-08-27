@@ -1,0 +1,12 @@
+.git
+node_modules
+.next
+*.db
+local-sandbox.db*
+tenant-dbs
+Research
+cardtill-site
+meeting 1
+test-results
+docs
+.env*
