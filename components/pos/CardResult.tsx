@@ -138,6 +138,7 @@ export function CardResult({ card, prices, inventoryOptions, onAddToCart, onRefr
                   </button>
                 </h2>
                 <p className="text-sm text-muted-foreground">{card.setName} · #{card.setNumber}</p>
+                {card.variant && <p className="text-sm text-accent font-medium">{card.variant}</p>}
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {card.language !== 'EN' && (
                     <Badge variant="outline">{LANGUAGE_LABELS[card.language as Language] ?? card.language}</Badge>

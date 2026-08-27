@@ -28,6 +28,20 @@ export default function BuylistPage() {
   const [productResults, setProductResults] = useState<Product[]>([])
   const [cart, setCart] = useState<BuyCartLine[]>([])
   const searchRef = useRef<HTMLInputElement>(null)
+  // Browse selections land in a BuyCard below the fixed browse panel — often
+  // below the fold — and re-selecting a card already in the list is deduped to
+  // a no-op. Without feedback both read as dead clicks, so every selection
+  // scrolls the card's BuyCard into view and flashes it. `seq` bumps per click
+  // so re-selecting the same card re-triggers the effect.
+  const [flash, setFlash] = useState<{ cardId: number; seq: number } | null>(null)
+  const buyCardRefs = useRef(new Map<number, HTMLDivElement>())
+
+  useEffect(() => {
+    if (!flash) return
+    buyCardRefs.current.get(flash.cardId)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    const t = setTimeout(() => setFlash(null), 1500)
+    return () => clearTimeout(t)
+  }, [flash])
 
   // The input is disabled while a search runs, which permanently drops focus
   // when it re-enables — so typing (and Enter) after the first search went
@@ -84,6 +98,7 @@ export default function BuylistPage() {
 
   function handleBrowseSelect({ card, prices }: CatalogueSelection) {
     setResults(prev => prev.some(r => r.card.id === card.id) ? prev : [{ card, prices }, ...prev])
+    setFlash(f => ({ cardId: card.id, seq: (f?.seq ?? 0) + 1 }))
     // Browse rows come straight from the local cache; for cards we've never
     // stocked there's usually no Cardmarket entry, so the offer would quietly
     // be priced off TCGplayer USD. Refresh it and swap the prices in.
@@ -145,12 +160,21 @@ export default function BuylistPage() {
         ))}
 
         {results.map(({ card, prices }) => (
-          <BuyCard
+          <div
             key={card.id}
-            card={card}
-            prices={prices}
-            onAdd={line => handleAdd({ ...line, cardName: card.name })}
-          />
+            ref={el => {
+              if (!el) return
+              buyCardRefs.current.set(card.id, el)
+              return () => { buyCardRefs.current.delete(card.id) }
+            }}
+            className={`rounded-xl transition-shadow ${flash?.cardId === card.id ? 'ring-2 ring-primary' : ''}`}
+          >
+            <BuyCard
+              card={card}
+              prices={prices}
+              onAdd={line => handleAdd({ ...line, cardName: card.name })}
+            />
+          </div>
         ))}
       </div>
 
