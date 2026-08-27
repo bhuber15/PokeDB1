@@ -11,7 +11,7 @@ import { printLabelSheet, type LabelData } from '@/components/shared/printLabelS
 // instead of creating junk.
 const TEMPLATE_HEADER = 'external_id,name,set_name,set_number,game,condition,quantity,cost_price,sell_price_override,location,defect_notes'
 const TEMPLATE_EXAMPLES = [
-  'base1-4,Charizard,Base Set,4/102,pokemon,NM,1,150.00,,Binder A,',
+  'base1-4,Charizard,Base,4,pokemon,NM,1,150.00,,Binder A,',
   ',Elsa - Snow Queen,The First Chapter,41,lorcana,NM,1,4.50,,,',
 ]
 const TEMPLATE_CSV = `${TEMPLATE_HEADER}\n${TEMPLATE_EXAMPLES.join('\n')}\n`
