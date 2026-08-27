@@ -1,5 +1,9 @@
 # Stub: live-auction stock pull via QR scan (needs brainstorm → spec)
 
+> **Superseded 2026-08-27** by `2026-08-27-ebay-live-auction-batches-design.md` — grilled
+> with Brad; scope, money rules, and build/shelve gates all settled there. This stub stays
+> only as the original demand record.
+
 Source: first-shop demo 2026-07-22 (docs/testing/smoke-2026-07-22.md). Shop runs live-stream
 auctions (Whatnot-style). Ask: before a stream, scan every card going on stream to remove it
 from sellable inventory, so the till can't double-sell it mid-stream. Their note: "figure how
