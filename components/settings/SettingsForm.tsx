@@ -122,7 +122,7 @@ export function SettingsForm({ multiGame }: { multiGame: boolean }) {
           <Label htmlFor="settings-usd-gbp">USD → GBP rate</Label>
           <Input id="settings-usd-gbp" name="usdToGbp" type="number" inputMode="decimal" step="0.01" min={0} value={usdToGbp} onChange={e => setUsdToGbp(e.target.value)} />
           <p className="text-xs text-muted-foreground">
-            TCG prices are in US dollars. This converts them to £. Update it when the exchange rate moves.
+            TCG prices are in US dollars. This converts them to £. Refreshed automatically each night from the ECB reference rate — a manual edit here only holds until the next nightly sync.
           </p>
         </div>
 
@@ -130,7 +130,7 @@ export function SettingsForm({ multiGame }: { multiGame: boolean }) {
           <Label htmlFor="settings-eur-gbp">EUR → GBP rate</Label>
           <Input id="settings-eur-gbp" name="eurToGbp" type="number" inputMode="decimal" step="0.01" min={0} value={eurToGbp} onChange={e => setEurToGbp(e.target.value)} />
           <p className="text-xs text-muted-foreground">
-            Cardmarket prices are in Euros. This converts them to £. Update it when the exchange rate moves.
+            Cardmarket prices are in Euros. This converts them to £. Refreshed automatically each night from the ECB reference rate — a manual edit here only holds until the next nightly sync.
           </p>
         </div>
 

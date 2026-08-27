@@ -1,4 +1,5 @@
 import { getSettings } from '@/lib/settings'
+import { refreshFxRates } from '@/lib/prices/fx'
 import { sweepTcgplayerCatalogue, syncInStockCardmarket, syncStaleCardmarket, pruneOldHistory } from '@/lib/prices/sync'
 import { sweepTcgdexCatalogue } from '@/lib/prices/tcgdex-sweep'
 import { sweepScryfall } from '@/lib/sources/scryfall-sweep'
@@ -7,6 +8,7 @@ import { sweepLorcast } from '@/lib/sources/lorcast-sweep'
 import type { Db } from '@/lib/db'
 
 interface RunSyncDeps {
+  refreshFx?: typeof refreshFxRates
   sweepTcgplayer?: typeof sweepTcgplayerCatalogue
   sweepTcgdex?: typeof sweepTcgdexCatalogue
   sweepScryfall?: typeof sweepScryfall
@@ -25,6 +27,9 @@ interface RunSyncDeps {
 // rotation, and history retention. Every sweep is independent, so a failing
 // upstream for one game never blocks another.
 export async function runFullPriceSync(db: Db, deps: RunSyncDeps = {}) {
+  // Rates before settings: tonight's conversions should use tonight's ECB
+  // rate. Fails soft (keeps stored rates), so it can never block the sweeps.
+  const fx = await (deps.refreshFx ?? refreshFxRates)(db)
   const settings = await getSettings(db)
   const sweep = await (deps.sweepTcgplayer ?? sweepTcgplayerCatalogue)(settings, {}, db)
   const tcgdexSweep = await (deps.sweepTcgdex ?? sweepTcgdexCatalogue)(settings, db)
@@ -34,5 +39,5 @@ export async function runFullPriceSync(db: Db, deps: RunSyncDeps = {}) {
   const cardmarket = await (deps.syncInStock ?? syncInStockCardmarket)(settings, db)
   const cardmarketRotation = await (deps.syncStale ?? syncStaleCardmarket)(settings, {}, db)
   await (deps.prune ?? pruneOldHistory)(db)
-  return { sweep, tcgdexSweep, scryfallSweep, ygoSweep, lorcastSweep, cardmarket, cardmarketRotation }
+  return { fx, sweep, tcgdexSweep, scryfallSweep, ygoSweep, lorcastSweep, cardmarket, cardmarketRotation }
 }
