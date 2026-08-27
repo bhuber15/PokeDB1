@@ -8,20 +8,24 @@ export interface ScryfallBulkDeps {
   stream?: () => AsyncIterable<ScryfallCard>
 }
 
-// Stream Scryfall's default_cards bulk file (557 MB) object-by-object, so peak
-// memory stays flat. Used only by the off-cron import script.
+// Stream Scryfall's default_cards bulk file object-by-object, so peak memory
+// stays flat. Since 2026 the file is gzipped JSON Lines (~78 MB compressed),
+// served as raw application/gzip — decompress explicitly, parse per line.
+// Used only by the off-cron import script.
 async function* streamBulk(): AsyncIterable<ScryfallCard> {
-  // stream-json 3.x: the bare parser()/streamArray() calls return "core"
-  // stream-chain flushables (no .pipe()) — the Node-Duplex wrapper is the
-  // separate .asStream() adapter attached to the same factory.
-  const { parser } = await import('stream-json')
-  const { streamArray } = await import('stream-json/streamers/stream-array.js')
   const uri = await fetchScryfallBulkUri()
   const res = await fetch(uri, { headers: { 'User-Agent': 'PokeDB/1.0 (github.com/pokedb)' } })
   if (!res.ok || !res.body) throw new Error(`Scryfall bulk download ${res.status}`)
+  const { createGunzip } = await import('node:zlib')
   const { Readable } = await import('node:stream')
-  const pipeline = Readable.fromWeb(res.body as never).pipe(parser.asStream()).pipe(streamArray.asStream())
-  for await (const { value } of pipeline as AsyncIterable<{ value: ScryfallCard }>) yield value
+  const { createInterface } = await import('node:readline')
+  const lines = createInterface({
+    input: Readable.fromWeb(res.body as never).pipe(createGunzip()),
+    crlfDelay: Infinity,
+  })
+  for await (const line of lines) {
+    if (line.trim()) yield JSON.parse(line) as ScryfallCard
+  }
 }
 
 // Full MTG import: every printing + prices in one streamed pass. Idempotent

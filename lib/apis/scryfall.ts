@@ -55,8 +55,11 @@ async function getJson<T>(url: string): Promise<T> {
 // The download URI of the current `default_cards` bulk file (one object per
 // English printing). Used only by the off-cron import script.
 export async function fetchScryfallBulkUri(): Promise<string> {
-  const data = await getJson<{ download_uri: string }>(`${BASE}/bulk-data/default-cards`)
-  return data.download_uri
+  // Scryfall dropped the JSON-array `download_uri` in 2026; bulk files are now
+  // gzipped JSON Lines under `jsonl_download_uri`.
+  const data = await getJson<{ jsonl_download_uri?: string }>(`${BASE}/bulk-data/default-cards`)
+  if (!data.jsonl_download_uri) throw new ScryfallError('bulk-data/default-cards: no jsonl_download_uri in response')
+  return data.jsonl_download_uri
 }
 
 // One card by Scryfall id — used by the per-card refresh (in-stock + on-demand).
