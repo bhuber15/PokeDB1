@@ -8,6 +8,7 @@ import { parseCSV } from '@/lib/csv'
 import { generateQRId } from '@/lib/qr'
 import { parsePounds, CONDITIONS } from '@/lib/pricing'
 import { isLanguage, GAME_IDS, type Game, type Language } from '@/lib/games'
+import { isTcgplayerExport, importTcgplayerExport } from '@/lib/import-tcgplayer'
 
 const CONDITION_SET = new Set<string>(CONDITIONS)
 
@@ -15,11 +16,19 @@ export const POST = guarded(async (req: NextRequest) => {
   const db = await getTenantDb()
   requireAdmin(await getSession(await currentTenantId()))
 
-  const text = await req.text()
+  // Excel and mail clients love to prepend a UTF-8 BOM, which would glue
+  // itself onto the first header name and break column lookup.
+  const text = (await req.text()).replace(/^\uFEFF/, '')
   const rows = parseCSV(text)
   if (rows.length < 2) return NextResponse.json({ error: 'Empty or header-only CSV' }, { status: 400 })
 
   const header = rows[0].map(h => h.trim().toLowerCase())
+  // A TCGplayer mobile-app export ("scan cards → share list as CSV") is a
+  // different contract: rows resolve against the catalogue and never create
+  // cards. Detected here so staff use the same upload for both formats.
+  if (isTcgplayerExport(header)) {
+    return NextResponse.json(await importTcgplayerExport(rows, db))
+  }
   const idx = (name: string) => header.indexOf(name)
   const col = (r: string[], name: string) => { const i = idx(name); return i >= 0 ? r[i]?.trim() : '' }
 
