@@ -112,6 +112,12 @@ export function ImportDialog({ open, onClose, onDone }: ImportDialogProps) {
           >
             Download template
           </a>
+          <p className="text-xs text-muted-foreground">
+            TCGplayer app exports are accepted as-is (in the app: set the share
+            format to CSV, then share a list). Scanned cards are matched to the
+            catalogue — anything that doesn&apos;t match is listed below, and
+            imports come in at £0 cost until you edit them.
+          </p>
           <div>
             <input
               ref={fileInputRef}
