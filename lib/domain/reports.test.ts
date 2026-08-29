@@ -6,8 +6,9 @@ import * as schema from '../db/schema'
 import {
   getCashUpSummary, getSalesByStaff, getMarginStockBook,
   getInventoryValuation, getAgedStock, getLowStock, getMarginByStaff, getBuyExportRows,
-  getSalesByPaymentMethod, getSalesByCategory,
+  getSalesByPaymentMethod, getSalesByCategory, getAdjustmentsByReason,
 } from './reports'
+import { applyInventoryPatch } from './inventory'
 import { createSale } from './sales'
 import { createBuy } from './buys'
 import type { Db } from '../db'
@@ -582,4 +583,54 @@ test('sales by category: cards are singles, products report their category', asy
   assert.equal(byCat.singles.revenue, 1700)
   assert.equal(byCat.accessories.quantitySold, 1)
   assert.equal(byCat.accessories.revenue, 799)
+})
+
+// ---------------------------------------------------------------------------
+// getAdjustmentsByReason
+// ---------------------------------------------------------------------------
+
+test('an adjustment made through applyInventoryPatch appears under its own reason', async () => {
+  // The contract behind the eBay-Live demand telemetry: a sold-elsewhere
+  // adjustment recorded at the inventory endpoint's domain choke point must
+  // surface as its own line, never folded into 'other'.
+  await dbc.insert(schema.inventoryItems).values({
+    id: 70, cardId: 1, condition: 'NM', quantity: 10, qrCode: 'qr-t70',
+  })
+  await applyInventoryPatch(70, 1, 'staff', { quantity: 4 }, 'sold-elsewhere', dbc)
+  await applyInventoryPatch(70, 1, 'staff', { quantity: 3 }, 'other', dbc)
+
+  const rows = await getAdjustmentsByReason('2020-01-01', '2099-01-01', dbc)
+  const byReason = Object.fromEntries(rows.map(r => [r.reason, r]))
+  assert.equal(byReason['sold-elsewhere'].adjustments, 1)
+  assert.equal(byReason['sold-elsewhere'].units, -6)
+  assert.equal(byReason.other.adjustments, 1)
+  assert.equal(byReason.other.units, -1)
+})
+
+test('adjustments-by-reason groups per reason and respects the UTC range window', async () => {
+  const DAY = '2026-09-02'
+  await dbc.insert(schema.inventoryItems).values({
+    id: 71, cardId: 1, condition: 'NM', quantity: 20, qrCode: 'qr-t71',
+  })
+  const adj = (delta: number, reason: string, createdAt: string) =>
+    dbc.insert(schema.stockAdjustments).values({ inventoryItemId: 71, staffId: 1, delta, reason, createdAt })
+
+  // In range: two sold-elsewhere, one recount (positive delta)
+  await adj(-3, 'sold-elsewhere', `${DAY} 00:00:00`)
+  await adj(-2, 'sold-elsewhere', `${DAY} 23:59:59`)
+  await adj(4, 'recount', `${DAY} 12:00:00`)
+  // Out of range: day before and next-day midnight (exclusive boundary)
+  await adj(-9, 'sold-elsewhere', '2026-09-01 23:59:59')
+  await adj(-9, 'sold-elsewhere', '2026-09-03 00:00:00')
+
+  const rows = await getAdjustmentsByReason(DAY, DAY, dbc)
+  assert.equal(rows.length, 2)
+  const byReason = Object.fromEntries(rows.map(r => [r.reason, r]))
+  assert.equal(byReason['sold-elsewhere'].adjustments, 2)
+  assert.equal(byReason['sold-elsewhere'].units, -5)
+  assert.equal(byReason.recount.adjustments, 1)
+  assert.equal(byReason.recount.units, 4)
+
+  // A range with no adjustments reports nothing rather than zero-rows
+  assert.deepEqual(await getAdjustmentsByReason('2026-01-01', '2026-01-01', dbc), [])
 })

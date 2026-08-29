@@ -8,7 +8,7 @@
 
 import { and, gt, gte, lt, or, isNull, sql, eq, asc, desc } from 'drizzle-orm'
 import { db, type Db } from '@/lib/db'
-import { sales, salePayments, refunds, buyTransactions, staff, saleItems, inventoryItems, cards, priceCache, customers, buyItems, products } from '@/lib/db/schema'
+import { sales, salePayments, refunds, buyTransactions, staff, saleItems, inventoryItems, cards, priceCache, customers, buyItems, products, stockAdjustments } from '@/lib/db/schema'
 import { MARGIN_VAT_DIVISOR, pickMarketPrice } from '@/lib/pricing'
 import { getSettings } from '@/lib/settings'
 import { DomainError } from './errors'
@@ -473,4 +473,37 @@ export async function getSalesByCategory(from: string, to: string, dbc: Db = db)
     .where(and(isNull(sales.voidedAt), gte(sales.createdAt, fromTs), lt(sales.createdAt, toExcl)))
     .groupBy(sql`COALESCE(${products.category}, 'singles')`)
     .orderBy(sql`SUM(${saleItems.priceAtSale} * ${saleItems.quantity}) DESC`)
+}
+
+// ---------------------------------------------------------------------------
+// getAdjustmentsByReason
+// ---------------------------------------------------------------------------
+
+export interface AdjustmentReasonSummary {
+  reason: string     // AdjustmentReason values; typed string because the column is unconstrained text
+  adjustments: number // manual stock edits in range
+  units: number       // Σ delta — negative means stock left the shop
+}
+
+/**
+ * Manual stock adjustments over [from, to] (UTC days, like every range
+ * aggregate), one line per reason. 'sold-elsewhere' is the load-bearing line:
+ * off-till sales (eBay Live streams) are recorded as adjustments until they
+ * get a first-class flow, and this count is the demand telemetry for that
+ * feature's gate — it must never fold into 'other'.
+ */
+export async function getAdjustmentsByReason(from: string, to: string, dbc: Db = db): Promise<AdjustmentReasonSummary[]> {
+  const fromTs = `${from} 00:00:00`
+  const toExcl = sql<string>`datetime(${to}, '+1 day')`
+
+  return dbc
+    .select({
+      reason: stockAdjustments.reason,
+      adjustments: sql<number>`COUNT(*)`,
+      units: sql<number>`COALESCE(SUM(${stockAdjustments.delta}), 0)`,
+    })
+    .from(stockAdjustments)
+    .where(and(gte(stockAdjustments.createdAt, fromTs), lt(stockAdjustments.createdAt, toExcl)))
+    .groupBy(stockAdjustments.reason)
+    .orderBy(asc(stockAdjustments.reason))
 }

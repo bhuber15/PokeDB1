@@ -6,7 +6,7 @@ import { EAN_RE } from '@/lib/product-categories'
 import { generateQRId } from '@/lib/qr'
 import { pickMarketPrice } from '@/lib/pricing'
 import { getSettings } from '@/lib/settings'
-import type { AdjustmentReason } from '@/lib/adjustment-reasons'
+import { ADJUSTMENT_REASONS, type AdjustmentReason } from '@/lib/adjustment-reasons'
 import type { Condition } from '@/lib/pricing'
 import { type Game } from '@/lib/games'
 
@@ -85,7 +85,7 @@ export async function applyInventoryPatch(
 
     if (patch.quantity !== undefined && patch.quantity !== current.quantity) {
       if (!reason) {
-        throw new DomainError('INVALID_INPUT', 'Quantity changes require a reason (recount / damage / lost / other)')
+        throw new DomainError('INVALID_INPUT', `Quantity changes require a reason (${ADJUSTMENT_REASONS.join(' / ')})`)
       }
       await tx.insert(stockAdjustments).values({
         inventoryItemId,

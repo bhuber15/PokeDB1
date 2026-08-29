@@ -42,6 +42,19 @@ test('quantity increase records a positive delta', async () => {
   assert.equal(row.reason, 'recount')
 })
 
+test('sold-elsewhere is an accepted reason and lands in the audit trail', async () => {
+  // Off-till sales (eBay Live) are recorded via this reason until they get a
+  // first-class flow — staff must be able to record them, not just admins.
+  await dbc.insert(schema.inventoryItems).values({
+    id: 1, cardId: 1, condition: 'NM', quantity: 5, costPrice: 300, qrCode: 'qr-1',
+  })
+  const updated = await applyInventoryPatch(1, 1, 'staff', { quantity: 2 }, 'sold-elsewhere', dbc)
+  assert.equal(updated.quantity, 2)
+  const [row] = await dbc.select().from(schema.stockAdjustments)
+  assert.equal(row.reason, 'sold-elsewhere')
+  assert.equal(row.delta, -3)
+})
+
 test('quantity change without a reason is rejected and nothing is written', async () => {
   await dbc.insert(schema.inventoryItems).values({
     id: 1, cardId: 1, condition: 'NM', quantity: 5, costPrice: 300, qrCode: 'qr-1',

@@ -5,7 +5,7 @@ import { sales, saleItems, inventoryItems, cards } from '@/lib/db/schema'
 import { and, gte, lt, eq, sql, isNotNull, isNull } from 'drizzle-orm'
 import { getSession, requireAdmin, currentTenantId } from '@/lib/auth'
 import { guarded } from '@/lib/api'
-import { getSalesByStaff, getMarginByStaff, getSalesByPaymentMethod, getSalesByCategory } from '@/lib/domain/reports'
+import { getSalesByStaff, getMarginByStaff, getSalesByPaymentMethod, getSalesByCategory, getAdjustmentsByReason } from '@/lib/domain/reports'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -83,6 +83,11 @@ export const GET = guarded(async (req: NextRequest) => {
   // All money values are SUMs of integer pence — already exact, no rounding
   const byCategory = await getSalesByCategory(from, to, db)
 
+  // Manual stock adjustments in range, one line per reason. Not sales money —
+  // it rides in the range summary so off-till activity ('sold-elsewhere',
+  // shrinkage) is visible next to the till figures for the same window.
+  const byAdjustmentReason = await getAdjustmentsByReason(from, to, db)
+
   return NextResponse.json({
     range: { from, to },
     revenue: totals.revenue,
@@ -93,6 +98,7 @@ export const GET = guarded(async (req: NextRequest) => {
     saleCount: totals.saleCount,
     byPaymentMethod,
     byCategory,
+    byAdjustmentReason,
     byStaff,
     topCards: topCardsRaw
       .map(r => ({ cardId: r.cardId!, name: r.name ?? 'Unknown', quantitySold: r.quantitySold, revenue: r.revenue })),

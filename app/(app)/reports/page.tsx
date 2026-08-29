@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
 import { ReceiptDialog, type ReceiptData } from '@/components/pos/ReceiptDialog'
 import { PRODUCT_CATEGORY_LABELS, type ProductCategory } from '@/lib/product-categories'
+import { ADJUSTMENT_REASON_LABELS, type AdjustmentReason } from '@/lib/adjustment-reasons'
 import { isSameLondonDay } from '@/lib/trading-day'
 import { useStaffRole } from '@/components/shared/SessionProvider'
 
@@ -40,6 +41,7 @@ interface RangeSummary {
   saleCount: number
   byPaymentMethod: { paymentMethod: string; total: number }[]
   byCategory: { category: string; quantitySold: number; revenue: number }[]
+  byAdjustmentReason: { reason: string; adjustments: number; units: number }[]
   byStaff: { staffId: number | null; staffName: string | null; saleCount: number; revenue: number; margin: number; noCostLines: number }[]
   topCards: { cardId: number; name: string; quantitySold: number; revenue: number }[]
 }
@@ -220,6 +222,31 @@ export default function ReportsPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+          {summary && summary.byAdjustmentReason.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold mb-2">Stock adjustments</h3>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="border-b bg-muted/30">
+                    <tr>
+                      {['Reason', 'Adjustments', 'Units'].map(h => (
+                        <th key={h} className="text-left px-3 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide last:text-right">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {summary.byAdjustmentReason.map(a => (
+                      <tr key={a.reason}>
+                        <td className="px-3 py-2">{ADJUSTMENT_REASON_LABELS[a.reason as AdjustmentReason] ?? a.reason}</td>
+                        <td className="px-3 py-2 tabular-nums">{a.adjustments}</td>
+                        <td className="px-3 py-2 tabular-nums text-right">{a.units > 0 ? `+${a.units}` : a.units}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>

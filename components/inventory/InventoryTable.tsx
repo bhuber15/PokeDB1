@@ -4,7 +4,7 @@ import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import { ADJUSTMENT_REASONS, type AdjustmentReason } from '@/lib/adjustment-reasons'
+import { ADJUSTMENT_REASONS, ADJUSTMENT_REASON_LABELS, type AdjustmentReason } from '@/lib/adjustment-reasons'
 import { calculateSellPrice, conditionPct, formatGBP, pickMarketPrice } from '@/lib/pricing'
 import { CardZoomModal, type CardZoomData } from '@/components/shared/CardZoomModal'
 import { useSettings } from '@/components/shared/SettingsProvider'
@@ -25,12 +25,9 @@ interface InventoryTableProps {
   onPrintQR: (id: number) => void
 }
 
-const REASON_LABEL: Record<AdjustmentReason, string> = {
-  recount: 'Recount',
-  damage: 'Damage',
-  lost: 'Lost',
-  other: 'Other',
-}
+// Labels live in lib/adjustment-reasons.ts — the reports page renders the
+// same reasons in its adjustments breakdown.
+const REASON_LABEL = ADJUSTMENT_REASON_LABELS
 
 const CONDITION_BADGE: Record<string, string> = {
   M: 'border-violet-500/40 text-violet-400',
